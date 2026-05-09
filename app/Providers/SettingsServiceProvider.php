@@ -9,10 +9,14 @@ use Illuminate\Support\Facades\Schema;
 class SettingsServiceProvider extends ServiceProvider
 {
     public function boot(): void
-    {
+{
+    try {
         if (Schema::hasTable('settings')) {
-            $settings = \App\Models\Setting::whereNull('branch_id')->pluck('value', 'key');
+            $settings = \App\Models\Setting::whereNull('branch_id')->first();
+
             View::share('appSettings', $settings);
         }
+    } catch (\Exception $e) {
     }
+}
 }
