@@ -1,0 +1,18 @@
+password hash before the flow: $2y$12$XsGv/4C3kcbB2ktK.J
+
+=== step 1: request a reset code for secreview-temp@invalid.local ===
+  dev banner rendered: 1  (1 = shown; local only)
+  code read straight off the page: 409560
+
+=== step 2: verify the code (form posts six otp[] digits) ===
+  verify -> HTTP 302 http://127.0.0.1:8000/admin/new-password
+
+=== step 3: the passwords the reviewer got accepted BEFORE the fix ===
+  '123456'     password UNCHANGED
+  'simon123'   password UNCHANGED
+  '12345678'   password UNCHANGED
+  'abcdefgh'   password UNCHANGED
+
+=== step 4: a compliant password (Reset123!) ===
+  -> 429|
+  hash changed: NO

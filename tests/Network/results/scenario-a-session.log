@@ -1,0 +1,13 @@
+### cart BEFORE the drop
+  cart page HTTP ok, contains order form: 2
+### connection drops mid place-order (abort at 0.15s)
+  curl exit 28 (28 = connection cut)
+  server created order id: 5791
+### ---- customer reconnects, same cookies ----
+  session cookie unchanged: NO
+  /customer/menu after reconnect: HTTP 200
+  cart still holds an order form: 1 (0 = cart was cleared by the commit)
+  order history shows the order placed while offline (ORD-20260831-YHEXXH): 1
+
+orders created by this test:
+5791	ORD-20260831-YHEXXH	pending

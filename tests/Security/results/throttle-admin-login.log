@@ -1,0 +1,7 @@
+attacking http://127.0.0.1:8000/admin/login as nonexistent-attacker@invalid.local with wrong passwords
+
+attempt 1 -> HTTP 302  302|http://127.0.0.1:8000/admin/login
+attempt 2 -> HTTP 302  302|http://127.0.0.1:8000/admin/login
+attempt 3 -> HTTP 302  302|http://127.0.0.1:8000/admin/login
+attempt 4 -> HTTP 429  429|
+attempt 5 -> HTTP 429  429|

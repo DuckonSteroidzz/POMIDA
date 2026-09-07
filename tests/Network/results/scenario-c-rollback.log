@@ -1,0 +1,17 @@
+flag in .env: 1 (1 = rollback hook armed)
+before: orders|items|options|notifs|voucher_uses|stock_moves = 129|195|24|74|1|52
+
+### placing an order that will fail mid-transaction
+  response: 302 http://127.0.0.1:8000/customer/menu
+
+after : orders|items|options|notifs|voucher_uses|stock_moves = 129|195|24|74|1|52
+  orders above baseline      : 0   (expect 0)
+  order_items with no parent : 0   (expect 0)
+  options with no parent line: 0   (expect 0)
+
+VERDICT: every counter identical - the transaction rolled back completely.
+
+### what the customer is shown
+error to
+error and should not be shouted at the customer in red.
+error) {

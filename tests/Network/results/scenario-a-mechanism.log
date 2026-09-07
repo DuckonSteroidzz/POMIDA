@@ -1,0 +1,14 @@
+orders MAX(id) before: 5788
+--- first placement (completed normally) ---
+  -> 302 http://127.0.0.1:8000/customer/orders
+  orders created: 1
+--- REFILL the cart, then retry (isolates the guard) ---
+  cart now holds item: 2 form(s)
+  -> 302 http://127.0.0.1:8000/customer/orders
+  orders above baseline: 2
+--- the message the customer is shown ---
+  (guard message not found on orders page)
+
+VERDICT: a second order WAS created once the cart was refilled (2 total).
+5789	ORD-20260831-WTDVMW	pending	2026-08-31 00:41:03
+5790	ORD-20260831-USFZSE	pending	2026-08-31 00:41:04

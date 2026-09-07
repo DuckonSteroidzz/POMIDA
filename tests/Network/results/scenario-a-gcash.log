@@ -1,0 +1,18 @@
+### place a GCASH order
+  -> 302 http://127.0.0.1:8000/customer/gcash-payment/5793
+5793	ORD-20260831-VGYTQL	pending	gcash	pending
+### connection drops WHILE loading the GCash payment page
+  curl exit=28
+  state after drop:
+pending
+### connection drops DURING 'I have paid' (mark-as-paid POST)
+  curl exit=28 (28 = cut)
+  payment_status after the cut:
+awaiting_verification
+### does the order remain visible + actionable (not stranded)?
+  on the staff Active Orders board (status IN pending/preparing/serving): 1
+  in the customer's own order history: 1
+  reachable payment page after reconnect: HTTP 200
+
+orders created by this test:
+5793	ORD-20260831-VGYTQL	pending	awaiting_verification

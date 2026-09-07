@@ -1,0 +1,14 @@
+verifying cleanup...
+  ok  orders > 4497                      0 remaining
+  ok  order_items > 2897                 0 remaining
+  ok  order_item_options > 123           0 remaining
+  ok  stock_movements > 265              0 remaining
+  ok  notifications > 642                0 remaining
+  ok  help_requests > 10                 0 remaining
+  ok  table_sessions > 1702              0 remaining
+  ok  order_ratings > 273                0 remaining
+  ok  games_played > 213                 0 remaining
+  ok  orphaned order_items               0 remaining
+  ok  orphaned order_item_options        0 remaining
+  ok  help_requests nulled by cascade    0 remaining
+cleanup done - verified zero rows above every high-water mark

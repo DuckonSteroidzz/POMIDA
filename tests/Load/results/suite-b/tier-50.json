@@ -1,0 +1,370 @@
+{
+  "label": "tier-50",
+  "concurrency": 50,
+  "workers": 7,
+  "sessions_not_ready": 0,
+  "wall_ms": 3507,
+  "throughput_rps": 14.26,
+  "outcomes": {
+    "success": 50
+  },
+  "response_ms": {
+    "min": 455,
+    "avg": 1881,
+    "p50": 1871,
+    "p95": 3196,
+    "max": 3500
+  },
+  "detail": [
+    {
+      "vu": 1,
+      "ms": 460,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 2,
+      "ms": 470,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 3,
+      "ms": 486,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 4,
+      "ms": 460,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 5,
+      "ms": 478,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 6,
+      "ms": 474,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 7,
+      "ms": 455,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 8,
+      "ms": 922,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 9,
+      "ms": 958,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 10,
+      "ms": 977,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 11,
+      "ms": 918,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 12,
+      "ms": 955,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 13,
+      "ms": 916,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 14,
+      "ms": 915,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 15,
+      "ms": 1411,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 16,
+      "ms": 1440,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 17,
+      "ms": 1476,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 18,
+      "ms": 1409,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 19,
+      "ms": 1451,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 20,
+      "ms": 1425,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 21,
+      "ms": 1421,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 22,
+      "ms": 1861,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 23,
+      "ms": 1870,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 24,
+      "ms": 1916,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 25,
+      "ms": 1868,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 26,
+      "ms": 1898,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 27,
+      "ms": 1871,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 28,
+      "ms": 1879,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 29,
+      "ms": 2297,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 30,
+      "ms": 2293,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 31,
+      "ms": 2319,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 32,
+      "ms": 2303,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 33,
+      "ms": 2345,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 34,
+      "ms": 2302,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 35,
+      "ms": 2297,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 36,
+      "ms": 2726,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 37,
+      "ms": 2733,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 38,
+      "ms": 2751,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 39,
+      "ms": 2724,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 40,
+      "ms": 2754,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 41,
+      "ms": 2726,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 42,
+      "ms": 2722,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 43,
+      "ms": 3154,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    },
+    {
+      "vu": 44,
+      "ms": 3162,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8002/customer/orders"
+    },
+    {
+      "vu": 45,
+      "ms": 3200,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8003/customer/orders"
+    },
+    {
+      "vu": 46,
+      "ms": 3163,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8004/customer/orders"
+    },
+    {
+      "vu": 47,
+      "ms": 3196,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8005/customer/orders"
+    },
+    {
+      "vu": 48,
+      "ms": 3166,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8006/customer/orders"
+    },
+    {
+      "vu": 49,
+      "ms": 3168,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 50,
+      "ms": 3500,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8001/customer/orders"
+    }
+  ]
+}

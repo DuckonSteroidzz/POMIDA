@@ -1,0 +1,12 @@
+baseline: files=60 ordersMax=5793  (image: 405840 bytes, real PNG)
+
+=== A: upload CUT mid-transfer ===
+curl exit=28
+orders created: 0   (expect 0)
+new files:      0   (expect 0)
+
+=== B: CONTROL, identical request allowed to finish ===
+curl exit=0 response=302 http://127.0.0.1:8000/customer/cart
+orders created: 1   (expect 1)
+new files:      1   (expect 1)
+5794	ORD-20260831-PVIFZT	pending	pending	discount_ids/v3UBjYdwKKI5Mh4jMIpain9HvNlTBhGwdj8tZcrX.png

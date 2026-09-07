@@ -1,0 +1,14 @@
+### Scenario A(a): aborted place-order, then resubmit
+orders MAX(id) before: 4497
+cart ready: 2 form(s)
+  cut at 0.15s -> curl exit 28 (28=timeout/abort), orders MAX(id)=5788
+
+RESULT after abort: curl exit=28 at 0.15s; orders created=1
+5788	ORD-20260831-AOUXCD	pending	pending	200.00	2026-08-31 00:40:31
+
+### customer presses 'place order' again (same session)
+resubmit response: 302 http://127.0.0.1:8000/customer/cart
+orders above baseline after resubmit: 1
+5788	ORD-20260831-AOUXCD	pending	2026-08-31 00:40:31
+
+VERDICT: no duplicate order. Double-submit was refused.

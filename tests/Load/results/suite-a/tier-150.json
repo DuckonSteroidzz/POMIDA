@@ -1,0 +1,1071 @@
+{
+  "label": "tier-150",
+  "concurrency": 150,
+  "workers": 1,
+  "sessions_not_ready": 0,
+  "wall_ms": 52767,
+  "throughput_rps": 2.84,
+  "outcomes": {
+    "success": 120,
+    "rejected_to_cart": 30
+  },
+  "response_ms": {
+    "min": 2848,
+    "avg": 28113,
+    "p50": 27931,
+    "p95": 50454,
+    "max": 52724
+  },
+  "detail": [
+    {
+      "vu": 1,
+      "ms": 2848,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 2,
+      "ms": 3221,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 3,
+      "ms": 3571,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 4,
+      "ms": 3949,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 5,
+      "ms": 4281,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 6,
+      "ms": 4654,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 7,
+      "ms": 5039,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 8,
+      "ms": 5444,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 9,
+      "ms": 5781,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 10,
+      "ms": 6125,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 11,
+      "ms": 6479,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 12,
+      "ms": 6859,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 13,
+      "ms": 7174,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 14,
+      "ms": 7553,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 15,
+      "ms": 7870,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 16,
+      "ms": 8173,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 17,
+      "ms": 8528,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 18,
+      "ms": 8858,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 19,
+      "ms": 9150,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 20,
+      "ms": 9449,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 21,
+      "ms": 9791,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 22,
+      "ms": 10087,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 23,
+      "ms": 10401,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 24,
+      "ms": 10774,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 25,
+      "ms": 11101,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 26,
+      "ms": 11409,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 27,
+      "ms": 11723,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 28,
+      "ms": 12008,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 29,
+      "ms": 12330,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 30,
+      "ms": 12632,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 31,
+      "ms": 12976,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 32,
+      "ms": 13331,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 33,
+      "ms": 13668,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 34,
+      "ms": 13985,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 35,
+      "ms": 14384,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 36,
+      "ms": 14702,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 37,
+      "ms": 15097,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 38,
+      "ms": 15402,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 39,
+      "ms": 15710,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 40,
+      "ms": 16025,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 41,
+      "ms": 16357,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 42,
+      "ms": 16651,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 43,
+      "ms": 16968,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 44,
+      "ms": 17270,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 45,
+      "ms": 17654,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 46,
+      "ms": 18011,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 47,
+      "ms": 18309,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 48,
+      "ms": 18632,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 49,
+      "ms": 19031,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 50,
+      "ms": 19399,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 51,
+      "ms": 19776,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 52,
+      "ms": 20084,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 53,
+      "ms": 20417,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 54,
+      "ms": 20776,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 55,
+      "ms": 21106,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 56,
+      "ms": 21385,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 57,
+      "ms": 21686,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 58,
+      "ms": 22054,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 59,
+      "ms": 22367,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 60,
+      "ms": 22682,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 61,
+      "ms": 23047,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 62,
+      "ms": 23396,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 63,
+      "ms": 23677,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 64,
+      "ms": 23998,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 65,
+      "ms": 24345,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 66,
+      "ms": 24707,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 67,
+      "ms": 25057,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 68,
+      "ms": 25392,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 69,
+      "ms": 25767,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 70,
+      "ms": 26188,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 71,
+      "ms": 26511,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 72,
+      "ms": 26844,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 73,
+      "ms": 27220,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 74,
+      "ms": 27583,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 75,
+      "ms": 27931,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 76,
+      "ms": 28291,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 77,
+      "ms": 28670,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 78,
+      "ms": 29016,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 79,
+      "ms": 29365,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 80,
+      "ms": 29689,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 81,
+      "ms": 30098,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 82,
+      "ms": 30439,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 83,
+      "ms": 30801,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 84,
+      "ms": 31121,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 85,
+      "ms": 31430,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 86,
+      "ms": 31819,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 87,
+      "ms": 32130,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 88,
+      "ms": 32472,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 89,
+      "ms": 32841,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 90,
+      "ms": 33227,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 91,
+      "ms": 33616,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 92,
+      "ms": 33957,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 93,
+      "ms": 34325,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 94,
+      "ms": 34677,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 95,
+      "ms": 35061,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 96,
+      "ms": 35384,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 97,
+      "ms": 35674,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 98,
+      "ms": 36013,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 99,
+      "ms": 36309,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 100,
+      "ms": 36601,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 101,
+      "ms": 36946,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 102,
+      "ms": 37299,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 103,
+      "ms": 37637,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 104,
+      "ms": 38027,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 105,
+      "ms": 38376,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 106,
+      "ms": 38644,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 107,
+      "ms": 38946,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 108,
+      "ms": 39275,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 109,
+      "ms": 39623,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 110,
+      "ms": 39975,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 111,
+      "ms": 40299,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 112,
+      "ms": 40651,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 113,
+      "ms": 40959,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 114,
+      "ms": 41309,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 115,
+      "ms": 41684,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 116,
+      "ms": 42010,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 117,
+      "ms": 42398,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 118,
+      "ms": 42768,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 119,
+      "ms": 43146,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 120,
+      "ms": 43445,
+      "status": 302,
+      "outcome": "success",
+      "location": "http://127.0.0.1:8000/customer/orders"
+    },
+    {
+      "vu": 121,
+      "ms": 43707,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 122,
+      "ms": 44056,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 123,
+      "ms": 44305,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 124,
+      "ms": 44607,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 125,
+      "ms": 44887,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 126,
+      "ms": 45262,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 127,
+      "ms": 45567,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 128,
+      "ms": 45893,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 129,
+      "ms": 46246,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 130,
+      "ms": 46580,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 131,
+      "ms": 46879,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 132,
+      "ms": 47149,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 133,
+      "ms": 47411,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 134,
+      "ms": 47710,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 135,
+      "ms": 48016,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 136,
+      "ms": 48321,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 137,
+      "ms": 48640,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 138,
+      "ms": 48903,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 139,
+      "ms": 49219,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 140,
+      "ms": 49505,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 141,
+      "ms": 49797,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 142,
+      "ms": 50114,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 143,
+      "ms": 50454,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 144,
+      "ms": 50842,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 145,
+      "ms": 51166,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 146,
+      "ms": 51448,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 147,
+      "ms": 51792,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 148,
+      "ms": 52121,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 149,
+      "ms": 52427,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    },
+    {
+      "vu": 150,
+      "ms": 52724,
+      "status": 302,
+      "outcome": "rejected_to_cart",
+      "location": "http://127.0.0.1:8000/customer/cart"
+    }
+  ]
+}

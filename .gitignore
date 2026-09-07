@@ -1,0 +1,46 @@
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+# Handover bundles from `php artisan handover:export` — a full copy of the
+# database and every uploaded image. Never belongs in the repo.
+/storage/handover/
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# ══════════════ Customer identity documents — never commit ══════════════
+#
+# PWD / Senior Citizen ID images uploaded at checkout. These are other
+# people's identity documents: they must live on the server only, never in
+# version control, and never in a repository's history where removing them
+# later requires rewriting every teammate's clone.
+#
+# The five files currently sitting in public/uploads/ids/ turned out to be
+# test uploads rather than real customers' IDs (see docs/DEPLOYMENT.md §7a),
+# but that is luck, not a control. In production this directory is exactly
+# where real scans land, so it is excluded outright.
+#
+# The local files are deliberately left on disk — the app serves whatever is
+# there — they are simply never tracked.
+/public/uploads/ids/
+/storage/app/public/discount_ids/
+
+# Environment files of every shape. `.env` alone does not match .env.local
+# or a dated copy someone made before editing, and those leak exactly the
+# same database and mail credentials.
+.env.*
+!.env.example
+!.env.production.example

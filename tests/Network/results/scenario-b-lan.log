@@ -1,0 +1,28 @@
+### external (non-loopback, non-LAN) established TCP endpoints
+  before order traffic: 25
+
+### placing 3 real cash orders while watching for external sockets
+  order 1 -> 302 http://127.0.0.1:8000/customer/orders ; external sockets now: 25
+  order 2 -> 302 http://127.0.0.1:8000/customer/orders ; external sockets now: 25
+  order 3 -> 302 http://127.0.0.1:8000/customer/orders ; external sockets now: 25
+  orders created: 3
+
+### are the external hosts reachable from THIS machine at all?
+  cdn.jsdelivr.net         HTTP 301 in 0.343000s
+  fonts.googleapis.com     HTTP 404 in 0.206039s
+
+### simulating the CDN being unreachable (per-request DNS override to a dead IP)
+    - this is the exact condition 'cafe internet is down' creates for a browser
+  cdn.jsdelivr.net                   HTTP 000
+FAILED to load (as expected when offline)
+  fonts.googleapis.com               HTTP 000
+FAILED to load (as expected when offline)
+
+### with those hosts dead, does the app itself still serve and take orders?
+  /customer/menu served: 47682 bytes, CSRF token present: YES
+  place-order with external hosts dead -> 302 http://127.0.0.1:8000/customer/orders
+  total orders created by this script: 4
+5795	ORD-20260831-UBYQMD	pending	200.00
+5796	ORD-20260831-O5XKJR	pending	200.00
+5797	ORD-20260831-EWCOR4	pending	200.00
+5798	ORD-20260831-X2RZQR	pending	200.00

@@ -1,0 +1,17 @@
+### confirming the block actually blocks
+  cdn.jsdelivr.net         HTTP 000
+unreachable (expected)
+  fonts.googleapis.com     HTTP 000
+unreachable (expected)
+
+### customer loads the menu with the internet 'down'
+  page: 47345 bytes, CSRF token: present
+  external asset references on the page: 0  (0 = nothing to fail)
+
+### every asset the page asks for, fetched with the internet down
+  23 assets fetched, all HTTP 200: YES
+
+### and the order still goes through
+  place-order -> 302 http://127.0.0.1:8000/customer/orders
+  orders created: 1
+5963	ORD-20260831-CC4TZG	pending	200.00

@@ -1,0 +1,5 @@
+locked out at 11:21:02; waiting 65s for the throttle window to expire...
+window should be open at 11:22:07
+correct login -> 302|http://127.0.0.1:8000/admin/home
+authenticated /admin/home -> HTTP 200
+VERDICT: legitimate login still works after the window resets.
