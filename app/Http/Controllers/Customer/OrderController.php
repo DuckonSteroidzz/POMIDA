@@ -94,6 +94,7 @@ class OrderController extends Controller
     {
         $validated = $request->validate([
             'order_type'            => 'required|in:dine_in,pick_up,walk_in',
+            'is_takeout'            => 'nullable|boolean',
             'items'                 => 'required|array|min:1',
             'items.*.menu_item_id'  => 'required|exists:menu_items,id',
             'items.*.quantity'      => 'required|integer|min:1',
@@ -135,6 +136,17 @@ class OrderController extends Controller
         if ($validated['order_type'] === 'dine_in' && empty($tableNumber)) {
             return back()->withErrors(['table_number' => 'Table number is required for dine-in']);
         }
+
+        /*
+         * "Mark as Take Out" is a Dine-In-only choice. A Pick-Up order is
+         * already takeout by definition, so the flag is meaningless there and
+         * the modal never shows the checkbox for it. This line does not trust
+         * that: whatever the request carries, is_takeout is forced to false
+         * unless the order is genuinely Dine-In, so a tampered/forced
+         * is_takeout=1 on a Pick-Up submission cannot slip through.
+         */
+        $isTakeout = $validated['order_type'] === 'dine_in'
+            && $request->boolean('is_takeout');
 
         /*
          * DUPLICATE-SUBMIT LOCK, added 2026-09-01 alongside removing the cart
@@ -618,6 +630,7 @@ class OrderController extends Controller
                 $total,
                 $finalTotal,
                 $discountAmount,
+                $isTakeout,
                 $branchId,
                 $voucherCode,
                 $cart,
@@ -637,6 +650,7 @@ class OrderController extends Controller
                     'branch_id' => $branchId,
                     'type' => $validated['order_type'],
                     'table_number' => $tableNumber ?? null,
+                    'is_takeout' => $isTakeout,
                     'order_number' => 'ORD-' . now()->format('Ymd') . '-' . strtoupper(Str::random(6)),
                     'subtotal' => $total,
                     'total' => $finalTotal,

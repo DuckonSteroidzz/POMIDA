@@ -194,21 +194,9 @@
             </section>
         @endif
 
-        {{-- Spin & Win: also surfaced here as a full-width card, so it stays
-             one tap away for every customer type (dine-in, pick-up, guest)
-             even alongside the bottom-bar slot. --}}
-        <section class="mb-4">
-            <a href="{{ route('customer.game') }}" class="card-surface group flex items-center gap-3 p-4 no-underline transition hover:-translate-y-0.5 hover:border-peach">
-                <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-peach-soft text-peach-red">
-                    <i class="bi bi-dice-5"></i>
-                </span>
-                <span class="min-w-0 flex-1">
-                    <span class="block font-display font-bold text-peach-deep">Spin &amp; Win</span>
-                    <span class="block text-xs text-peach-deep/50">Play while you wait</span>
-                </span>
-                <i class="bi bi-chevron-right text-peach-red/50"></i>
-            </a>
-        </section>
+        {{-- The redundant "Spin & Win" card was removed here: the shared
+             bottom navigation bar now carries a dedicated Spin & Win tab,
+             so a second entry point on this page was duplicated UI. --}}
 
         @if($isDineIn)
             {{-- Need Assistance: Dine-In guests and accounts only --}}

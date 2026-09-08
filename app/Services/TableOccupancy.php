@@ -101,6 +101,43 @@ class TableOccupancy
      */
     public const INACTIVITY_MINUTES = 90;
 
+    /**
+     * How long a dine-in GUEST may sit idle before their own session expires
+     * and they are sent back to the code-entry page to scan again.
+     *
+     * THIS IS NOT A SECOND sweepIdle(). READ THIS BEFORE CHANGING EITHER NUMBER.
+     * ------------------------------------------------------------------------
+     * INACTIVITY_MINUTES above and this constant look like the same idea at two
+     * lengths. They are not the same idea at all:
+     *
+     *   INACTIVITY_MINUTES (90)   Housekeeping, for OTHER PEOPLE. Releases the
+     *                             occupancy row so the staff Occupied Tables
+     *                             panel stops showing a table nobody is at, and
+     *                             so a session opened with a photographed table
+     *                             code has a bounded life. Reads last_seen_at.
+     *                             The guest never sees it happen.
+     *
+     *   GUEST_IDLE_MINUTES (15)   The guest's OWN session. Their phone has been
+     *                             sitting on the menu untouched for a quarter of
+     *                             an hour, so whatever is on that screen is no
+     *                             longer trustworthy as "the party at this
+     *                             table". Reads last_activity_at. Only that one
+     *                             guest is affected, and all that happens is
+     *                             they scan the standee again.
+     *
+     * Fifteen minutes is short because the two costs are asymmetric. Being late
+     * means a phone left face-up on a table stays a live ordering session for
+     * whoever picks it up. Being early means one person re-scans a QR that is
+     * eighteen inches from their hand. The first is the one worth avoiding.
+     *
+     * The clock is extended ONLY by a real interaction — scroll, tap, key —
+     * relayed by the throttled activity ping, and by opening or re-joining the
+     * session in claim(). It is deliberately NOT extended by the passive check
+     * that reads it, or the check would keep alive exactly the abandoned
+     * session it exists to catch.
+     */
+    public const GUEST_IDLE_MINUTES = 15;
+
     public const SESSION_KEY = 'table_session_token';
 
     /** Statuses that mean the order is over and the table is free. */
@@ -115,6 +152,19 @@ class TableOccupancy
      * session-creation rate limit.
      */
     public const BLOCKED_MESSAGE = 'This table currently has an active order. Please ask our staff for assistance.';
+
+    /**
+     * Shown on the code-entry page when a dine-in guest's session has gone
+     * quiet for GUEST_IDLE_MINUTES.
+     *
+     * Delivered by exactly the plumbing App\Services\TableEntry::ERR_QR_STALE
+     * already uses — a session('error') flash read by customer/dineinqr.blade
+     * — so it renders in the same alert, with the same markup, in the same
+     * place on the page. It is a distinct sentence because it describes a
+     * distinct situation: nothing is wrong with the QR, the customer simply
+     * stopped for a while.
+     */
+    public const ERR_SESSION_IDLE = 'Session expired due to inactivity. Please scan table QR code again.';
 
     /**
      * Seat this visitor at a table: open its session, or JOIN the one already
@@ -155,7 +205,12 @@ class TableOccupancy
                  * belongs to the table, and everyone sitting at it is entitled
                  * to it.
                  */
-                $existing->forceFill(['last_seen_at' => now()])->save();
+                $existing->forceFill([
+                    'last_seen_at'     => now(),
+                    // Scanning the standee IS an interaction, so it starts the
+                    // guest's fifteen-minute clock too. See GUEST_IDLE_MINUTES.
+                    'last_activity_at' => now(),
+                ])->save();
                 session()->put(self::SESSION_KEY, $existing->session_token);
 
                 return ['ok' => true, 'session' => $existing, 'continued' => true];
@@ -501,6 +556,129 @@ class TableOccupancy
             ->update(['last_seen_at' => now()]);
     }
 
+    // ══════════ the dine-in guest's own inactivity clock ══════════
+    //
+    // Everything below reads and writes last_activity_at and NOTHING ELSE. It
+    // does not touch last_seen_at, active_lock, or any order, which is what
+    // makes "sweepIdle() is unaffected by this feature" a fact about the code
+    // rather than a claim about intent. See GUEST_IDLE_MINUTES.
+
+    /**
+     * The live occupancy this browser is holding, if any.
+     *
+     * Deliberately token-only. belongsToCurrentVisitor()'s second signal — "you
+     * demonstrably own the order on that table" — is for deciding OWNERSHIP,
+     * and re-using it here would let a customer whose cookie is gone keep a
+     * table's idle clock alive from a different browser. The idle clock is
+     * about one device with the menu open on it.
+     */
+    public static function currentGuestSession(): ?TableSession
+    {
+        $token = session(self::SESSION_KEY);
+
+        if (!$token) {
+            return null;
+        }
+
+        return TableSession::where('session_token', $token)
+            ->whereNotNull('active_lock')
+            ->first();
+    }
+
+    /**
+     * A real interaction happened on the menu — restart the guest's fifteen
+     * minutes.
+     *
+     * Written with a query update rather than a model save so updated_at is
+     * left alone: this fires once a minute while someone scrolls a menu, and it
+     * should not look like the row was edited. Returns whether there was a live
+     * session to record against, which is what the endpoint answers with.
+     *
+     * The client throttles to at most one call per sixty seconds of activity;
+     * the value written is the same either way, so a client that ignored the
+     * throttle would cost extra writes and change no behaviour.
+     */
+    public static function recordGuestActivity(): bool
+    {
+        $session = self::currentGuestSession();
+
+        if (!$session) {
+            return false;
+        }
+
+        TableSession::where('id', $session->id)
+            ->whereNotNull('active_lock')
+            ->update(['last_activity_at' => now()]);
+
+        return true;
+    }
+
+    /**
+     * Is this browser's dine-in session still good? STRICTLY READ-ONLY.
+     *
+     * Nothing in here writes anything, and that is the whole point: this is
+     * called on every page load and every time the tab regains focus, so if it
+     * refreshed the clock it would keep alive precisely the phone-left-on-the-
+     * table session it exists to expire. A test pins that down by hammering it
+     * and checking the session still expires exactly on schedule.
+     *
+     * Two ways to fail, in this order:
+     *
+     *   1. Silent for longer than GUEST_IDLE_MINUTES.
+     *   2. The table itself is no longer usable — branch gone, branch closed,
+     *      table taken out of service. That question is NOT re-implemented
+     *      here; it is handed to App\Services\TableEntry::validate(), the one
+     *      function every dine-in door validates through, using the branch and
+     *      table number off the occupancy row (server-side, not anything the
+     *      client sent) and the registry's current code. So this endpoint
+     *      cannot drift from what the doors enforce, and it reports validate()'s
+     *      own sentence rather than inventing a second wording.
+     *
+     * NO LIVE SESSION IS NOT A FAILURE. A visitor with no token, or one whose
+     * occupancy was released because their order completed, gets `valid`. This
+     * is an idleness check on a live occupancy, not an admission gate — bouncing
+     * a customer to the code-entry page the moment their meal finishes would be
+     * a rule nobody asked for, and admission is already decided by validate()
+     * at the three doors.
+     *
+     * @return array{valid: bool, error?: string}
+     */
+    public static function inspectGuestSession(): array
+    {
+        $session = self::currentGuestSession();
+
+        if (!$session) {
+            return ['valid' => true];
+        }
+
+        /*
+         * last_seen_at and created_at are FALLBACKS, read only when
+         * last_activity_at is null — a row that was already live when this
+         * column shipped, or one a staff member opened from the counter. They
+         * are never written by this feature, so they cannot extend anything;
+         * they only keep a mid-meal party from being thrown out by a deploy.
+         */
+        $since = $session->last_activity_at ?? $session->last_seen_at ?? $session->created_at;
+
+        if ($since === null || $since->lt(now()->subMinutes(self::GUEST_IDLE_MINUTES))) {
+            return ['valid' => false, 'error' => self::ERR_SESSION_IDLE];
+        }
+
+        $table = TableEntry::find((int) $session->branch_id, (string) $session->table_number);
+
+        $check = TableEntry::validate(
+            $session->branch_id,
+            $session->table_number,
+            $table?->code
+        );
+
+        if (!$check['ok']) {
+            return ['valid' => false, 'error' => $check['error']];
+        }
+
+        return ['valid' => true];
+    }
+
     // ══════════ internals ══════════
 
     private static function open(Branch $branch, string $tableNumber, string $lock, ?string $ip): TableSession
@@ -511,10 +689,11 @@ class TableOccupancy
             $session = TableSession::create([
                 'branch_id'     => $branch->id,
                 'table_number'  => $tableNumber,
-                'session_token' => $token,
-                'active_lock'   => $lock,
-                'last_seen_at'  => now(),
-                'started_ip'    => $ip,
+                'session_token'    => $token,
+                'active_lock'      => $lock,
+                'last_seen_at'     => now(),
+                'last_activity_at' => now(),
+                'started_ip'       => $ip,
             ]);
         } catch (QueryException $e) {
             if (!self::isDuplicateKey($e)) {
@@ -539,7 +718,10 @@ class TableOccupancy
                 throw new TableAlreadyOccupied();
             }
 
-            $winner->forceFill(['last_seen_at' => now()])->save();
+            $winner->forceFill([
+                'last_seen_at'     => now(),
+                'last_activity_at' => now(),
+            ])->save();
             session()->put(self::SESSION_KEY, $winner->session_token);
 
             return $winner;

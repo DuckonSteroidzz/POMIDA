@@ -70,6 +70,15 @@
         }
     </style>
     <style>
+        /* Editable quantity field: drop the native spinners so it matches the
+           pill control it sits in (same treatment as the cart page). */
+        input[type=number].qty-input::-webkit-inner-spin-button,
+        input[type=number].qty-input::-webkit-outer-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type=number].qty-input { -moz-appearance: textfield; appearance: textfield; }
+
         /* Selected state for option chips (peer-checked styling, framework-free) */
         .option-input:checked + .option-chip-label {
             border-color: #F4845F;
@@ -245,7 +254,9 @@
                             <div class="flex shrink-0 items-center gap-2.5">
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
                                     <button type="button" onclick="changeQuantity(-1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
-                                    <span id="quantityDesktop" class="min-w-8 text-center text-sm font-bold text-peach-deep">1</span>
+                                    <input type="number" id="quantityDesktop" inputmode="numeric" min="1" max="99" value="1"
+                                        aria-label="Quantity"
+                                        class="qty-input w-10 rounded-full border-0 bg-transparent px-1 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
                                     <button type="button" onclick="changeQuantity(1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                                 </div>
                                 <button type="submit" @disabled($itemOutOfStock)
@@ -270,7 +281,9 @@
                     </div>
                     <div class="ml-auto flex shrink-0 items-center rounded-full border border-peach-soft bg-white p-1">
                         <button type="button" onclick="changeQuantity(-1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
-                        <span id="quantityMobile" class="min-w-7 text-center text-sm font-bold text-peach-deep">1</span>
+                        <input type="number" id="quantityMobile" inputmode="numeric" min="1" max="99" value="1"
+                            aria-label="Quantity"
+                            class="qty-input w-9 rounded-full border-0 bg-transparent px-0.5 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
                         <button type="button" onclick="changeQuantity(1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                     </div>
                     <button type="submit" @disabled($itemOutOfStock)
@@ -284,23 +297,13 @@
     </main>
 
     {{-- ================= BOTTOM NAV (mobile) ================= --}}
-    @php $cartCountNav = collect(session('cart', []))->sum('quantity'); @endphp
     <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-peach-soft bg-white/95 backdrop-blur md:hidden">
-        <div class="mx-auto grid max-w-md grid-cols-5">
+        <div class="mx-auto grid max-w-md {{ $orderType === 'dine_in' ? 'grid-cols-4' : 'grid-cols-3' }}">
             <a href="{{ route('customer.orders') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
                 <i class="bi bi-receipt text-lg"></i><span>Orders</span>
             </a>
             <a href="{{ route('customer.menu') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-red no-underline">
                 <i class="bi bi-grid text-lg"></i><span>Menu</span>
-            </a>
-            <a href="{{ route('customer.cart') }}" class="relative flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <span class="relative">
-                    <i class="bi bi-cart text-lg"></i>
-                    @if($cartCountNav > 0)
-                    <span class="absolute -right-2.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-peach-red px-1 text-[0.55rem] font-black text-white">{{ $cartCountNav }}</span>
-                    @endif
-                </span>
-                <span>Cart</span>
             </a>
             <a href="{{ route('customer.more') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
                 <i class="bi bi-three-dots text-lg"></i><span>More</span>
@@ -322,17 +325,68 @@
             return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
         }
 
+        // Client ceiling only — the server still re-checks recipe + ingredient
+        // stock on Add to cart and rejects an over-limit quantity there.
+        const MAX_QTY = 99;
         let quantity = 1;
 
-        function changeQuantity(amount) {
-            quantity = Math.max(1, quantity + amount);
-            const input = document.getElementById('quantityInput');
-            const desktop = document.getElementById('quantityDesktop');
-            const mobile = document.getElementById('quantityMobile');
-            if (input) input.value = quantity;
-            if (desktop) desktop.textContent = quantity;
-            if (mobile) mobile.textContent = quantity;
+        const qtyHidden = document.getElementById('quantityInput');
+        const qtyDesktop = document.getElementById('quantityDesktop');
+        const qtyMobile = document.getElementById('quantityMobile');
+
+        // Write the current quantity to every field that shows it.
+        function renderQuantity() {
+            if (qtyHidden) qtyHidden.value = quantity;
+            if (qtyDesktop) qtyDesktop.value = quantity;
+            if (qtyMobile) qtyMobile.value = quantity;
             updateTotal();
+        }
+
+        // Coerce whatever is on screen to a whole number in [1, MAX_QTY].
+        // Invalid text, 0 or empty all fall back to 1.
+        function normalizeQuantity(raw) {
+            const n = parseInt(raw, 10);
+            if (!Number.isFinite(n) || n < 1) return 1;
+            if (n > MAX_QTY) return MAX_QTY;
+            return n;
+        }
+
+        function changeQuantity(amount) {
+            quantity = normalizeQuantity(quantity + amount);
+            renderQuantity();
+        }
+
+        // Live typing: keep `quantity` and the running total in step, but do
+        // NOT write back into the field being edited (that would fight the
+        // caret). An empty field is left alone until blur.
+        function onQuantityTyped(el) {
+            if (el.value.trim() === '') return;
+            quantity = normalizeQuantity(el.value);
+            if (qtyHidden) qtyHidden.value = quantity;
+            if (el !== qtyDesktop && qtyDesktop) qtyDesktop.value = quantity;
+            if (el !== qtyMobile && qtyMobile) qtyMobile.value = quantity;
+            updateTotal();
+        }
+
+        // Leaving the field commits a valid value — anything invalid becomes 1.
+        function onQuantityBlur(el) {
+            quantity = normalizeQuantity(el.value);
+            renderQuantity();
+        }
+
+        [qtyDesktop, qtyMobile].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('input', function () { onQuantityTyped(el); });
+            el.addEventListener('blur', function () { onQuantityBlur(el); });
+        });
+
+        // Last line of defence: never submit a bad quantity.
+        const addToCartForm = document.getElementById('addToCartForm');
+        if (addToCartForm) {
+            addToCartForm.addEventListener('submit', function () {
+                quantity = normalizeQuantity(quantity);
+                if (qtyHidden) qtyHidden.value = quantity;
+            });
         }
 
         function updateTotal() {

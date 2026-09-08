@@ -262,6 +262,42 @@
             color: #5A2920;
         }
 
+        /* Take Out sits between the item list and the totals, in its own
+           section styled like .order-review-totals (same border tone, tinted
+           background, padding). The inner row is a soft card reusing the
+           thumbnail radius (0.6rem) and the same #FDE8DE border tone. */
+        .order-review-takeout {
+            border-top: 1px solid #FDE8DE;
+            background: #FFF6F1;
+            padding: 0.6rem 0.85rem;
+        }
+
+        .order-review-takeout .order-review-row {
+            padding: 0.7rem 0.75rem;
+            border: 1px solid #FDE8DE;
+            border-radius: 0.6rem;
+            background: #FFFDF9;
+            cursor: pointer;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+
+        /* Checked "selected" state — same #FDE8DE tint as the PWD/Senior
+           .discount-selected buttons, with the #C0392B accent as the border. */
+        .order-review-takeout .order-review-row:has(#isTakeoutCheckbox:checked) {
+            background: #FDE8DE;
+            border-color: #C0392B;
+        }
+
+        /* Match the Place Order button background (.order-confirm-btn, #C0392B)
+           instead of the browser's default blue checkbox tick. Enlarged from
+           the native ~13px so it is comfortably tappable on mobile. */
+        #isTakeoutCheckbox {
+            accent-color: #C0392B;
+            flex: none;
+            width: 1.4rem;
+            height: 1.4rem;
+        }
+
         #reviewDiscount {
             color: #1E7A3C;
             font-weight: 700;
@@ -485,7 +521,8 @@
                                     </span>
                                     @endif
                                 </h2>
-                                <span class="shrink-0 font-display text-base font-black text-peach-deep sm:text-lg">
+                                <span class="shrink-0 font-display text-base font-black text-peach-deep sm:text-lg"
+                                    data-line-total="{{ $itemId }}">
                                     ₱{{ number_format($item['price'] * $item['quantity'], 2) }}
                                 </span>
                             </div>
@@ -498,27 +535,25 @@
 
                             <p class="mt-1 text-xs font-bold text-peach-red">₱{{ number_format($item['price'], 2) }} each</p>
 
+                            {{-- Quantity: updated on screen instantly and synced
+                                 to the server in the background (debounced) — no
+                                 page navigation, matching the item-details modal's
+                                 changeQuantity(). The server still re-validates
+                                 stock on Place Order. cartChangeQty()/cartTypeQty()
+                                 live in the script at the foot of this file. --}}
                             <div class="mt-3 flex flex-wrap items-center gap-2">
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
-                                    <form action="{{ route('customer.cart.update', $itemId) }}" method="POST" style="display:inline;">
-                                        @csrf
-                                        @method('PUT')
-                                        <input type="hidden" name="quantity" value="{{ $item['quantity'] - 1 }}">
-                                        <button type="submit" class="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
-                                    </form>
-                                    <form action="{{ route('customer.cart.update', $itemId) }}" method="POST" style="display:inline;">
-                                        @csrf
-                                        @method('PUT')
-                                        <input type="number" name="quantity" value="{{ $item['quantity'] }}" min="1" max="999"
-                                            class="w-11 rounded-full border-0 bg-transparent px-1 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60"
-                                            onchange="this.form.submit()">
-                                    </form>
-                                    <form action="{{ route('customer.cart.update', $itemId) }}" method="POST" style="display:inline;">
-                                        @csrf
-                                        @method('PUT')
-                                        <input type="hidden" name="quantity" value="{{ $item['quantity'] + 1 }}">
-                                        <button type="submit" class="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
-                                    </form>
+                                    <button type="button" onclick="cartChangeQty('{{ $itemId }}', -1)"
+                                        class="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                                    <input type="number" inputmode="numeric" min="1" max="999"
+                                        value="{{ $item['quantity'] }}"
+                                        data-cart-qty="{{ $itemId }}"
+                                        aria-label="Quantity for {{ $item['name'] }}"
+                                        class="w-11 rounded-full border-0 bg-transparent px-1 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60"
+                                        oninput="cartTypeQty('{{ $itemId }}', this)"
+                                        onchange="cartCommitQty('{{ $itemId }}', this)">
+                                    <button type="button" onclick="cartChangeQty('{{ $itemId }}', 1)"
+                                        class="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                                 </div>
 
                                 {{-- Remove this item outright.
@@ -566,7 +601,7 @@
                     @php $idx = 0; @endphp
                     @foreach($cart as $itemId => $item)
                     <input type="hidden" name="items[{{ $idx }}][menu_item_id]" value="{{ $item['menu_item_id'] ?? $itemId }}">
-                    <input type="hidden" name="items[{{ $idx }}][quantity]" value="{{ $item['quantity'] }}">
+                    <input type="hidden" name="items[{{ $idx }}][quantity]" value="{{ $item['quantity'] }}" data-order-qty="{{ $itemId }}">
                     @php $idx++; @endphp
                     @endforeach
 
@@ -727,7 +762,7 @@
                     <div class="grid gap-1.5 border-t border-peach-soft pt-3">
                         <div class="flex items-center justify-between gap-3">
                             <span class="text-sm text-peach-deep/60">Subtotal</span>
-                            <span class="text-sm font-bold text-peach-deep">₱{{ number_format($total, 2) }}</span>
+                            <span class="text-sm font-bold text-peach-deep" id="summarySubtotal">₱{{ number_format($total, 2) }}</span>
                         </div>
                         <div class="flex items-center justify-between gap-3" id="discountRow" style="display:none;">
                             <span class="text-sm text-peach-deep/60">Discount</span>
@@ -862,7 +897,7 @@
             <div class="order-review" id="orderReview">
                 <ul class="order-review-items">
                     @foreach($cart as $itemId => $item)
-                        <li class="order-review-item" data-menu-item-id="{{ $item['menu_item_id'] ?? $itemId }}">
+                        <li class="order-review-item" data-menu-item-id="{{ $item['menu_item_id'] ?? $itemId }}" data-cart-key="{{ $itemId }}">
                             <div class="order-review-item-row">
                                 {{-- Same field CartPricing already carries for the cart
                                      page itself (re-derived from the live MenuItem, same
@@ -877,9 +912,9 @@
 
                                 <div class="order-review-item-body">
                                     <div class="order-review-item-main">
-                                        <span class="order-review-qty">{{ $item['quantity'] }}&times;</span>
+                                        <span class="order-review-qty" data-review-qty="{{ $itemId }}">{{ $item['quantity'] }}&times;</span>
                                         <span class="order-review-name">{{ $item['name'] }}</span>
-                                        <span class="order-review-line">₱{{ number_format($item['price'] * $item['quantity'], 2) }}</span>
+                                        <span class="order-review-line" data-review-line="{{ $itemId }}">₱{{ number_format($item['price'] * $item['quantity'], 2) }}</span>
                                     </div>
 
                                     @if(!empty($item['options']))
@@ -894,6 +929,22 @@
                         </li>
                     @endforeach
                 </ul>
+
+                {{-- Take Out is a Dine-In-only choice: a Pick-Up order is already
+                     takeout, so the checkbox is never rendered for it. The input is
+                     form-associated (form="mainOrderForm") because this modal sits
+                     outside that form; confirmOrderNow() submits mainOrderForm and
+                     an unticked checkbox simply sends nothing, which the server
+                     reads as false. Placed directly below the item list and above
+                     Subtotal, in a card matching the .order-review-totals section. --}}
+                @if($sessionOrderType === 'dine_in')
+                <div class="order-review-takeout">
+                    <label class="order-review-row" for="isTakeoutCheckbox">
+                        <span>Take Out</span>
+                        <input type="checkbox" form="mainOrderForm" name="is_takeout" value="1" id="isTakeoutCheckbox">
+                    </label>
+                </div>
+                @endif
 
                 <div class="order-review-totals">
                     <div class="order-review-row">
@@ -1025,6 +1076,190 @@
 
     <script>
         var currentSubtotal = @json($total);
+
+        /* ================= CART QUANTITY (instant + debounced sync) =================
+         *
+         * Tapping '+' / '-' (or typing) updates the quantity, the line total and
+         * the Subtotal/Total on screen immediately — no page navigation, so the
+         * browser's page-load indicator never appears. The real cart update is
+         * sent to customer.cart.update (a background JSON PUT), debounced so a
+         * burst of taps produces ONE request after the user stops.
+         *
+         * CRITICAL: placeOrder() rebuilds the order from the SESSION cart, so a
+         * pending sync must reach the server before the order is submitted.
+         * confirmOrderNow() awaits flushCartSync() first — see the foot of this
+         * script.
+         */
+        var CART_SYNC_DEBOUNCE_MS = 400;   // within the required 300–500ms
+        var CART_MAX_QTY = 999;            // matches the historic max on this field
+
+        var cartLines = @json(collect($cart)->map(fn ($it) => [
+            'unitPrice' => (float) $it['price'],
+            'quantity'  => (int) $it['quantity'],
+        ]));
+
+        var cartSyncTimer = null;
+        var cartDirtyKeys = {};                 // keys awaiting a debounced send
+        var cartInFlight = new Set();           // fetch promises currently running
+        var cartUpdateUrlBase = @json(url('/customer/cart/update'));
+
+        function cartNormalizeQty(raw) {
+            var n = parseInt(raw, 10);
+            if (!Number.isFinite(n) || n < 1) return 1;
+            if (n > CART_MAX_QTY) return CART_MAX_QTY;
+            return n;
+        }
+
+        function cartRound2(n) {
+            return Math.round(n * 100) / 100;
+        }
+
+        // Sum every line the same way the server does: round each line, then add.
+        function cartRecomputeSubtotal() {
+            var sum = 0;
+            Object.keys(cartLines).forEach(function (key) {
+                var line = cartLines[key];
+                sum += cartRound2(line.unitPrice * line.quantity);
+            });
+            currentSubtotal = cartRound2(sum);
+            return currentSubtotal;
+        }
+
+        function peso2(n) {
+            return '₱' + Number(n).toLocaleString('en-PH', {
+                minimumFractionDigits: 2, maximumFractionDigits: 2
+            });
+        }
+
+        // Repaint everything that shows this line's quantity or price, plus the
+        // shared Subtotal/Total (via refreshDiscountSummary, which also re-weighs
+        // any applied voucher / PWD-Senior discount against the new subtotal).
+        function cartRenderLine(key) {
+            var line = cartLines[key];
+            if (!line) return;
+
+            var lineTotal = cartRound2(line.unitPrice * line.quantity);
+
+            var field = document.querySelector('[data-cart-qty="' + key + '"]');
+            if (field && document.activeElement !== field) field.value = line.quantity;
+
+            var totalEl = document.querySelector('[data-line-total="' + key + '"]');
+            if (totalEl) totalEl.textContent = peso2(lineTotal);
+
+            var orderQty = document.querySelector('[data-order-qty="' + key + '"]');
+            if (orderQty) orderQty.value = line.quantity;
+
+            var reviewQty = document.querySelector('[data-review-qty="' + key + '"]');
+            if (reviewQty) reviewQty.innerHTML = line.quantity + '&times;';
+
+            var reviewLine = document.querySelector('[data-review-line="' + key + '"]');
+            if (reviewLine) reviewLine.textContent = peso2(lineTotal);
+
+            cartRecomputeSubtotal();
+
+            var subEl = document.getElementById('summarySubtotal');
+            if (subEl) subEl.textContent = peso2(currentSubtotal);
+
+            var reviewSub = document.getElementById('reviewSubtotal');
+            if (reviewSub) reviewSub.textContent = peso2(currentSubtotal);
+
+            // Repaints Discount + Total against the new subtotal. When it is not
+            // present (no discount machinery), keep #finalTotal / #reviewTotal
+            // in step directly.
+            if (typeof refreshDiscountSummary === 'function') {
+                refreshDiscountSummary();
+            } else {
+                var ft = document.getElementById('finalTotal');
+                if (ft) ft.textContent = peso2(currentSubtotal);
+            }
+            if (typeof syncOrderReviewTotals === 'function') {
+                syncOrderReviewTotals();
+            }
+        }
+
+        function cartScheduleSync(key) {
+            cartDirtyKeys[key] = true;
+            if (cartSyncTimer) clearTimeout(cartSyncTimer);
+            cartSyncTimer = setTimeout(cartFlushDirty, CART_SYNC_DEBOUNCE_MS);
+        }
+
+        // Fire one request per dirty key. Returns a promise resolved when they
+        // all settle — flushCartSync() awaits this before Place Order.
+        function cartFlushDirty() {
+            if (cartSyncTimer) { clearTimeout(cartSyncTimer); cartSyncTimer = null; }
+
+            var keys = Object.keys(cartDirtyKeys);
+            cartDirtyKeys = {};
+
+            var sends = keys.map(function (key) {
+                var line = cartLines[key];
+                if (!line) return Promise.resolve();
+
+                var p = fetch(cartUpdateUrlBase + '/' + encodeURIComponent(key), {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        'X-Requested-With': 'XMLHttpRequest',
+                        'X-CSRF-TOKEN': (window.csrfToken ? window.csrfToken() : '{{ csrf_token() }}')
+                    },
+                    body: JSON.stringify({ quantity: line.quantity })
+                }).then(function (res) {
+                    return res.ok ? res.json() : null;
+                }).then(function (data) {
+                    // Reconcile against the server's authoritative figure.
+                    if (data && data.success && data.lines && data.lines[key]) {
+                        cartLines[key].unitPrice = data.lines[key].unit_price;
+                        cartRenderLine(key);
+                    }
+                }).catch(function () {
+                    /* offline / transient — the next tap reschedules */
+                }).finally(function () {
+                    cartInFlight.delete(p);
+                });
+
+                cartInFlight.add(p);
+                return p;
+            });
+
+            return Promise.all(sends);
+        }
+
+        // Everything Place Order must wait for: the pending debounce AND any
+        // request already in flight.
+        function flushCartSync() {
+            var pending = cartFlushDirty();
+            return Promise.all([pending, Promise.all(Array.from(cartInFlight))]);
+        }
+
+        function cartChangeQty(key, delta) {
+            var line = cartLines[key];
+            if (!line) return;
+            line.quantity = cartNormalizeQty(line.quantity + delta);
+            cartRenderLine(key);
+            cartScheduleSync(key);
+        }
+
+        // Live typing: keep the model + totals in step without fighting the caret.
+        function cartTypeQty(key, el) {
+            var line = cartLines[key];
+            if (!line) return;
+            if (el.value.trim() === '') return;
+            line.quantity = cartNormalizeQty(el.value);
+            cartRenderLine(key);
+            cartScheduleSync(key);
+        }
+
+        // Blur / Enter commits — an invalid value snaps back to a valid one.
+        function cartCommitQty(key, el) {
+            var line = cartLines[key];
+            if (!line) return;
+            line.quantity = cartNormalizeQty(el.value);
+            el.value = line.quantity;
+            cartRenderLine(key);
+            cartScheduleSync(key);
+        }
+        /* ================= end cart quantity ================= */
 
         /*
          * The peso value of the currently applied voucher, or null when none
@@ -2034,7 +2269,7 @@ function selectPaymentMethod(method) {
         message.classList.add('hidden');
     }
 }
-function confirmOrderNow() {
+async function confirmOrderNow() {
     var confirmButton = document.getElementById('confirmOrderNow');
 
     /*
@@ -2055,6 +2290,18 @@ function confirmOrderNow() {
     var form = document.getElementById('mainOrderForm');
 
     if (form) {
+        /*
+         * FLUSH BEFORE SUBMIT. placeOrder() rebuilds the order from the
+         * SESSION cart, so any debounced quantity change still sitting in the
+         * browser must reach the server first — otherwise the order is placed
+         * against a stale quantity. Awaited unconditionally; it is a no-op
+         * when nothing is pending.
+         */
+        try {
+            await flushCartSync();
+        } catch (e) {
+            /* a failed sync must not strand the customer on a dead button */
+        }
         form.submit();
     } else {
         confirmButton.disabled = false;

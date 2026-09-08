@@ -20,6 +20,7 @@ class TableSession extends Model
         'order_id',
         'active_lock',
         'last_seen_at',
+        'last_activity_at',
         'released_at',
         'released_by',
         'release_reason',
@@ -28,8 +29,9 @@ class TableSession extends Model
     ];
 
     protected $casts = [
-        'last_seen_at' => 'datetime',
-        'released_at'  => 'datetime',
+        'last_seen_at'     => 'datetime',
+        'last_activity_at' => 'datetime',
+        'released_at'      => 'datetime',
     ];
 
     public function branch(): BelongsTo

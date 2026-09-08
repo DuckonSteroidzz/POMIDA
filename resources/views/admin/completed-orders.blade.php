@@ -132,6 +132,9 @@
                     <td data-label="Order #" class="co-order-no">{{ $order->order_number }}</td>
                     <td data-label="Type" class="co-ta-center">
                         <span class="co-badge co-badge-type">{{ $typeLabel }}</span>
+                        @if($order->type === 'dine_in' && $order->is_takeout)
+                            <span class="co-badge co-badge-bad">Take Out</span>
+                        @endif
                     </td>
                     <td data-label="Items" class="co-items">
                         @foreach($order->items as $item)

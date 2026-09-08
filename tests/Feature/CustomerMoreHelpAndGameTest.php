@@ -8,12 +8,12 @@ use Tests\TestCase;
  * Two changes on the customer "More" surface, pinned here.
  *
  * 1. GAME REACHABILITY
- *    The mobile bottom bar (customer/partials/navbar.blade.php) has four slots
- *    - Menu, Orders, More, Cart - and no Game slot. A phone customer therefore
- *    had no route to Spin and Win at all. The More page now carries a
- *    "Spin & Win" card ("Play while you wait") linking to customer.game, for
- *    every customer type (dine-in, pick-up, guest), matching the existing
- *    card-link markup.
+ *    The mobile bottom bar (customer/partials/navbar.blade.php) now carries a
+ *    dedicated "Spin & Win" slot, so a phone customer always has a route to the
+ *    game. The redundant "Spin & Win" card that briefly lived on the More page
+ *    (added when the bottom bar had no game slot) was removed in the Sept 2026
+ *    Dine-In UI cleanup; this test now pins that the card is gone AND that the
+ *    bottom-bar slot keeps the game reachable.
  *
  * 2. DEAD HELP MARKUP REMOVED
  *    menu.blade.php and orders.blade.php each shipped a full #helpModal block
@@ -35,13 +35,28 @@ class CustomerMoreHelpAndGameTest extends TestCase
         return file_get_contents(resource_path("views/customer/{$page}.blade.php"));
     }
 
-    public function test_more_page_surfaces_the_spin_and_win_game_link(): void
+    public function test_more_page_no_longer_carries_the_redundant_spin_and_win_card(): void
     {
         $source = $this->viewSource('more');
 
-        $this->assertStringContainsString("route('customer.game')", $source);
-        $this->assertStringContainsString('Spin &amp; Win', $source);
-        $this->assertStringContainsString('Play while you wait', $source);
+        $this->assertStringNotContainsString(
+            'Play while you wait',
+            $source,
+            'the redundant Spin & Win card should be gone from the More page'
+        );
+        $this->assertStringNotContainsString(
+            "route('customer.game')",
+            $source,
+            'the More page should no longer link to the game route directly'
+        );
+    }
+
+    public function test_the_shared_bottom_nav_keeps_the_game_reachable(): void
+    {
+        $nav = file_get_contents(resource_path('views/customer/partials/navbar.blade.php'));
+
+        $this->assertStringContainsString("route('customer.game')", $nav);
+        $this->assertStringContainsString('Spin &amp; Win', $nav);
     }
 
     public function test_more_page_keeps_its_working_dine_in_help_path(): void

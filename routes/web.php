@@ -147,6 +147,32 @@ Route::prefix('customer')->name('customer.')->group(function () {
     Route::get('/scan', [AuthController::class, 'scanQr'])
         ->name('scan');
 
+    // ── the dine-in guest's fifteen-minute inactivity clock ──
+    //
+    // Two endpoints, and the split between them is the entire design. One
+    // WRITES the clock and is driven by real interaction; the other only READS
+    // it and is driven by the page looking at itself. Merging them would make
+    // the check that catches an abandoned phone the very thing keeping that
+    // phone's session alive.
+    //
+    // 120/min each, for the same reason the notification pollers carry it: the
+    // counter is per IP, and in a café every phone in the room shares the shop's
+    // one public address. Neither endpoint can do anything on behalf of a
+    // visitor who holds no live dine-in occupancy, so the ceiling is here to
+    // catch a runaway client, not to ration a busy room.
+    //
+    // Nothing here touches admin, staff, kitchen or pick-up: both live in the
+    // customer group with no auth middleware, and both no-op unless the caller
+    // is holding a live table_session_token.
+
+    Route::post('/table-activity', [AuthController::class, 'tableActivity'])
+        ->middleware('throttle:120,1')
+        ->name('table-activity');
+
+    Route::get('/table-session-status', [AuthController::class, 'tableSessionStatus'])
+        ->middleware('throttle:120,1')
+        ->name('table-session-status');
+
 
     // ══════════ CART ══════════
 

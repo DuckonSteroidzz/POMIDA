@@ -78,6 +78,7 @@ class Order extends Model
         // Order type
         'type',
         'table_number',
+        'is_takeout',
 
         // Status
         'status',
@@ -119,6 +120,8 @@ class Order extends Model
     ];
 
     protected $casts = [
+        'is_takeout' => 'boolean',
+
         'subtotal' => 'decimal:2',
         'discount_amount' => 'decimal:2',
         'tax_amount' => 'decimal:2',

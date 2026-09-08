@@ -78,6 +78,23 @@
                 @include('customer.partials.desktop-nav')
             </div>
 
+            {{-- Table / branch context — a compact pill above the search bar.
+                 Categories (Main Menu) view only; the per-category item view
+                 drops it entirely. Uses the shared peach-soft token, same as
+                 the bottom-nav active pill. --}}
+            @php
+                $headerOrderType = session('order_type');
+                $headerBranchId = session('branch_id');
+            @endphp
+            @if(!isset($items) && $headerOrderType === 'dine_in' && $headerBranchId)
+            <div class="pb-2">
+                <span class="inline-flex max-w-full items-center gap-1.5 rounded-full bg-peach-soft px-3 py-1 text-xs font-semibold text-peach-red">
+                    <i class="bi bi-shop shrink-0"></i>
+                    <span class="min-w-0 truncate">Dine-in • Table {{ session('table_number') }} • {{ \App\Models\Branch::find($headerBranchId)?->name }}</span>
+                </span>
+            </div>
+            @endif
+
             {{-- Search — the input and the Cancel button share one height (h-11)
                  and matching horizontal padding so they align cleanly. --}}
             <div class="flex items-center gap-2 pb-3 sm:pb-4">
@@ -168,42 +185,15 @@
         </section>
         @endif
 
-        {{-- Dine-in banner --}}
-        @if($orderType === 'dine_in' && $selectedBranchId)
-        <section class="card-surface mb-5 p-4 sm:p-5">
-            <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-
-                <div class="flex min-w-0 items-center gap-3">
-                    <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-peach-soft text-peach-red">
-                        <i class="bi bi-shop"></i>
-                    </span>
-
-                    <p class="min-w-0 text-sm font-bold text-peach-deep">
-                        Dine-in • Table {{ session('table_number') }} •
-                        {{ \App\Models\Branch::find($selectedBranchId)?->name }}
-                    </p>
-                </div>
-
-                <p class="flex shrink-0 items-center gap-2 text-xs font-semibold text-peach-deep/70 sm:justify-end">
-                    <i class="bi bi-check-circle text-green-600"></i>
-                    Dine-in at:
-                    <strong class="text-peach-deep">
-                        {{ \App\Models\Branch::find($selectedBranchId)?->name }}
-                    </strong>
-                </p>
-
-            </div>
-        </section>
-@endif
         @if(isset($items))
         {{-- ================= ITEMS LIST VIEW ================= --}}
+        {{-- No table/branch banner here — it lives only on the Main Menu
+             (categories) view now, as the header pill. --}}
         <section>
-            <div class="mb-4 flex flex-wrap items-center gap-3">
-                <h1 class="w-full min-w-0 truncate font-display text-2xl font-black tracking-tight text-peach-deep sm:w-auto sm:flex-1 sm:text-3xl">
-                    {{ $category->name ?? 'Items' }}
-                </h1>
-
-                <div class="flex w-full items-center justify-end gap-2 sm:w-auto">
+            <div class="mb-4">
+                {{-- Count badge + Back button sit directly above the category
+                     title. Count and title are per-category dynamic. --}}
+                <div class="mb-2 flex flex-wrap items-center gap-2">
                     <span class="inline-flex h-10 shrink-0 items-center rounded-full bg-peach-soft px-3 text-xs font-bold text-peach-red">
                         {{ count($items) }} {{ count($items) === 1 ? 'item' : 'items' }}
                     </span>
@@ -213,6 +203,10 @@
                         <i class="bi bi-arrow-left"></i> Back to Categories
                     </a>
                 </div>
+
+                <h1 class="min-w-0 truncate font-display text-2xl font-black tracking-tight text-peach-deep sm:text-3xl">
+                    {{ $category->name ?? 'Items' }}
+                </h1>
             </div>
 
             {{-- Subcategory Tabs --}}
@@ -812,6 +806,104 @@
     };
 })();
 </script>
+
+@if(session('order_type') === 'dine_in')
+{{--
+    Dine-in inactivity: the guest half of the fifteen-minute clock.
+
+    Only rendered for a dine-in session — a pick-up customer's menu is
+    byte-identical to what it was, and there is nothing here for admin, staff or
+    kitchen pages to pick up.
+
+    Two listeners, doing deliberately different jobs:
+
+      PING   scroll / click / touchstart / keydown, throttled to at most one
+             request per sixty seconds of continuous activity no matter how
+             many events fire. This is the only thing that extends the window.
+
+      CHECK  on load, and whenever the tab becomes visible or regains focus.
+             Read-only on the server. A phone left face-up on a table fires
+             neither, which is exactly the case the window is for.
+
+    Nothing here draws anything. On expiry the server has already flashed the
+    message, so the page simply goes to the code-entry page and the existing
+    alert renders it.
+--}}
+<script>
+(function () {
+    'use strict';
+
+    var PING_URL  = '{{ route('customer.table-activity') }}';
+    var CHECK_URL = '{{ route('customer.table-session-status') }}';
+    var ENTRY_URL = '{{ route('customer.dineinqr') }}';
+
+    // One ping per sixty seconds of activity. A customer reading a long menu
+    // generates thousands of scroll events; the server needs one of them.
+    var PING_EVERY_MS = 60000;
+
+    var lastPingAt = 0;
+    var pingInFlight = false;
+    var checkInFlight = false;
+    var leaving = false;
+
+    // X-CSRF-TOKEN is put on by partials/session-guard's fetch wrapper, which
+    // reads it live from the meta tag rather than from a literal baked in here.
+    function ping() {
+        var now = Date.now();
+
+        if (now - lastPingAt < PING_EVERY_MS || pingInFlight) { return; }
+
+        lastPingAt = now;
+        pingInFlight = true;
+
+        fetch(PING_URL, {
+            method: 'POST',
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        })
+        .catch(function () { /* Next interaction tries again. */ })
+        .then(function () { pingInFlight = false; });
+    }
+
+    ['scroll', 'click', 'touchstart', 'keydown'].forEach(function (type) {
+        window.addEventListener(type, ping, { passive: true });
+    });
+
+    function check() {
+        if (checkInFlight || leaving) { return; }
+
+        checkInFlight = true;
+
+        fetch(CHECK_URL, {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            cache: 'no-store'
+        })
+        .then(function (response) {
+            if (!response.ok) { return null; }
+            return response.json();
+        })
+        .then(function (data) {
+            if (data && data.valid === false) {
+                // Latched: a burst of focus events must not fire a burst of
+                // navigations.
+                leaving = true;
+                window.location.href = data.redirect || ENTRY_URL;
+            }
+        })
+        .catch(function () { /* Offline or mid-navigation. Ask again next time. */ })
+        .then(function () { checkInFlight = false; });
+    }
+
+    check();
+
+    document.addEventListener('visibilitychange', function () {
+        if (!document.hidden) { check(); }
+    });
+
+    window.addEventListener('focus', check);
+})();
+</script>
+@endif
 
     @include('customer.partials.navbar')
 </body>

@@ -970,6 +970,11 @@
                     </p>
                     <p class="pc-order-num">Order #{{ $order->order_number }}</p>
                     <span class="pc-status" style="background-color: {{ $statusColor }};">{{ $order->status }}</span>
+                    {{-- Dine-in customer asked to take the order away. Same pill
+                         as the status badge, in the order-type dark red. --}}
+                    @if($order->type === 'dine_in' && $order->is_takeout)
+                    <span class="pc-status" style="background-color: #8B1A1A;">Take Out</span>
+                    @endif
                 </div>
 
                 @php
@@ -1051,6 +1056,9 @@
 
 
                         data-order-type="{{ $order->type }}"
+
+
+                        data-takeout="{{ $order->type === 'dine_in' && $order->is_takeout ? '1' : '' }}"
 
 
                         data-table="{{ $order->table_number ?? '' }}"
@@ -2501,11 +2509,15 @@ function openOrderDetails(button) {
     const type = button.dataset.orderType || '';
     const table = button.dataset.table || '';
 
-    const typeLabel = type === 'dine_in'
+    let typeLabel = type === 'dine_in'
         ? (table ? `Dine-in · Table ${table}` : 'Dine-in')
         : type === 'pick_up'
             ? 'Pickup'
             : 'Walk-in';
+
+    if (type === 'dine_in' && button.dataset.takeout === '1') {
+        typeLabel += ' · Take Out';
+    }
 
     document.getElementById('pcOrderModalType').textContent = typeLabel;
     document.getElementById('pcOrderModalStatus').textContent =

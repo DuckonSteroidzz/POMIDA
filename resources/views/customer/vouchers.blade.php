@@ -354,9 +354,8 @@
     </main>
 
     {{-- ================= BOTTOM NAV (mobile) ================= --}}
-    @php $cartCountNav = collect(session('cart', []))->sum('quantity'); @endphp
     <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-peach-soft bg-white/95 backdrop-blur md:hidden">
-        <div class="mx-auto grid max-w-md grid-cols-5">
+        <div class="mx-auto grid max-w-md grid-cols-4">
 
             <a href="{{ route('customer.orders') }}"
                class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
@@ -368,19 +367,6 @@
                class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
                 <i class="bi bi-grid text-lg"></i>
                 <span>Menu</span>
-            </a>
-
-            <a href="{{ route('customer.cart') }}"
-               class="relative flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <span class="relative">
-                    <i class="bi bi-cart text-lg"></i>
-                    @if($cartCountNav > 0)
-                        <span class="absolute -right-2.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-peach-red px-1 text-[0.55rem] font-black text-white">
-                            {{ $cartCountNav }}
-                        </span>
-                    @endif
-                </span>
-                <span>Cart</span>
             </a>
 
             <a href="{{ route('customer.game') }}"

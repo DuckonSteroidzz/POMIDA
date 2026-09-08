@@ -15,7 +15,12 @@ use Tests\TestCase;
  *     page sideways on a phone;
  *   - the Spin & Win feature is called "Spin & Win" on every customer nav
  *     surface (was "Game" in four of them);
- *   - the shared customer bottom bar has a fifth slot for Spin & Win.
+ *   - the shared customer bottom bar has a Spin & Win slot.
+ *
+ * Dine-In UI cleanup (Sept 2026): the Cart slot was removed from the mobile
+ * bottom bar — mobile customers reach the cart through the header cart button
+ * (customer/partials/desktop-nav.blade.php) instead — leaving four slots:
+ * Menu · Orders · Spin & Win · More.
  *
  * These assertions are deliberately scoped to the element under test.
  */
@@ -179,9 +184,9 @@ class DeadCodeRemovalAndNavConsistencyTest extends TestCase
         }
     }
 
-    // ─────────────── the fifth bottom-bar slot ───────────────
+    // ─────────────── the bottom-bar slots ───────────────
 
-    public function test_shared_bottom_bar_has_five_slots_in_order(): void
+    public function test_shared_bottom_bar_has_four_slots_in_order(): void
     {
         $nav = $this->sharedBottomNav('/customer/menu');
 
@@ -189,10 +194,18 @@ class DeadCodeRemovalAndNavConsistencyTest extends TestCase
         $labels = array_values(array_filter(array_map('trim', $m[1]), fn ($l) => $l !== ''));
 
         $this->assertSame(
-            ['Menu', 'Orders', 'Spin &amp; Win', 'More', 'Cart'],
+            ['Menu', 'Orders', 'Spin &amp; Win', 'More'],
             $labels,
-            'shared bottom bar order must be Menu · Orders · Spin & Win · More · Cart'
+            'shared bottom bar order must be Menu · Orders · Spin & Win · More'
         );
+    }
+
+    public function test_shared_bottom_bar_has_no_cart_slot(): void
+    {
+        $nav = $this->sharedBottomNav('/customer/menu');
+
+        $this->assertStringNotContainsString('/customer/cart', $nav, 'the mobile bottom bar must not link to the cart');
+        $this->assertDoesNotMatchRegularExpression('/>\s*Cart\s*</', $nav, 'the mobile bottom bar must not carry a Cart slot — the header cart button covers mobile');
     }
 
     public function test_shared_bottom_bar_marks_the_active_slot_per_route(): void

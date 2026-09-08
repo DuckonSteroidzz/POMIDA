@@ -454,6 +454,59 @@ public function selectBranch(Request $request)
         return view('customer.dineinqr');
     }
 
+    /**
+     * The dine-in menu reporting that somebody is still there.
+     *
+     * Called from a scroll/tap/key listener that is throttled client-side to at
+     * most one call per sixty seconds of continuous activity, so a customer
+     * reading a menu for half an hour costs thirty writes, not thirty thousand.
+     * This is the ONLY thing that extends the fifteen-minute guest window; see
+     * App\Services\TableOccupancy::GUEST_IDLE_MINUTES.
+     *
+     * Answers `recorded` rather than failing when there is nothing to record.
+     * A pick-up customer, a logged-out browser, a tab left open after the table
+     * was released — none of those are errors, they are simply requests with no
+     * live dine-in occupancy behind them, and the page has nothing to do about
+     * it either way.
+     */
+    public function tableActivity(Request $request)
+    {
+        return response()->json([
+            'recorded' => \App\Services\TableOccupancy::recordGuestActivity(),
+        ]);
+    }
+
+    /**
+     * "Is my table session still good?" — asked on page load and whenever the
+     * tab comes back to the foreground.
+     *
+     * READ-ONLY, and that is load-bearing: the answer must never be the reason
+     * the session survives. All the reasoning lives on
+     * App\Services\TableOccupancy::inspectGuestSession(), which is also where
+     * App\Services\TableEntry::validate() is reused so this cannot drift from
+     * what the three dine-in doors enforce.
+     *
+     * On a failure the message is flashed under the SAME session('error') key
+     * the QR-stale refusal already uses and the code-entry route is handed back
+     * for the page to navigate to — the identical alert, in the identical
+     * place, as every other dine-in refusal. Nothing new was invented for it.
+     */
+    public function tableSessionStatus(Request $request)
+    {
+        $result = \App\Services\TableOccupancy::inspectGuestSession();
+
+        if ($result['valid']) {
+            return response()->json(['valid' => true]);
+        }
+
+        session()->flash('error', $result['error']);
+
+        return response()->json([
+            'valid'    => false,
+            'redirect' => route('customer.dineinqr'),
+        ]);
+    }
+
 
     public function showMore()
     {
@@ -902,6 +955,17 @@ public function selectBranch(Request $request)
     public function updateCart(Request $request, $itemId)
     {
         if ($response = $this->rejectIfActiveOrder()) {
+            // The cart page's background quantity sync (see cart.blade.php)
+            // speaks JSON; hand it a JSON refusal rather than a 302 to the
+            // menu that fetch() would silently follow and treat as success.
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success'  => false,
+                    'message'  => 'You already have an ongoing order.',
+                    'redirect' => route('customer.menu'),
+                ], 409);
+            }
+
             return $response;
         }
 
@@ -922,6 +986,35 @@ public function selectBranch(Request $request)
 
         if ($request->input('table_number')) {
             session()->put('table_number', $request->input('table_number'));
+        }
+
+        /*
+         * The '+' / '-' controls on the cart page update the quantity on screen
+         * instantly and then sync to here in the background (debounced), so the
+         * page no longer navigates for a quantity change. That fetch() asks for
+         * JSON: give it back the authoritative figures — priced through
+         * CartPricing, exactly as showCart() and placeOrder() do — so the
+         * optimistic client total can be reconciled against the server's.
+         */
+        if ($request->expectsJson()) {
+            $priced = \App\Support\CartPricing::price($cart);
+
+            $lines = [];
+            foreach ($priced['lines'] as $line) {
+                $lines[(string) $line['cart_key']] = [
+                    'quantity'   => $line['quantity'],
+                    'unit_price' => $line['unit_price'],
+                    'subtotal'   => $line['subtotal'],
+                ];
+            }
+
+            return response()->json([
+                'success'     => true,
+                'subtotal'    => $priced['subtotal'],
+                'lines'       => $lines,
+                'item_count'  => count($cart),
+                'removed'     => ! isset($cart[$itemId]),
+            ]);
         }
 
         return redirect()->route('customer.cart');
