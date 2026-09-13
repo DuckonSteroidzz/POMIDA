@@ -32,7 +32,9 @@ class AdminController extends Controller
         // management (create / activate / deactivate) lives on the Staff
         // Accounts page.
         $staffList = ($me && $me->role === 'admin')
-            ? \App\Models\User::where('role', 'staff')->orderBy('name')->get()
+            ? \App\Models\User::whereIn('role', \App\Models\User::ADMIN_MANAGEABLE_ROLES)
+                ->orderBy('name')
+                ->get()
             : collect();
 
         return view('admin.account', compact('staffList'));
@@ -695,6 +697,42 @@ class AdminController extends Controller
     public function deleteMenuItem(int $id)
     {
         $menuItem = \App\Models\MenuItem::withArchived()->findOrFail($id);
+
+        /*
+         * "Delete Menu Items" is Y | LIMITED | N — a manager may delete only
+         * items scoped to their OWN branch.
+         *
+         * Two things are refused here, and the second is the one that is easy
+         * to miss. menu_items.branch_id is NULLABLE, and a NULL means the item
+         * is SHARED across every branch rather than owned by one. A plain
+         * `branch_id === myBranch` test refuses that correctly, but only by
+         * accident of NULL never equalling an integer; stating it explicitly
+         * means a later refactor that coalesces the null (`?? 1`, the way
+         * lockedBranchId() does for staff) cannot quietly hand one branch's
+         * manager the power to withdraw a dish from all of them.
+         *
+         * The owner is unaffected: lockedBranchId() is null for an admin, so
+         * neither arm runs and every item stays deletable, shared ones
+         * included.
+         *
+         * The refusal is a flash on the list rather than a 403, matching how
+         * safelyDelete() reports a delete that cannot proceed — from the
+         * caller's side "you may not" and "it is still referenced" land the
+         * same way, on the same page.
+         */
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        if ($lockedBranchId !== null) {
+            if ($menuItem->branch_id === null) {
+                return redirect()->route('admin.menu-items')
+                    ->with('error', 'Shared menu items can only be deleted by the owner.');
+            }
+
+            if ((int) $menuItem->branch_id !== $lockedBranchId) {
+                return redirect()->route('admin.menu-items')
+                    ->with('error', 'You can only delete menu items belonging to your own branch.');
+            }
+        }
 
         return $this->safelyDelete(
             function () use ($menuItem) {
@@ -1590,9 +1628,17 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             $request->validate([
                 'code'     => 'required|string|max:64',
                 'subtotal' => 'required|numeric|min:0',
+                // The branch the manual order is being written for. Sent by the
+                // modal so this preview judges the branch rule against the same
+                // branch storeManualOrder() will validate and save — without it
+                // the counter would be told a branch voucher is fine and then
+                // refused on submit, which is the preview/charge disagreement
+                // Voucher's own header comment exists to prevent.
+                'branch_id' => 'nullable|integer|exists:branches,id',
             ]);
 
             $subtotal = (float) $request->input('subtotal');
+            $branchId = $request->input('branch_id');
 
             $resolved = \App\Services\VoucherClaims::resolveTypedCode(
                 (string) $request->input('code')
@@ -1609,7 +1655,12 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
             // The one validator. A walk-in customer has no account, so the
             // holder is null — the same guest case the customer flow handles.
-            $error = $voucher->redemptionErrorFor(null, $subtotal, $resolved['claim']);
+            $error = $voucher->redemptionErrorFor(
+                null,
+                $subtotal,
+                $resolved['claim'],
+                $branchId ? (int) $branchId : null
+            );
 
             if ($error !== null) {
                 return response()->json([
@@ -1879,7 +1930,15 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                  * as their own specific sentence, written for a person — so
                  * staff can read it straight out to the customer.
                  */
-                $voucherError = $voucher->redemptionErrorFor(null, $total, $voucherClaim);
+                // Including the branch rule: a manual order is an order placed
+                // AT a branch like any other, and $validated['branch_id'] is
+                // already required and existence-checked above.
+                $voucherError = $voucher->redemptionErrorFor(
+                    null,
+                    $total,
+                    $voucherClaim,
+                    (int) $validated['branch_id']
+                );
 
                 if ($voucherError !== null) {
                     return back()
@@ -2837,14 +2896,34 @@ public function markOrderRefunded(int $id)
          * 403/422. An admin still sees every active branch, matching every
          * other admin-only picker in this portal.
          */
-        $branches = ($staff && $staff->role === 'staff' && $staff->branch_id)
-            ? \App\Models\Branch::where('id', $staff->branch_id)->where('is_active', true)->get()
+        // Was `$staff->role === 'staff' && $staff->branch_id` — a second,
+        // hand-rolled copy of the branch lock that the Sept 2026 role pass
+        // found had already drifted from the real one in AdminOrderAccess. A
+        // supervisor would have matched neither arm of that comparison and been
+        // offered EVERY branch's picker. Asking lockedBranchId() means this
+        // section can never again disagree with the lists and the per-record
+        // endpoints about who is branch-bound.
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        $branches = ($lockedBranchId !== null)
+            ? \App\Models\Branch::where('id', $lockedBranchId)->where('is_active', true)->get()
             : \App\Models\Branch::where('is_active', true)->get();
 
-        // Only an admin may rotate a code: it invalidates a printed card and
-        // forces a reprint, which is an owner decision, not a counter action.
-        // Drives the "Regenerate Code" button beside the card preview.
-        $canRegenerate = $staff && $staff->role === 'admin';
+        /*
+         * Who may rotate a table code — it invalidates a printed card and
+         * forces a reprint, so it is a management call, not a counter action.
+         *
+         * "QR & Table Codes" is Y | Y | VIEW-ONLY, so this is isManager()
+         * rather than the `role === 'admin'` it read before: a supervisor gets
+         * the capability, staff get this page without the button. Spelled from
+         * the model helper so it cannot disagree with the matching
+         * `role:admin,supervisor` gate on admin.qr-generator.regenerate-code.
+         *
+         * A supervisor is still refused ANOTHER branch's table by
+         * regenerateTableCode() itself, which asks AdminOrderAccess. This flag
+         * is the role half only; it is not the branch half and never was.
+         */
+        $canRegenerate = $staff && $staff->isManager();
 
         return view('admin.qr-generator', compact('branches', 'canRegenerate'));
     }
@@ -2875,7 +2954,11 @@ public function markOrderRefunded(int $id)
         // Same own-branch restriction as clearTableOccupancy() — without it a
         // staff account could generate a printable table card for a branch
         // that is not theirs.
-        if ($staff && $staff->role === 'staff' && $staff->branch_id && (int) $staff->branch_id !== $branch->id) {
+        // allowsBranch() is the one rule (true for an admin, "is this mine?"
+        // for any branch-locked role), replacing the hand-rolled comparison
+        // this line used to carry. A supervisor is now refused another
+        // branch's card exactly as staff are.
+        if (! \App\Services\AdminOrderAccess::allowsBranch((int) $branch->id)) {
             return response()->json([
                 'message' => 'You can only generate table cards for your own branch.',
             ], 403);
@@ -2950,9 +3033,12 @@ public function markOrderRefunded(int $id)
 
         // Same own-branch restriction the rest of this section applies. An
         // admin is not branch-bound; this is belt and braces for any future
-        // role that is.
-        if ($staff && $staff->role === 'staff' && $staff->branch_id
-            && (int) $staff->branch_id !== (int) $table->branch_id) {
+        // role that is — and as of the Sept 2026 role pass it actually IS,
+        // because it asks AdminOrderAccess rather than naming 'staff' itself.
+        // The previous spelling made that comment untrue for supervisor: a
+        // supervisor failed the `role === 'staff'` test and rotated any
+        // branch's code, invalidating another branch's printed cards.
+        if (! \App\Services\AdminOrderAccess::allowsBranch((int) $table->branch_id)) {
             return response()->json([
                 'message' => 'You can only regenerate codes for your own branch.',
             ], 403);
@@ -2990,9 +3076,12 @@ public function markOrderRefunded(int $id)
     {
         $staff = Auth::guard('admin')->user();
 
-        $scope = ($staff && $staff->role === 'staff' && $staff->branch_id)
-            ? $staff->branch_id
-            : $this->getSelectedBranch();
+        // getSelectedBranch() already delegates to lockedBranchId(), so for a
+        // branch-locked role both arms of this now produce the same value —
+        // which is the point. Kept explicit because the fallback arm reads the
+        // admin's "Viewing:" picker, and only an admin has one.
+        $scope = \App\Services\AdminOrderAccess::lockedBranchId()
+            ?? $this->getSelectedBranch();
 
         return response()->json([
             'tables' => \App\Services\TableOccupancy::activeSessions($scope)->map(function ($s) {
@@ -3100,12 +3189,128 @@ public function markOrderRefunded(int $id)
 
     // ══════════ Vouchers (CRUD) ══════════
 
+    /*
+    |--------------------------------------------------------------------------
+    | PROMOTION BRANCH SCOPE — vouchers and ads
+    |--------------------------------------------------------------------------
+    |
+    | "Create/Edit/Activate Vouchers" and "Manage Advertisements" are Y | Y | N
+    | in the matrix, but a supervisor's Y is a LIMITED Y: their reach stops at
+    | their OWN branch. vouchers.branch_id and ads.branch_id (both nullable,
+    | NULL = global) exist for exactly that, and the three methods below are the
+    | one definition of the rule for both tables.
+    |
+    | THIS IS THE deleteMenuItem() PATTERN, NOT A NEW ONE. Same
+    | AdminOrderAccess::lockedBranchId(), same two explicit refusals (a global
+    | row first, then a foreign branch), same flash-redirect shape rather than a
+    | 403. It is factored into methods only because SIX endpoints need it —
+    | store/update/toggle for vouchers, store/update/toggle/delete for ads — and
+    | six hand-rolled copies is precisely how one of them ends up being the weak
+    | one. Same argument AdminOrderAccess itself was created on.
+    |
+    | WHY THE GLOBAL ARM IS SPELLED OUT SEPARATELY
+    | --------------------------------------------
+    | AdminOrderAccess::allowsBranch(null) looks like it would answer this, and
+    | for a staff member it does. It does NOT for a supervisor with no branch
+    | assigned: lockedBranchId() returns the deny-by-default sentinel 0 for that
+    | account, `(int) null` is also 0, and the two would compare equal — handing
+    | the one account that is supposed to see nothing the power to edit every
+    | company-wide promotion. The NULL case is therefore tested before any
+    | integer comparison happens, exactly as deleteMenuItem() argues.
+    */
+
+    /**
+     * The branch a NEWLY created voucher/ad belongs to.
+     *
+     *  - Supervisor: their own branch, always. Their form has no branch field
+     *    and a crafted branch_id in the request body is ignored rather than
+     *    refused — there is only one answer they are allowed, so taking it from
+     *    the account instead of the payload means there is nothing to forge.
+     *  - Owner: whatever they picked, and NULL (global) when they picked
+     *    nothing. Global stays the default: it is what every promotion in the
+     *    system is today, and an owner who wants one branch says so explicitly.
+     */
+    private function promotionBranchIdFor(Request $request): ?int
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        if ($lockedBranchId !== null) {
+            return $lockedBranchId;
+        }
+
+        $chosen = $request->input('branch_id');
+
+        return ($chosen === null || $chosen === '') ? null : (int) $chosen;
+    }
+
+    /**
+     * A redirect refusing this action, or null when the actor may proceed.
+     *
+     * $record is any voucher/ad (anything carrying a nullable branch_id).
+     * Returns null for the owner unconditionally — lockedBranchId() is null for
+     * them, so neither arm below runs and nothing about their existing reach
+     * changes.
+     */
+    private function promotionScopeRefusal($record, string $route, string $noun)
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        if ($lockedBranchId === null) {
+            return null;
+        }
+
+        // Global row. Checked FIRST and on its own — see the block comment.
+        if ($record->branch_id === null) {
+            return redirect()->route($route)
+                ->with('error', 'Company-wide ' . $noun . 's can only be managed by the owner.');
+        }
+
+        if ((int) $record->branch_id !== $lockedBranchId) {
+            return redirect()->route($route)
+                ->with('error', 'You can only manage ' . $noun . 's belonging to your own branch.');
+        }
+
+        return null;
+    }
+
+    /**
+     * Narrow a voucher/ad listing to what this viewer may SEE.
+     *
+     * A branch-locked viewer gets their own branch's rows PLUS the global ones.
+     * The globals are deliberately included and deliberately read-only in the
+     * blade: staff already read every voucher on this page ("View Vouchers" is
+     * Y | Y | Y, so they can quote a code at the counter), and showing a
+     * supervisor LESS than the staff they manage would be the real surprise.
+     * What they must not get is another BRANCH's promotion, which is what the
+     * whereNull/orWhere pair excludes.
+     */
+    private function scopePromotionListing($query)
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        if ($lockedBranchId !== null) {
+            $query->where(function ($q) use ($lockedBranchId) {
+                $q->whereNull('branch_id')
+                    ->orWhere('branch_id', $lockedBranchId);
+            });
+        }
+
+        return $query;
+    }
     public function showVouchers(Request $request)
     {
-        $vouchers = \App\Models\Voucher::orderBy(
-            'created_at',
-            'desc'
-        )->get();
+        // Own branch + global only for a supervisor; unchanged (every
+        // row) for the owner and for staff's read-only counter list.
+        $vouchers = $this->scopePromotionListing(
+            \App\Models\Voucher::with('branch')
+        )->orderBy('created_at', 'desc')->get();
+
+        // The owner's branch-scope picker on the Create form. A
+        // branch-locked viewer never sees the control, so it is not
+        // built for them.
+        $branches = \App\Services\AdminOrderAccess::lockedBranchId() === null
+            ? \App\Models\Branch::orderBy('id')->get()
+            : collect();
 
         /*
          * POINTS-REWARD LOOKUP (2026-09-02).
@@ -3141,6 +3346,7 @@ public function markOrderRefunded(int $id)
 
         return view('admin.vouchers', compact(
             'vouchers',
+            'branches',
             'rewardQuery',
             'rewardCustomer',
             'rewardSummary'
@@ -3159,9 +3365,14 @@ public function markOrderRefunded(int $id)
             'valid_from' => 'nullable|date',
             'expires_at' => 'nullable|date',
             'points_required' => 'nullable|integer|min:0',
+            // Owner-supplied scope. Ignored for a supervisor — see
+            // promotionBranchIdFor() — but still validated so a bad id from the
+            // owner's own picker is a 422 rather than a foreign-key crash.
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         \App\Models\Voucher::create([
+            'branch_id' => $this->promotionBranchIdFor($request),
             'code' => strtoupper($validated['code']),
             'description' => $validated['description'] ?? null,
             'discount_type' => $validated['discount_type'],
@@ -3185,6 +3396,16 @@ public function markOrderRefunded(int $id)
     {
         $voucher = \App\Models\Voucher::findOrFail($id);
 
+        /*
+         * The LIMITED half of "Edit Vouchers". A supervisor may edit only a
+         * voucher scoped to their own branch — never a company-wide one, never
+         * another branch's — and this is what stops a hand-crafted PUT, not the
+         * absence of the button on the page.
+         */
+        if ($refusal = $this->promotionScopeRefusal($voucher, 'admin.vouchers', 'voucher')) {
+            return $refusal;
+        }
+
         $validated = $request->validate([
             'code' => 'required|string|max:50|unique:vouchers,code,' . $voucher->id,
             'description' => 'nullable|string|max:255',
@@ -3196,9 +3417,15 @@ public function markOrderRefunded(int $id)
             'expires_at' => 'nullable|date',
             'points_required' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         $voucher->update([
+            // Re-derived rather than carried over: for a supervisor this can
+            // only ever be their own branch, so an edit cannot be used to push
+            // their voucher global or into someone else's branch. For the owner
+            // it is whatever the form said.
+            'branch_id' => $this->promotionBranchIdFor($request),
             'code' => strtoupper($validated['code']),
             'description' => $validated['description'] ?? null,
             'discount_type' => $validated['discount_type'],
@@ -3394,6 +3621,12 @@ public function markOrderRefunded(int $id)
     {
         $voucher = \App\Models\Voucher::findOrFail($id);
 
+        // "Activate/Deactivate Vouchers", same LIMITED rule as editing one:
+        // switching a company-wide promotion off is a company-wide act.
+        if ($refusal = $this->promotionScopeRefusal($voucher, 'admin.vouchers', 'voucher')) {
+            return $refusal;
+        }
+
         $voucher->is_active = !$voucher->is_active;
         $voucher->save();
 
@@ -3439,7 +3672,11 @@ public function markOrderRefunded(int $id)
             'customer',
         ]);
 
-        return view('customer.receipt', compact('order'));
+        // Render the shared receipt template in its admin-scoped mode: the
+        // customer navbar, mobile bottom nav and pickup-contact block are
+        // dropped and the "Back" link points at Order History, so an admin
+        // printing an order never lands on customer-facing chrome.
+        return view('customer.receipt', ['order' => $order, 'isAdminView' => true]);
     }
 
     // ══════════ Branches ══════════
@@ -3571,11 +3808,18 @@ public function markOrderRefunded(int $id)
             ->with('success', $branch->name . ' is now ' . ($branch->is_active ? 'Open' : 'Closed') . '.');
     }
 
-    public function selectBranch(Request $request)
+    public function selectBranch(string $branch)
     {
-        $branchId = $request->input('branch_id');
+        // 'all', or the id of a branch that actually exists (closed ones
+        // included — an admin manages a closed branch's menu from here). Any
+        // other value is ignored and the current view is kept: this is a
+        // view-only filter on the admin's own session, not a place to surface
+        // input errors.
+        if ($branch !== 'all' && ! \App\Models\Branch::whereKey($branch)->exists()) {
+            return redirect()->back();
+        }
 
-        session()->put('selected_branch_id', $branchId);
+        session()->put('selected_branch_id', $branch === 'all' ? 'all' : (int) $branch);
 
         return redirect()->back()
             ->with('success', 'Branch filter applied!');
@@ -3624,11 +3868,18 @@ public function markOrderRefunded(int $id)
 
     public function showAds()
     {
-        $ads = \App\Models\Ad::orderBy('display_order')
+        // Own branch + global for a supervisor, everything for the owner.
+        // Same rule and same reasoning as the voucher listing.
+        $ads = $this->scopePromotionListing(\App\Models\Ad::with('branch'))
+            ->orderBy('display_order')
             ->orderBy('created_at', 'desc')
             ->get();
 
-        return view('admin.ads', compact('ads'));
+        $branches = \App\Services\AdminOrderAccess::lockedBranchId() === null
+            ? \App\Models\Branch::orderBy('id')->get()
+            : collect();
+
+        return view('admin.ads', compact('ads', 'branches'));
     }
 
     public function storeAd(Request $request)
@@ -3641,6 +3892,7 @@ public function markOrderRefunded(int $id)
             'placement' => 'required|in:game,menu,cart,orders',
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date',
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         $imagePath = null;
@@ -3661,6 +3913,7 @@ public function markOrderRefunded(int $id)
         }
 
         \App\Models\Ad::create([
+            'branch_id' => $this->promotionBranchIdFor($request),
             'title' => $validated['title'],
             'description' => $validated['description'] ?? null,
             'image' => $imagePath,
@@ -3683,6 +3936,12 @@ public function markOrderRefunded(int $id)
     {
         $ad = \App\Models\Ad::findOrFail($id);
 
+        // "Manage Advertisements" is the whole CRUD for a supervisor, but only
+        // within their own branch. A company-wide ad is the owner's.
+        if ($refusal = $this->promotionScopeRefusal($ad, 'admin.ads', 'ad')) {
+            return $refusal;
+        }
+
         $validated = $request->validate([
             'title' => 'required|string|max:255',
             'description' => 'nullable|string|max:500',
@@ -3691,6 +3950,7 @@ public function markOrderRefunded(int $id)
             'placement' => 'required|in:game,menu,cart,orders',
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date',
+            'branch_id' => 'nullable|exists:branches,id',
         ]);
 
         if ($request->hasFile('image')) {
@@ -3712,6 +3972,9 @@ public function markOrderRefunded(int $id)
             $ad->image = 'uploads/ads/' . $filename;
         }
 
+        // See updateVoucher(): re-derived, so a supervisor's edit cannot move
+        // the ad out of their own branch.
+        $ad->branch_id = $this->promotionBranchIdFor($request);
         $ad->title = $validated['title'];
         $ad->description = $validated['description'] ?? null;
         $ad->link = $validated['link'] ?? null;
@@ -3729,6 +3992,10 @@ public function markOrderRefunded(int $id)
     {
         $ad = \App\Models\Ad::findOrFail($id);
 
+        if ($refusal = $this->promotionScopeRefusal($ad, 'admin.ads', 'ad')) {
+            return $refusal;
+        }
+
         $ad->is_active = !$ad->is_active;
         $ad->save();
 
@@ -3744,6 +4011,17 @@ public function markOrderRefunded(int $id)
     public function deleteAd(int $id)
     {
         $ad = \App\Models\Ad::findOrFail($id);
+
+        /*
+         * Deleting an ad is part of "Manage Advertisements" (Y | Y | N) rather
+         * than a separate owner-only row, so a supervisor keeps it — bounded by
+         * the same branch rule as every other write on this record. Deleting
+         * VOUCHERS stays Y | N | N and is unchanged: that route never leaves
+         * the owner-only group, and nothing here touches it.
+         */
+        if ($refusal = $this->promotionScopeRefusal($ad, 'admin.ads', 'ad')) {
+            return $refusal;
+        }
 
         // Nothing references ads, so this one is only ever a crash risk from
         // the filesystem or a dropped connection — still worth the net.
@@ -3930,18 +4208,103 @@ public function markOrderRefunded(int $id)
     // only be created here, by an authenticated admin, and the role is always
     // forced to 'staff' — this form can never mint another admin.
 
+    /**
+     * Refuse a staff-management action the current user may not take on
+     * $target, or null to proceed.
+     *
+     * The ONE place the matrix's LIMITED rule for staff management is turned
+     * into a response, shared by updateUser(), updateStaffPassword(),
+     * toggleUser() and destroyUser() so those four cannot drift apart. The
+     * rule itself lives in User::canManageAccount(); this only decides what a
+     * refusal looks like.
+     *
+     * A refusal is deliberately INDISTINGUISHABLE from "no such account": both
+     * a missing id and another branch's staff member come back as the same
+     * flash on the same page. A supervisor probing ids must not be able to
+     * read the difference and map out the other branches' rosters — the same
+     * argument AdminOrderAccess makes for answering 404 rather than 403.
+     */
+    private function denyUnlessManageable(?\App\Models\User $target)
+    {
+        $me = Auth::guard('admin')->user();
+
+        if ($me && $me->canManageAccount($target)) {
+            return null;
+        }
+
+        return redirect()->route('admin.users')
+            ->with('error', 'That account is not available for you to manage.');
+    }
+
+    /**
+     * The portal accounts the current user may manage, as a query.
+     *
+     * The list and the per-row endpoints have to agree about who is visible,
+     * or the screen shows rows whose buttons 404 — so both are derived from
+     * the same two constants that canManageAccount() checks.
+     */
+    private function manageableUsersQuery()
+    {
+        $me = Auth::guard('admin')->user();
+
+        // The owner sees every manageable portal account, in every branch.
+        // ADMIN_MANAGEABLE_ROLES never contains 'admin', so the owner's own
+        // account can never be listed, let alone acted on.
+        if ($me && $me->isAdmin()) {
+            return \App\Models\User::whereIn('role', \App\Models\User::ADMIN_MANAGEABLE_ROLES);
+        }
+
+        /*
+         * A supervisor sees the staff of their OWN branch and nothing else —
+         * not peer supervisors, not the owner, not another branch's staff.
+         *
+         * lockedBranchId() is the same branch value the rest of their portal
+         * uses, and it fails closed at 0 for a branchless supervisor, so this
+         * degrades to an empty list rather than to Main Branch's roster.
+         */
+        $branchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        return \App\Models\User::whereIn('role', \App\Models\User::MANAGER_MANAGEABLE_ROLES)
+            ->where('branch_id', $branchId ?? 0);
+    }
+
     public function showUsers()
     {
-        $staff = \App\Models\User::where('role', 'staff')
+        // Ordered by role first so the two tiers read as two blocks rather
+        // than interleaved. What the query CONTAINS is decided by
+        // manageableUsersQuery() — the owner gets staff AND supervisors across
+        // every branch, a supervisor gets their own branch's staff only.
+        $staff = $this->manageableUsersQuery()
             ->with('branch')
+            ->orderBy('role')
             ->orderBy('name')
             ->get();
 
+        $me = Auth::guard('admin')->user();
+
+        /*
+         * The branch choices offered by the create/edit form.
+         *
+         * A supervisor gets exactly their own branch. Their accounts are
+         * forced to it server-side by storeUser()/updateUser() regardless of
+         * what is posted, so this is the form agreeing with the enforcement
+         * rather than being the enforcement — but offering a branch that will
+         * be silently overridden would be a worse form than offering one.
+         */
         $branches = \App\Models\Branch::where('is_active', true)
+            ->when(
+                $me && ! $me->isAdmin(),
+                fn ($q) => $q->where('id', \App\Services\AdminOrderAccess::lockedBranchId() ?? 0)
+            )
             ->orderBy('id')
             ->get();
 
-        return view('admin.users', compact('staff', 'branches'));
+        // The role dropdown's options come from the SAME method the validator
+        // uses, so the form cannot offer a role the server would refuse — a
+        // supervisor is offered 'staff' alone.
+        $assignableRoles = $this->assignableRoles();
+
+        return view('admin.users', compact('staff', 'branches', 'assignableRoles'));
     }
 
     public function storeUser(Request $request)
@@ -3949,23 +4312,181 @@ public function markOrderRefunded(int $id)
         $validated = $request->validate([
             'name'      => 'required|string|max:255',
             'email'     => 'required|email|max:255|unique:users,email',
+            // A branch is REQUIRED for both roles this endpoint can create.
+            // Both are branch-locked, and an account with no branch is not a
+            // wider account, it is a broken one — see the deny-by-default arm
+            // of AdminOrderAccess::lockedBranchId().
             'branch_id' => 'required|exists:branches,id',
+            /*
+             * The role, constrained by Rule::in(ADMIN_MANAGEABLE_ROLES).
+             *
+             * This used to be hard-coded 'staff', with the comment "never
+             * anything else". The guarantee that mattered in that comment was
+             * never "staff specifically" — it was "NEVER admin", because this
+             * form is how a portal account is minted and an admin account
+             * minted here would be a privilege-escalation route straight past
+             * the owner. That guarantee is now enforced by the validator
+             * against a constant which cannot contain 'admin', instead of by a
+             * literal, so an unexpected or absent value is a 422 rather than a
+             * silent grant. Compare MassAssignmentEscalationTest, which makes
+             * the same argument about `role` reaching User::create() from
+             * request input — note the create() call below still names every
+             * column explicitly and never spreads $request->all().
+             */
+            'role'      => ['required', \Illuminate\Validation\Rule::in($this->assignableRoles())],
             // Security review 2026-08-31: staff accounts get the same shared
             // complexity policy as every other password-setting flow.
             'password'  => \App\Support\PasswordPolicy::required(),
+        ], [
+            'role.required' => 'Please choose a role for this account.',
+            'role.in'       => 'That is not a role you can assign here.',
         ]);
+
+        /*
+         * THE SUPERVISOR OVERRIDE — the escalation this endpoint has to stop.
+         *
+         * "Create Staff Accounts" is Y for a manager, but "Change Staff Role"
+         * is Y | N | N and a supervisor is branch-locked. Left as the
+         * validated input alone, a supervisor admitted to this endpoint could
+         * post role=supervisor and branch_id=<some other branch> and mint
+         * themselves a peer with a foothold in a branch they cannot even read
+         * — defeating both the role tier and the branch lock in one request.
+         *
+         * assignableRoles() already narrows the VALIDATOR to ['staff'] for a
+         * supervisor, so a posted role=supervisor is a 422. The branch is
+         * FORCED rather than validated: the form only ever offers their own
+         * branch, so overriding a posted one silently is correcting a request
+         * that could not have come from the real form anyway.
+         *
+         * The owner is untouched by both lines — isAdmin() short-circuits
+         * assignableRoles(), and lockedBranchId() is null for them.
+         */
+        $branchId = \App\Services\AdminOrderAccess::lockedBranchId() ?? $validated['branch_id'];
 
         \App\Models\User::create([
             'name'      => $validated['name'],
             'email'     => $validated['email'],
             'password'  => $validated['password'],  // hashed by the model cast
-            'branch_id' => $validated['branch_id'],
-            'role'      => 'staff',                 // never anything else
+            'branch_id' => $branchId,               // forced to own branch for a manager
+            'role'      => $validated['role'],      // validated above; never admin
             'is_active' => true,
         ]);
 
         return redirect()->route('admin.users')
-            ->with('success', 'Staff account created for ' . $validated['name'] . '.');
+            ->with('success', ucfirst($validated['role']) . ' account created for ' . $validated['name'] . '.');
+    }
+
+    /**
+     * The roles the CURRENT user may assign when creating or editing an
+     * account.
+     *
+     *  - the OWNER may assign either manageable role (staff or supervisor),
+     *    and never admin — ADMIN_MANAGEABLE_ROLES has never contained it.
+     *  - a SUPERVISOR may assign `staff` and nothing else. "Change Staff Role"
+     *    is Y | N | N, so a supervisor has no say in what tier an account
+     *    sits at; they may only create accounts at the tier below their own.
+     *
+     * Returned as a list for Rule::in(), so an unexpected value is a 422 at
+     * the validator rather than a silent grant further down. The same list
+     * drives the role dropdown in admin.users, so the form and the enforcement
+     * are the same statement made twice rather than two statements.
+     */
+    private function assignableRoles(): array
+    {
+        $me = Auth::guard('admin')->user();
+
+        return ($me && $me->isAdmin())
+            ? \App\Models\User::ADMIN_MANAGEABLE_ROLES
+            : \App\Models\User::MANAGER_MANAGEABLE_ROLES;
+    }
+
+    /**
+     * Edit an existing portal account's details.
+     *
+     * "Edit Staff Information" is Y | Y | N. A supervisor reaches this only
+     * for a `staff` account in their own branch (canManageAccount), and even
+     * then may not change its ROLE or move it to another BRANCH — those two
+     * fields are the escalation surface, and they are the two the matrix keeps
+     * at Y | N | N as "Change Staff Role" / branch management.
+     *
+     * The password is deliberately NOT editable here. Setting one has its own
+     * endpoint, its own throttle and its own policy rule; folding it in would
+     * put a password write behind a form that is otherwise harmless.
+     */
+    public function updateUser(Request $request, $id)
+    {
+        $user = \App\Models\User::find($id);
+
+        if ($stop = $this->denyUnlessManageable($user)) {
+            return $stop;
+        }
+
+        $validated = $request->validate([
+            'name'           => 'required|string|max:255',
+            // Unique EXCEPT against this row, or saving an unchanged email
+            // would fail its own uniqueness check.
+            'email'          => [
+                'required', 'email', 'max:255',
+                \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id),
+            ],
+            'contact_number' => 'nullable|string|max:30',
+            'branch_id'      => 'required|exists:branches,id',
+            'role'           => ['required', \Illuminate\Validation\Rule::in($this->assignableRoles())],
+        ], [
+            'role.in' => 'That is not a role you can assign here.',
+        ]);
+
+        // Same forced branch as storeUser(), for the same reason: a manager
+        // cannot move an account out of their own branch, which would be both
+        // a branch-lock bypass and a way to hide the account from themselves.
+        $branchId = \App\Services\AdminOrderAccess::lockedBranchId() ?? $validated['branch_id'];
+
+        $user->forceFill([
+            'name'           => $validated['name'],
+            'email'          => $validated['email'],
+            'contact_number' => $validated['contact_number'] ?? null,
+            'branch_id'      => $branchId,
+            'role'           => $validated['role'],
+        ])->save();
+
+        return redirect()->route('admin.users')
+            ->with('success', 'Account details updated for ' . $user->name . '.');
+    }
+
+    /**
+     * Delete a portal account outright — the matrix's LIMITED row.
+     *
+     * WHO may call is the route's `role:admin,supervisor`. WHICH ACCOUNT is
+     * canManageAccount(), which for a supervisor means a `staff` row in their
+     * own branch: never a peer supervisor, never the owner, and never another
+     * branch's staff even when that row's id is typed straight into the URL.
+     *
+     * Routed through safelyDelete() like every other destructive action in
+     * this controller, because a portal account is referenced by orders and
+     * stock_movements — an account that has done a day's work will be refused
+     * by a foreign key rather than taking its history with it, and the caller
+     * is told to deactivate it instead of being shown a 500.
+     */
+    public function destroyUser($id)
+    {
+        $user = \App\Models\User::find($id);
+
+        if ($stop = $this->denyUnlessManageable($user)) {
+            return $stop;
+        }
+
+        return $this->safelyDelete(
+            function () use ($user) {
+                $name = $user->name;
+                $user->delete();
+
+                return redirect()->route('admin.users')
+                    ->with('success', 'Account for ' . $name . ' has been deleted.');
+            },
+            'admin.users',
+            'the account for ' . $user->name,
+            'It is still attached to orders or stock records. Deactivate it instead.'
+        );
     }
 
     /**
@@ -3997,18 +4518,23 @@ public function markOrderRefunded(int $id)
      */
     public function updateStaffPassword(Request $request, $id)
     {
-        $user = \App\Models\User::findOrFail($id);
+        $user = \App\Models\User::find($id);
 
         /*
-         * Only staff accounts, never an admin — including the admin making the
-         * request. The route group is already `role:admin`, so this is not
-         * about privilege; it is about blast radius. Without it, one admin
-         * could silently take over another admin's account, and a mistyped id
-         * could lock the owner out of their own system.
+         * Never an admin, never yourself — and, since the matrix widened this
+         * endpoint to the manager tier, never a target outside what the CALLER
+         * may manage.
+         *
+         * The role group is `role:admin,supervisor`, so this is no longer only
+         * about blast radius: for a supervisor it is the privilege boundary
+         * itself. Resetting a password IS taking over an account, so without
+         * this a supervisor admitted to the endpoint could take over a peer
+         * supervisor's login, or any other branch's staff, by id. The owner's
+         * original guarantee is unchanged and now stated in one place —
+         * canManageAccount() excludes admin for everyone.
          */
-        if ($user->role !== 'staff') {
-            return redirect()->route('admin.users')
-                ->with('error', 'Only staff account passwords can be changed here.');
+        if ($stop = $this->denyUnlessManageable($user)) {
+            return $stop;
         }
 
         $request->validate([
@@ -4044,13 +4570,15 @@ public function markOrderRefunded(int $id)
 
     public function toggleUser($id)
     {
-        $user = \App\Models\User::findOrFail($id);
+        $user = \App\Models\User::find($id);
 
-        // Only staff accounts can be toggled from this screen — never an
-        // admin, and never the currently logged-in user.
-        if ($user->role !== 'staff') {
-            return redirect()->route('admin.users')
-                ->with('error', 'Only staff accounts can be activated or deactivated here.');
+        // Never an admin, never yourself, and — for a supervisor — never
+        // anything but a staff account in their own branch. Deactivating an
+        // account is locking a colleague out of the portal mid-shift, which
+        // is why it gets the same target rule as deleting one rather than a
+        // looser check of its own.
+        if ($stop = $this->denyUnlessManageable($user)) {
+            return $stop;
         }
 
         $user->is_active = !$user->is_active;

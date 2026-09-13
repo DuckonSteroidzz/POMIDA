@@ -450,9 +450,23 @@ class MassAssignmentEscalationTest extends TestCase
 
     /**
      * The same form driven by a real admin — who IS allowed to use it — must
-     * still force role=staff. This is the control that proves the test above
-     * is not just observing a blocked route: the endpoint works, and it still
-     * refuses to mint an admin.
+     * still refuse to mint an admin.
+     *
+     * HOW THE REFUSAL CHANGED SHAPE (Sept 2026 supervisor pass)
+     * ---------------------------------------------------------
+     * storeUser() used to hard-code `'role' => 'staff'` and simply IGNORE
+     * whatever role the request carried, so a smuggled role=admin was silently
+     * downgraded and a staff account appeared. It now validates `role` against
+     * Rule::in(User::ADMIN_MANAGEABLE_ROLES) — a constant that cannot contain
+     * 'admin' — because the form has two legitimate roles to offer (staff and
+     * supervisor) and can no longer tell "a value I ignore" from "a value I
+     * mean".
+     *
+     * That is strictly stricter: role=admin is now REFUSED outright rather than
+     * quietly rewritten, so the attempt is visible in the response instead of
+     * looking like an ordinary success. The property this test defends is
+     * unchanged — no admin account may come out of this form — and it is now
+     * asserted in both directions.
      */
     public function test_even_an_admin_cannot_mint_another_admin_through_the_staff_form(): void
     {
@@ -465,25 +479,52 @@ class MassAssignmentEscalationTest extends TestCase
         $email = 'massassign-admin-' . uniqid() . '@invalid.local';
 
         $this->actingAs($admin, 'admin')->post('/admin/users', [
-            'name'      => 'Should Be Staff',
+            'name'      => 'Should Be Refused',
             'email'     => $email,
             'branch_id' => 1,
             'password'  => 'Str0ng!Passw0rd',
             'password_confirmation' => 'Str0ng!Passw0rd',
             'role'      => 'admin',   // smuggled
             'points'    => 99999,
+        ])->assertSessionHasErrors('role');
+
+        $this->assertNull(
+            User::where('email', $email)->first(),
+            'ESCALATION: the account form accepted role=admin'
+        );
+        $this->assertSame(
+            $adminsBefore,
+            User::where('role', 'admin')->count(),
+            'the number of admin accounts changed'
+        );
+
+        /*
+         * CONTROL — without this the test above would pass against a form that
+         * simply refused everything. The SAME request with a role the form does
+         * offer must succeed, and must still not smuggle `points`, which is
+         * mass-assignable on the model and guarded only by this controller
+         * naming its columns explicitly.
+         */
+        $legitEmail = 'massassign-admin-ok-' . uniqid() . '@invalid.local';
+
+        $this->actingAs($admin, 'admin')->post('/admin/users', [
+            'name'      => 'Should Be Staff',
+            'email'     => $legitEmail,
+            'branch_id' => 1,
+            'password'  => 'Str0ng!Passw0rd',
+            'password_confirmation' => 'Str0ng!Passw0rd',
+            'role'      => 'staff',
+            'points'    => 99999,   // smuggled
         ]);
 
-        $created = User::where('email', $email)->first();
+        $created = User::where('email', $legitEmail)->first();
 
-        // CONTROL: the creation must have worked, or the assertion is empty.
         $this->assertNotNull(
             $created,
             'the admin could not create a staff account, so this proves nothing. '
             . 'Errors: ' . json_encode(session('errors')?->all() ?? [])
         );
-
-        $this->assertSame('staff', $created->role, 'ESCALATION: the staff form minted an admin');
+        $this->assertSame('staff', $created->role);
         $this->assertSame(0, (int) $created->points, 'points were smuggled into a new staff account');
         $this->assertSame(
             $adminsBefore,

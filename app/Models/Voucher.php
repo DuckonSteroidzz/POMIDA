@@ -11,6 +11,13 @@ class Voucher extends Model
     use HasFactory;
 
     protected $fillable = [
+        /*
+         * NULL = global (valid at every branch), an integer = that
+         * branch only. The same convention menu_items.branch_id uses,
+         * and the column the supervisor scope rule is enforced on — see
+         * AdminController::promotionScopeRefusal().
+         */
+        'branch_id',
         'code',
         'description',
         'discount_type',
@@ -31,6 +38,12 @@ class Voucher extends Model
         'valid_from'     => 'date',
         'is_active'      => 'boolean',
     ];
+
+    /** The branch this voucher is scoped to, or null when it is global. */
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
 
     public function isValid(): bool
     {
@@ -71,9 +84,14 @@ class Voucher extends Model
      *
      * @param  User|null  $user      The customer redeeming it (null = guest).
      * @param  float      $subtotal  Order subtotal, add-on options included.
+     * @param  int|null   $orderBranchId  The branch the order is placed at.
      */
-    public function redemptionErrorFor(?User $user, float $subtotal, ?UserVoucher $claim = null): ?string
-    {
+    public function redemptionErrorFor(
+        ?User $user,
+        float $subtotal,
+        ?UserVoucher $claim = null,
+        ?int $orderBranchId = null
+    ): ?string {
         // Everything that does not depend on what is in the cart. Split out so
         // the customer's Vouchers page can ask the SAME question about a
         // voucher it is about to present as usable — see availabilityErrorFor().
@@ -88,11 +106,69 @@ class Voucher extends Model
             return $error;
         }
 
+        // WHERE it may be spent, which is a property of the ORDER — exactly
+        // like the subtotal below, and unlike anything in availabilityErrorFor()
+        // above. That is why it lives here and not there: the customer's
+        // Vouchers page asks the availability question about a card it is
+        // merely listing, and has no order and no branch to ask about.
+        $error = $this->branchErrorFor($orderBranchId);
+
+        if ($error !== null) {
+            return $error;
+        }
+
         if ($subtotal < (float) $this->minimum_order) {
             return 'Minimum order of ₱' . number_format($this->minimum_order, 2) . ' required.';
         }
 
         return null;
+    }
+
+    /**
+     * Why this voucher cannot be spent on an order placed at this branch.
+     *
+     * THE GAP THIS CLOSES
+     * -------------------
+     * Phase 2.5 (47372b1) added vouchers.branch_id and scoped a Supervisor's
+     * MANAGEMENT of a voucher to their own branch. It deliberately left
+     * redemption alone, so until now the column meant nothing to a customer: a
+     * voucher created for branch 3 was accepted for an order at branch 1, live,
+     * with a 200 and a discount. The branch manager who scoped it got a promo
+     * that every other branch could spend.
+     *
+     *      branch_id NULL -> global. Redeemable at every branch.
+     *      branch_id N    -> redeemable ONLY for an order placed at branch N.
+     *
+     * WHY NULL IS TESTED FIRST AND ON ITS OWN
+     * ---------------------------------------
+     * The same reason AdminController::promotionScopeRefusal() spells its
+     * global arm out separately, and the same trap: (int) null is 0. A version
+     * that compared first would read "valid everywhere" as "valid at branch 0"
+     * the moment a caller handed it a 0 — an empty form field, a missing
+     * session key cast to int, the deny-by-default sentinel. Global is
+     * answered before any integer is compared, so no cast can reach it.
+     *
+     * A NULL $orderBranchId means "no branch known", and a branch-scoped
+     * voucher is refused for it. That direction is the safe one — it can only
+     * ever refuse a redemption, never permit one — and it is unreachable in
+     * practice: placeOrder() refuses an order with no branch before it looks at
+     * a voucher at all.
+     */
+    public function branchErrorFor(?int $orderBranchId): ?string
+    {
+        if ($this->branch_id === null) {
+            return null;
+        }
+
+        if ($orderBranchId !== null && (int) $this->branch_id === $orderBranchId) {
+            return null;
+        }
+
+        $branchName = $this->branch?->name;
+
+        return $branchName
+            ? 'This voucher can only be used at ' . $branchName . '.'
+            : 'This voucher belongs to a different branch.';
     }
 
     /**

@@ -528,10 +528,14 @@ class OrderController extends Controller
             // This previously only called isValid(), which skipped the
             // minimum-order, valid-from and ownership rules — so a voucher the
             // cart page had already rejected was still honoured at checkout.
+            // $branchId is guaranteed non-null here: the "No branch selected"
+            // guard near the top of this method returns before anything reads a
+            // voucher, so the branch rule is always asked with a real branch.
             $voucherError = $voucher->redemptionErrorFor(
                 Auth::guard('customer')->user(),
                 $total,
-                $voucherClaim
+                $voucherClaim,
+                (int) $branchId
             );
 
             if ($voucherError !== null) {

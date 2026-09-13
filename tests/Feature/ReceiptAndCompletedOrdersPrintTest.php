@@ -210,28 +210,21 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
     {
         $xp = $this->xpath($this->receiptHtml());
 
-        // Every top-level chrome region is a <header>/<nav> tag or carries
-        // .no-print — both of which the print stylesheet sets to display:none.
-        // (There is no branch selector or notification bell on this view.)
+        // The admin route renders customer.receipt in its $isAdminView mode:
+        // the customer navbar (<header>) and the mobile bottom nav (<nav>) are
+        // not emitted at all, so an admin printing an order never lands on
+        // customer-facing chrome. The only top-level element is <main>.
         foreach ($xp->query('/html/body/*') as $n) {
-            if (in_array($n->nodeName, ['header', 'nav'], true)) {
-                continue;
-            }
             if ($n->nodeName === 'main') {
                 continue;
             }
-            $this->fail("Unexpected top-level receipt element <{$n->nodeName}> that print CSS may not hide.");
+            $this->fail("Unexpected top-level receipt element <{$n->nodeName}> on the admin route.");
         }
+        $this->assertSame(0, $xp->query('/html/body/header | /html/body/nav')->length,
+            'the admin receipt route must not render the customer header or bottom nav');
 
-        // The customer navbar and the mobile bottom nav both carry .no-print
-        // as well, belt and braces.
-        foreach ($xp->query('/html/body/header | /html/body/nav') as $n) {
-            $this->assertStringContainsString('no-print', $n->getAttribute('class'));
-        }
-
-        // Every <button> on the page sits inside a <header>/<nav> chrome region
-        // (so it is already hidden by the container rules) and, in any case,
-        // the print block hides `button` outright — asserted separately below.
+        // The one remaining <button> (Print / Save PDF) sits inside a .no-print
+        // region, and the print block hides `button` outright — asserted below.
         $buttons = $xp->query('//button');
         $this->assertGreaterThan(0, $buttons->length);
         foreach ($buttons as $b) {
@@ -243,7 +236,21 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
                     break;
                 }
             }
-            $this->assertTrue($inChrome, 'a receipt <button> is outside every no-print chrome region');
+            $this->assertTrue($inChrome, 'a receipt <button> is outside every no-print region');
+        }
+    }
+
+    public function test_the_admin_receipt_route_links_back_into_the_admin_panel(): void
+    {
+        $xp = $this->xpath($this->receiptHtml());
+
+        // The only "back" link points at Order History, never a customer page.
+        $links = $xp->query('//a[contains(@href, "completed-orders")]');
+        $this->assertSame(1, $links->length, 'admin receipt must link back to Order History');
+
+        foreach ($xp->query('//a[@href]') as $a) {
+            $this->assertStringNotContainsString('/customer/', $a->getAttribute('href'),
+                'the admin receipt must not link to any customer-facing page');
         }
     }
 
@@ -294,6 +301,79 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
         $this->assertMatchesRegularExpression('/background:\s*transparent\s*!important/', $decls);
         $this->assertMatchesRegularExpression('/color:\s*#000\s*!important/', $decls);
         $this->assertMatchesRegularExpression('/border-top:\s*2px\s+solid\s+#000\s*!important/', $decls);
+    }
+
+    public function test_the_receipt_prints_as_an_80mm_thermal_slip(): void
+    {
+        $html = $this->receiptHtml();
+        $css = $this->printBlock($html);
+
+        // @page is sized for the 80mm roll with no page margins, not A4.
+        //
+        // The height is an EXPLICIT length, not `auto`: `size: <length> auto`
+        // is invalid CSS, so Chrome dropped the whole declaration and printed
+        // on the selected paper (Letter/A4), which split the slip across two
+        // sheets. This asserts the real rule that reaches the browser — the
+        // earlier `size: 80mm auto` assertion passed while the bug persisted.
+        $page = $this->ruleFor($css, '@page');
+        $this->assertMatchesRegularExpression('/size:\s*80mm\s+\d+mm\b/', $page);
+        $this->assertDoesNotMatchRegularExpression('/size:[^;]*\bauto\b/', $page);
+        $this->assertMatchesRegularExpression('/margin:\s*0\b/', $page);
+
+        // The receipt column is constrained to the roll width.
+        $main = $this->ruleFor($css, 'main');
+        $this->assertMatchesRegularExpression('/max-width:\s*80mm\s*!important/', $main);
+
+        // The whole-ticket <section> and the <aside> holding "Order Details" +
+        // "Thank You" must NOT be forced unbreakable: on a long order that made
+        // the browser shunt the entire aside onto a second sheet instead of
+        // letting the slip flow on continuously. Only the small blocks (list
+        // rows, the details card) stay atomic.
+        $this->assertDoesNotMatchRegularExpression(
+            '/(^|[\s,{])(section|aside)\s*,[^{}]*\bbreak-inside:\s*avoid/m',
+            $css,
+            'section/aside are still inside a break-inside:avoid selector list'
+        );
+        $this->assertMatchesRegularExpression(
+            '/page-break-inside:\s*avoid\s*!important/',
+            $this->ruleFor($css, 'li')
+        );
+
+        // Screen viewing is untouched: the block is print-only. (A PHPUnit
+        // request cannot render pages, so single-page behaviour itself is
+        // verified out of band with headless Chrome; this guards the rules.)
+        $this->assertStringNotContainsString('80mm', substr($html, 0, strpos($html, '@media print')));
+    }
+
+    public function test_the_receipt_print_strips_per_section_card_styling(): void
+    {
+        $css = $this->printBlock($this->receiptHtml());
+
+        // The whole-ticket <section> no longer reads as a separate floating
+        // card: no rounded corners, no tinted background, no shadow.
+        $section = $this->ruleFor($css, 'section');
+        $this->assertMatchesRegularExpression('/border-radius:\s*0\s*!important/', $section);
+        $this->assertMatchesRegularExpression('/background:\s*transparent\s*!important/', $section);
+        $this->assertMatchesRegularExpression('/box-shadow:\s*none\s*!important/', $section);
+
+        // Same for the "Order Details" card: it merges into the same column.
+        $cardSurface = $this->ruleFor($css, '.card-surface');
+        $this->assertMatchesRegularExpression('/border-radius:\s*0\s*!important/', $cardSurface);
+        $this->assertMatchesRegularExpression('/background:\s*transparent\s*!important/', $cardSurface);
+        $this->assertMatchesRegularExpression('/border:\s*0\s*!important/', $cardSurface);
+    }
+
+    public function test_the_receipt_print_replaces_card_gaps_with_dashed_dividers(): void
+    {
+        $css = $this->printBlock($this->receiptHtml());
+
+        // A dashed hairline — not a gap or a box — sits between the ticket and
+        // Order Details, and between Order Details and the Thank You note.
+        foreach (['section + aside > :first-child', 'aside > div + div'] as $selector) {
+            $decls = $this->ruleFor($css, $selector);
+            $this->assertMatchesRegularExpression('/border-top:\s*1px\s+dashed\s+#ccc\s*!important/', $decls);
+            $this->assertMatchesRegularExpression('/margin-top:\s*0\.5rem\s*!important/', $decls);
+        }
     }
 
     public function test_the_on_screen_receipt_is_unchanged(): void

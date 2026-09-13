@@ -52,9 +52,16 @@
     <div class="pchy-head">
         <h1 class="pchy-title">Archived Items</h1>
         <div class="pchy-chips">
+            {{-- Menu Items is Y | Y | Y, so this one is ungated. Add-ons and
+                 Categories are "Manage Menu Options/Add-ons" and "Manage
+                 Categories", both Y | Y | N — viewing the archive is shared
+                 with staff, but these two chips lead to manager-only screens
+                 and bounced a staff member who clicked them. --}}
             <a href="{{ route('admin.menu-items') }}" class="pchy-chip"><i class="bi bi-arrow-left"></i> Menu Items</a>
+            @if($adminUser && $adminUser->isManager())
             <a href="{{ route('admin.menu-options') }}" class="pchy-chip"><i class="bi bi-plus-square"></i> Add-ons</a>
             <a href="{{ route('admin.add-category') }}" class="pchy-chip"><i class="bi bi-tags"></i> Categories</a>
+            @endif
         </div>
     </div>
 

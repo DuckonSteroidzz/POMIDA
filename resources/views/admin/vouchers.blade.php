@@ -5,11 +5,60 @@
 @section('content')
 
 @php
-    // Staff reach this page read-only: they can see the All Vouchers table to
-    // read active codes to customers, but not the Spin Wheel toggle, the
-    // Create form, or the per-row Actions. Every mutating route is also behind
-    // role:admin, so this is presentation only, not the security boundary.
-    $isAdmin = \Illuminate\Support\Facades\Auth::guard('admin')->user()?->isAdmin() ?? false;
+    /*
+     * Three tiers on this page.
+     *
+     *  staff — "View Vouchers" is Y | Y | Y, so they still read the All
+     *      Vouchers table to give active codes to customers at the counter,
+     *      plus the green "Issue Code" button (a counter task, shared with
+     *      them since 2026-09-04). No authoring, no toggling, no deleting.
+     *
+     *  $canAuthorVouchers (owner + supervisor) — "Create Vouchers", "Edit
+     *      Vouchers" and "Activate/Deactivate Vouchers" are Y | LIMITED | N.
+     *      This is the Create form, the Edit button and the on/off toggle —
+     *      but for a supervisor the last two are decided PER VOUCHER by
+     *      $canManageVoucher below, not by this flag alone.
+     *
+     *  $isAdmin (owner alone) — two things. "Delete Vouchers" is Y | N | N:
+     *      destroying a voucher cascades to every customer's unused claim on
+     *      it, which is irreversible and not a per-branch act. And the Spin
+     *      Wheel switch, which is System-Level Configuration (Y | N | N)
+     *      rather than a voucher action at all.
+     *
+     * THE BRANCH SCOPE (Sept 2026)
+     * ---------------------------
+     * vouchers.branch_id is nullable and NULL means GLOBAL — valid at every
+     * branch — exactly as menu_items.branch_id does. A supervisor's listing is
+     * already narrowed server-side by showVouchers() to their own branch plus
+     * the global ones; the globals are shown READ-ONLY so a branch manager
+     * still knows what company-wide promotions are running (their own staff can
+     * read them on this very page) without being able to touch one.
+     *
+     * Presentation only — every mutating route is gated by its own role group
+     * AND by AdminController::promotionScopeRefusal(), and those are the
+     * security boundary, not this. $canManageVoucher mirrors that method
+     * exactly; it is the button agreeing with the server, never a substitute.
+     */
+    $adminUser = \Illuminate\Support\Facades\Auth::guard('admin')->user();
+    $isAdmin = $adminUser?->isAdmin() ?? false;
+    $canAuthorVouchers = $adminUser?->isManager() ?? false;
+    $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+    $canManageVoucher = function ($voucher) use ($canAuthorVouchers, $lockedBranchId) {
+        if (! $canAuthorVouchers) {
+            return false;
+        }
+
+        // Owner — not branch bound, so every voucher, global ones included.
+        if ($lockedBranchId === null) {
+            return true;
+        }
+
+        // Supervisor — own branch only, and never a global voucher. The NULL
+        // case is stated on its own for the same reason it is in
+        // promotionScopeRefusal(): a coalesced null must not become a match.
+        return $voucher->branch_id !== null && (int) $voucher->branch_id === $lockedBranchId;
+    };
 @endphp
 
 <style>
@@ -31,7 +80,7 @@
 
 <p class="page-title">{{ $isAdmin ? 'Vouchers & Game' : 'Vouchers' }}</p>
 
-@unless($isAdmin)
+@unless($canAuthorVouchers)
 <p style="font-size:0.82rem;color:#888;margin:-0.5rem 0 1rem;">
     Share an active voucher code below with a customer at the counter, or use the
     green <i class="bi bi-ticket-perforated"></i> button to issue a fresh single-use code.
@@ -113,6 +162,9 @@
 </script>
 @endif
 
+{{-- The Spin Wheel switch is System-Level Configuration (Y | N | N), not a
+     voucher action — it turns a customer-facing game on for the whole system.
+     Owner only, and admin.game.toggle stays in the `role:admin` route group. --}}
 @if($isAdmin)
 @php
 $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', 'game_enabled')->value('value');
@@ -132,7 +184,11 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
         </form>
     </div>
 </div>
+@endif
 
+{{-- "Create Vouchers" is Y | Y | N — the manager tier, unlike the Spin Wheel
+     card above. Split out of the owner-only block it used to share. --}}
+@if($canAuthorVouchers)
 <div class="content-card" style="margin-bottom:1rem;">
     <p style="font-size:0.9rem;font-weight:700;color:#333;margin-bottom:1rem;">Create New Voucher</p>
     <form action="{{ route('admin.vouchers.store') }}" method="POST" autocomplete="off">
@@ -186,7 +242,33 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
                 <input type="number" name="points_required" class="form-control-custom" min="0" value="0">
                 <small style="font-size:0.7rem;color:#aaa;">0 = direct voucher (no points needed)</small>
             </div>
+            {{-- Branch scope. Owner only: a supervisor has exactly one legal
+                 answer, so their voucher is scoped from their account by
+                 promotionBranchIdFor() and no field is offered. Same plain
+                 <select name="branch_id"> as the Assigned Branch control on
+                 the Staff Accounts page — no new component. Defaults to
+                 global; the owner picks a branch only when they mean to. --}}
+            @if($lockedBranchId === null)
+            <div>
+                <label class="form-label-custom">Branch Scope</label>
+                <select name="branch_id" class="form-control-custom">
+                    <option value="">All Branches (global)</option>
+                    @foreach(($branches ?? collect()) as $b)
+                        <option value="{{ $b->id }}" {{ old('branch_id') == $b->id ? 'selected' : '' }}>
+                            {{ $b->name }}
+                        </option>
+                    @endforeach
+                </select>
+                <small style="font-size:0.7rem;color:#aaa;">Leave as All Branches for a company-wide promo</small>
+            </div>
+            @endif
         </div>
+        @if($lockedBranchId !== null)
+        <p style="font-size:0.75rem;color:#4B5563;font-weight:500;margin:0 0 0.75rem;">
+            <i class="bi bi-building"></i>
+            This voucher will be scoped to your own branch.
+        </p>
+        @endif
         <button type="submit" class="btn-primary-custom">
             <i class="bi bi-plus-circle"></i> Create Voucher
         </button>
@@ -197,7 +279,7 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
 <div class="content-card">
     <p style="font-size:0.9rem;font-weight:700;color:#333;margin-bottom:1rem;">
         All Vouchers ({{ count($vouchers) }})
-        <span style="font-size:0.75rem;color:#888;font-weight:400;margin-left:0.5rem;">{{ $isAdmin ? 'Active vouchers appear on the spin wheel' : 'Share an active code with a customer' }}</span>
+        <span style="font-size:0.75rem;color:#888;font-weight:400;margin-left:0.5rem;">{{ $canAuthorVouchers ? 'Active vouchers appear on the spin wheel' : 'Share an active code with a customer' }}</span>
     </p>
 
     @if(count($vouchers) > 0)
@@ -213,7 +295,8 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Valid From</th>
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Expiry</th>
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Points Req.</th>
-                    @if($isAdmin)
+                    <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Branch</th>
+                    @if($canAuthorVouchers)
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Wheel</th>
                     @else
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Status</th>
@@ -255,7 +338,21 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
                     <td style="padding:0.6rem;text-align:center;">
                         {{ $voucher->points_required > 0 ? $voucher->points_required . ' pts' : 'Direct' }}
                     </td>
-                    @if($isAdmin)
+                    {{-- Same two badges the Menu Items list uses for the same
+                         column, so "All Branches" reads identically wherever a
+                         NULL branch_id appears in the portal. --}}
+                    <td style="padding:0.6rem;text-align:center;">
+                        @if($voucher->branch_id)
+                        <span style="background:#fde8de;color:#C0392B;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600;">
+                            {{ $voucher->branch->name ?? 'Branch #'.$voucher->branch_id }}
+                        </span>
+                        @else
+                        <span style="background:#d4edda;color:#155724;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600;">
+                            All Branches
+                        </span>
+                        @endif
+                    </td>
+                    @if($canManageVoucher($voucher))
                     <td style="padding:0.6rem;text-align:center;">
                         <form action="{{ route('admin.vouchers.toggle', $voucher->id) }}" method="POST" style="display:inline;">
                             @csrf @method('PUT')
@@ -276,7 +373,12 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
                          button — reading a code to a walk-in customer is a
                          counter task. Edit and Delete stay admin-only. --}}
                     <td style="padding:0.6rem;text-align:center;white-space:nowrap;">
-                        @if($isAdmin)
+                        {{-- The LIMITED row, per voucher. A supervisor gets the
+                             Edit button only on their OWN branch's vouchers —
+                             never on a global one, never on another branch's.
+                             updateVoucher() enforces the same rule server-side,
+                             which is what actually stops a crafted PUT. --}}
+                        @if($canManageVoucher($voucher))
                         <button type="button"
                             class="btn-edit-custom"
                             title="Edit voucher"
@@ -291,6 +393,7 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
                             data-expires-at="{{ $voucher->expires_at ? $voucher->expires_at->format('Y-m-d') : '' }}"
                             data-points-required="{{ $voucher->points_required }}"
                             data-is-active="{{ $voucher->is_active ? '1' : '0' }}"
+                            data-branch="{{ $voucher->branch_id ?? '' }}"
                             onclick="openEditVoucherModal(this)"
                             style="margin-right:0.35rem;padding:0.3rem 0.6rem;font-size:0.75rem;">
                             <i class="bi bi-pencil-square"></i>
@@ -336,12 +439,12 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
     @else
     <div style="text-align:center;padding:2rem;color:#aaa;font-size:0.85rem;">
         <i class="bi bi-ticket-perforated" style="font-size:2.5rem;display:block;margin-bottom:0.5rem;color:#ddd;"></i>
-        No vouchers yet.@if($isAdmin) Create one above!@endif
+        No vouchers yet.@if($canAuthorVouchers) Create one above!@endif
     </div>
     @endif
 </div>
 
-@if($isAdmin)
+@if($canAuthorVouchers)
 {{-- Edit Voucher Modal --}}
 <div class="pchy-modal-overlay" id="editVoucherModal">
     <div class="pchy-modal-box">
@@ -402,6 +505,22 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
                         <label for="editVoucherIsActive" style="font-size:0.82rem;color:#555;margin:0;">Active on spin wheel</label>
                     </div>
                 </div>
+                {{-- Owner only. A supervisor can only ever reach this modal for
+                     a voucher already in their own branch, and updateVoucher()
+                     re-derives branch_id from their account regardless of what
+                     is posted, so offering them the field would be offering a
+                     choice that does not exist. --}}
+                @if($lockedBranchId === null)
+                <div>
+                    <label class="form-label-custom">Branch Scope</label>
+                    <select name="branch_id" id="editVoucherBranch" class="form-control-custom">
+                        <option value="">All Branches (global)</option>
+                        @foreach(($branches ?? collect()) as $b)
+                            <option value="{{ $b->id }}">{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
             </div>
 
             <div class="pchy-modal-foot">
@@ -425,6 +544,13 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
         document.getElementById('editVoucherExpiresAt').value = btn.dataset.expiresAt || '';
         document.getElementById('editVoucherPointsRequired').value = btn.dataset.pointsRequired || '0';
         document.getElementById('editVoucherIsActive').checked = btn.dataset.isActive === '1';
+
+        // Absent for a supervisor — the field is not rendered for them.
+        var branchField = document.getElementById('editVoucherBranch');
+        if (branchField) {
+            branchField.value = btn.dataset.branch || '';
+        }
+
         document.getElementById('editVoucherModal').classList.add('show');
     }
 

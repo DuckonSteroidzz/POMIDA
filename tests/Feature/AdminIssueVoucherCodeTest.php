@@ -416,6 +416,10 @@ class AdminIssueVoucherCodeTest extends TestCase
             $roleRules($issue),
             'issuing a code should share the access rule of the staff-visible voucher list'
         );
-        $this->assertContains('role:admin,staff', $roleRules($issue));
+        // The literal moved when supervisor joined the shared shift group
+        // (Sept 2026 role pass); the rule this test exists to protect did not.
+        // Pinned rather than computed on purpose: if the group is ever widened
+        // again, this line must be looked at deliberately.
+        $this->assertContains('role:admin,staff,supervisor', $roleRules($issue));
     }
 }

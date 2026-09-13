@@ -131,10 +131,12 @@
                     <td data-label="Date" class="co-date">{{ ($order->completed_at ?? $order->created_at)->format('M d, Y h:i A') }}</td>
                     <td data-label="Order #" class="co-order-no">{{ $order->order_number }}</td>
                     <td data-label="Type" class="co-ta-center">
-                        <span class="co-badge co-badge-type">{{ $typeLabel }}</span>
-                        @if($order->type === 'dine_in' && $order->is_takeout)
-                            <span class="co-badge co-badge-bad">Take Out</span>
-                        @endif
+                        {{-- A Dine-In order flagged Take Out reads as the table
+                             reference plus "Take Out" — never the words "Dine In"
+                             next to "Take Out", which testers took for two
+                             conflicting order types. There is no separate Table
+                             column on this page, so the table number lives here. --}}
+                        <span class="co-badge co-badge-type">@if($order->type === 'dine_in' && $order->is_takeout)Table {{ $order->table_number ?? 'N/A' }} · Take Out @else{{ $typeLabel }}@endif</span>
                     </td>
                     <td data-label="Items" class="co-items">
                         @foreach($order->items as $item)

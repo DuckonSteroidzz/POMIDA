@@ -458,4 +458,61 @@ class MenuItemRecipeCostTest extends TestCase
         $this->assertStringContainsString('data-has-recipe="0"', $openRow);
         $this->assertStringContainsString('data-cost="41.00"', $openRow);
     }
+
+    /**
+     * The Edit modal's saved recipe rows must carry the per-unit cost and the
+     * quantity as data-* attributes, so the live "Cost from recipe" preview
+     * (recalcRecipeCost()) can recompute from the rows on screen after an
+     * ingredient is added or removed — the same way Add mode already does from
+     * its draft rows.
+     */
+    public function test_edit_modal_saved_recipe_rows_carry_unit_cost_and_quantity_for_the_live_preview(): void
+    {
+        $beans = $this->makeInventory(1.25);
+        $sugar = $this->makeInventory(0.80);
+        $item  = $this->makeItem(['price' => 60, 'cost' => 999, 'name' => 'MIRC Live Cost Item']);
+        MenuItemIngredient::create(['menu_item_id' => $item->id, 'inventory_id' => $beans->id, 'quantity_used' => 15]);
+        MenuItemIngredient::create(['menu_item_id' => $item->id, 'inventory_id' => $sugar->id, 'quantity_used' => 5]);
+
+        $html = $this->actingAs($this->admin(), 'admin')->get('/admin/menu-items')->getContent();
+
+        // Isolate this item's Edit recipe block.
+        $start = strpos($html, 'id="recipe-' . $item->id . '"');
+        $this->assertNotFalse($start, 'the per-item Edit recipe block is missing');
+        $block = substr($html, $start, 4000);
+
+        // Each saved row exposes its own unit_cost and quantity_used.
+        $this->assertMatchesRegularExpression(
+            '/data-ingredient-id="' . $item->recipeIngredients->first()->id . '"[^>]*data-unit-cost="1\.25"[^>]*data-qty="15/',
+            $block,
+            'the first saved row must carry data-unit-cost and data-qty'
+        );
+        $this->assertStringContainsString('data-unit-cost="0.80"', $block);
+        $this->assertStringContainsString('data-qty="5', $block);
+    }
+
+    /**
+     * The live preview is ONE shared function, invoked from the Edit
+     * add-ingredient and delete-ingredient success handlers (Add mode already
+     * called it from its draft add/remove).
+     */
+    public function test_the_cost_preview_function_is_shared_and_wired_into_the_edit_handlers(): void
+    {
+        $js = file_get_contents(resource_path('views/admin/menu-items.blade.php'));
+
+        // One generalised function; the Add-mode name is now a thin wrapper.
+        $this->assertStringContainsString('function recalcRecipeCost(blockId)', $js);
+        $this->assertStringContainsString("function recalcAddModeCost() { recalcRecipeCost('add'); }", $js);
+
+        // Invoked from BOTH Edit fetch success paths (add and delete).
+        $this->assertSame(
+            2,
+            substr_count($js, 'recalcRecipeCost(blockId);'),
+            'recalcRecipeCost(blockId) must run after the Edit add-ingredient AND delete-ingredient fetches'
+        );
+
+        // The appended Edit row is given the same data-* the preview reads.
+        $this->assertStringContainsString('row.dataset.unitCost = editUnitCost;', $js);
+        $this->assertStringContainsString('row.dataset.qty = editQty;', $js);
+    }
 }

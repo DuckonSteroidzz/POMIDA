@@ -10,6 +10,8 @@ class Ad extends Model
     use HasFactory;
 
     protected $fillable = [
+        // NULL = global (shown at every branch). See Voucher::$fillable.
+        'branch_id',
         'title',
         'description',
         'image',
@@ -26,6 +28,12 @@ class Ad extends Model
         'starts_at' => 'datetime',
         'ends_at'   => 'datetime',
     ];
+
+    /** The branch this ad is scoped to, or null when it is global. */
+    public function branch()
+    {
+        return $this->belongsTo(Branch::class);
+    }
 
     public function isActive(): bool
     {

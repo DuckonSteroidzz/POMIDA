@@ -12,7 +12,14 @@
 @endsection
 
 {{-- Reloading is the actual fix for an expired CSRF token, so it stays first;
-     the layout then adds the way back to whatever the visitor was doing. --}}
+     the layout then adds the way back to whatever the visitor was doing.
+
+     This page can only ever be reached via a POST (a GET never fails CSRF
+     verification), so window.location.reload() here would resubmit that same
+     POST body — the browser's native form-resubmission behaviour. Every
+     resubmission repeats the exact conditions that produced this page, which
+     is the reload loop reported on /customer/dineinqr. A plain navigation to
+     the same path is always a fresh GET, never a resubmission. --}}
 @section('extra_actions')
-    <button class="btn btn-primary" type="button" onclick="window.location.reload()">Reload the page</button>
+    <button class="btn btn-primary" type="button" onclick="window.location.href = window.location.pathname">Reload the page</button>
 @endsection

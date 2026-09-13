@@ -788,17 +788,32 @@
                 <span>Vouchers</span>
             </a>
 
-            {{-- ══════════ ADMIN ONLY SECTION ══════════ --}}
-            @if($adminUser && $adminUser->role === 'admin')
+            {{-- Summary — ALL THREE roles.
 
-                {{-- Summary --}}
-                <a href="{{ route('admin.summary') }}"
-                    class="nav-link-item {{ request()->routeIs('admin.summary') ? 'active' : '' }}">
-                    <i class="bi bi-bar-chart"></i>
-                    <span>Summary</span>
-                </a>
+                 "View Summary/Reports" is Y | Y | LIMITED, and LIMITED means
+                 a staff member sees their own branch's figures rather than no
+                 figures at all. showSummary() scopes every number through
+                 getSelectedBranch(), so there is no consolidated view to
+                 reach from here and nothing in the request that widens it. --}}
+            <a href="{{ route('admin.summary') }}"
+                class="nav-link-item {{ request()->routeIs('admin.summary') ? 'active' : '' }}">
+                <i class="bi bi-bar-chart"></i>
+                <span>Summary</span>
+            </a>
 
-                {{-- Analytics --}}
+            {{-- ══════════ MANAGER SECTION — owner AND supervisor ══════════
+
+                 Every "Y | Y | N" row of the permission matrix. isManager() is
+                 the same User::MANAGER_ROLES membership the matching
+                 `role:admin,supervisor` route group is spelled from, so a link
+                 shown here always leads somewhere the viewer is actually
+                 admitted, and a link hidden here is refused server-side too.
+
+                 Hiding rather than disabling, matching every other gated
+                 control in this portal. --}}
+            @if($adminUser && $adminUser->isManager())
+
+                {{-- Analytics — Y | Y | N, unlike Summary above. --}}
                 <a href="{{ route('admin.analytics') }}"
                     class="nav-link-item {{ request()->routeIs('admin.analytics') ? 'active' : '' }}">
                     <i class="bi bi-graph-up"></i>
@@ -819,27 +834,40 @@
                     <span>Menu Options</span>
                 </a>
 
-                {{-- Branches --}}
-                <a href="{{ route('admin.branches') }}"
-                    class="nav-link-item {{ request()->routeIs('admin.branches') ? 'active' : '' }}">
-                    <i class="bi bi-building"></i>
-                    <span>Branches</span>
-                </a>
-
-                {{-- Ads --}}
+                {{-- Ads — "Manage Advertisements", Y | Y | N. --}}
                 <a href="{{ route('admin.ads') }}"
                     class="nav-link-item {{ request()->routeIs('admin.ads') ? 'active' : '' }}">
                     <i class="bi bi-megaphone"></i>
                     <span>Ads</span>
                 </a>
 
-                {{-- Staff Accounts --}}
+                {{-- Staff Accounts — Y | Y | N to reach the screen.
+
+                     What a supervisor SEES on it is narrower than what the
+                     owner sees: their own branch's staff only, decided by
+                     AdminController::manageableUsersQuery(). The link is the
+                     same; the roster behind it is not. --}}
                 <a href="{{ route('admin.users') }}"
                     class="nav-link-item {{ request()->routeIs('admin.users') ? 'active' : '' }}">
                     <i class="bi bi-people"></i>
                     <span>Staff Accounts</span>
                 </a>
 
+            @endif
+
+            {{-- ══════════ OWNER ONLY ══════════
+
+                 Branches is the shape of the business itself — Create Branch,
+                 Edit Branch Settings, Delete Branch and Manage Other Branches
+                 are all Y | N | N — so it stays on isAdmin() and its routes
+                 stay in the `role:admin` group. A supervisor is branch-locked;
+                 handing them this screen would be handing them the lock. --}}
+            @if($adminUser && $adminUser->isAdmin())
+                <a href="{{ route('admin.branches') }}"
+                    class="nav-link-item {{ request()->routeIs('admin.branches') ? 'active' : '' }}">
+                    <i class="bi bi-building"></i>
+                    <span>Branches</span>
+                </a>
             @endif
 
             {{-- Account — ADMIN ONLY as of 2026-09-01.
@@ -938,14 +966,14 @@
 
                 @if($adminUser && $adminUser->role === 'admin')
 
-                    {{-- Admin only — may branch filter --}}
-                    <form action="{{ route('admin.branches.select') }}"
-                        method="POST"
-                        style="display:flex;gap:0.5rem;align-items:center;margin:0;">
+                    {{-- Admin only — may branch filter. A plain GET navigation,
+                         not a POST form: switching your own "Viewing:" scope
+                         writes nothing and carries no CSRF token to go stale. --}}
+                    <div style="display:flex;gap:0.5rem;align-items:center;margin:0;">
 
-                        @csrf
-
-                        <select name="branch_id" onchange="this.form.submit()" class="pc-select">
+                        <select name="branch_id"
+                            onchange="if(this.value){window.location.href='{{ url('admin/branches/select') }}/'+encodeURIComponent(this.value);}"
+                            class="pc-select">
 
                             <option value="all"
                                 {{ $selectedBranchId === 'all' ? 'selected' : '' }}>
@@ -963,15 +991,28 @@
 
                         </select>
 
-                    </form>
+                    </div>
 
                 @else
 
-                    {{-- Staff — locked sa sariling branch --}}
+                    {{-- Staff and supervisor — locked sa sariling branch, no
+                         picker at all. Hiding it is NOT the control: GET
+                         admin/branches/select/{branch} lives in the
+                         `role:admin` route group, so typing the URL is refused
+                         server-side by RoleMiddleware. This is only the label
+                         shown in the picker's place.
+
+                         'Main Branch' as the fallback is kept for staff, whose
+                         missing branch AdminOrderAccess::lockedBranchId() does
+                         resolve to branch 1. A supervisor with no branch is
+                         denied everything instead (locked to 0), so telling
+                         them they are viewing Main Branch would be a plain
+                         lie about what they can see. --}}
                     @if($adminUser)
                         <span class="label">
                             <i class="bi bi-building"></i>
-                            {{ $adminUser->branch?->name ?? 'Main Branch' }}
+                            {{ $adminUser->branch?->name
+                                ?? ($adminUser->role === 'staff' ? 'Main Branch' : 'No branch assigned') }}
                         </span>
                     @endif
 

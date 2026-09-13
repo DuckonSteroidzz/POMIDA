@@ -2732,3 +2732,80 @@ All three files restored byte-identically (`diff -q`) and reconfirmed green.
 
 13 new tests in `PointsRewardThresholdTest`. Full suite **629 tests / 3016
 assertions**, green across three consecutive runs (616 / 2942 before).
+
+---
+
+# Pass 13 — Customer route throttle-counter isolation, 2026-09-09
+
+The customer half of Pass 7's bug, finally converted. Pass 7 fixed three admin
+actions and its "Out of scope" note (§ "found, listed, deliberately NOT fixed")
+listed 21 routes still sharing one raw per-IP counter. This pass takes the
+customer-facing ones.
+
+## The bug, restated
+
+Laravel's unnamed `throttle:N,M` keys on `'' . sha1(domain|IP)` — empty prefix,
+N/M not in the key — so every raw-throttled route on one IP increments ONE
+shared counter and each route only compares that shared total against its own
+limit. On a café's single shared public IP the customer notification bell
+(polled every 6s, `throttle:120,1`) shared its counter with
+`customer.login.post` (`10,1`) and `customer.verification.resend` (`3,1`):
+background polling alone could 429 a first login attempt.
+
+## What changed
+
+Every raw `throttle:N,M` in the customer route group — re-enumerated straight
+from `routes/web.php`, not from the Pass 7 list — plus the guard-neutral
+`discount-id.show`, moved to a **named per-IP limiter** registered via the
+existing `perIp()` helper in `RateLimitServiceProvider`. Each keeps its exact
+previous limit; only the counter is now isolated. Keying stays per-IP,
+deliberately, exactly as Pass 7 kept admin-login per-IP.
+
+| Route(s) | Named limiter | Limit (unchanged) |
+|---|---|---|
+| `customer.login.post` | `customer-login` | 10/min |
+| `customer.register.post` | `customer-register` | 10/min |
+| `customer.forgot-password.post` | `customer-forgot-password` | 6/min |
+| `customer.verification.post` | `customer-verification` | 10/min |
+| `customer.verification.resend` | `customer-verification-resend` | 3/min |
+| `customer.new-password.post` | `customer-new-password` | 6/min |
+| `customer.notifications.{index,unread-count,read}` | `customer-notifications` | 120/min |
+| `customer.table-activity`, `customer.table-session-status` | `customer-table-clock` | 120/min |
+| `customer.add-points` | `customer-add-points` | 30/min |
+| `discount-id.show` | `customer-discount-lookup` | 60/min |
+
+13 routes, 10 limiters. The two Pass 7 lines that read "customer notifications
+were `60,1`" are stale — the live file has carried `120,1` since a later pass;
+the conversion preserves whatever value the route actually had.
+
+Untouched, as instructed: the no-throttle status endpoints (`order-status`,
+`orders-status`, `gcash-payment/{id}/status`), the already-named customer money
+limiters (`place-order`, `gcash-paid`, `order-rating`, `apply-voucher`,
+`help-request`, `table-session`), and every admin route. The admin raw
+throttles from the Pass 7 out-of-scope list (`admin.verification.post`,
+`admin.forgot-password.post`, `admin.new-password.post`,
+`admin.verification.resend`, `admin.tables.occupancy`, `admin.tables.clear`,
+`admin.notifications.*`) are still raw and still open.
+
+## Sabotage check
+
+`routes/web.php` reverted to the raw `throttle:N,M` (named limiters left
+registered but unused): **4 of the 8 new tests failed** —
+`test_no_customer_route_uses_a_raw_throttle_any_more`,
+`test_exhausting_the_notification_poll_does_not_429_the_login`,
+`test_exhausting_the_notification_poll_does_not_429_the_resend_link`,
+`test_login_and_register_do_not_share_a_counter` — i.e. exactly the structural
+and cross-route-isolation assertions. Restored and reconfirmed byte-identical
+with `diff -q`.
+
+## Verification
+
+New `tests/Feature/CustomerThrottleIsolationTest` — 8 tests: three structural
+(no raw throttles left, every limit unchanged, distinct keys) and five
+behavioural (poll-vs-login, poll-vs-resend, login-vs-register, plus two
+positive controls that a real guesser is still stopped at 10/min and one IP's
+block never touches another). `AdminLoginThrottleTest` and
+`ResetCodeBruteForceTest` each had one assertion re-pointed from the literal
+middleware string to the resolved limiter for the customer route.
+
+Full suite **1200 tests / 6603 assertions**, green (1192 before).

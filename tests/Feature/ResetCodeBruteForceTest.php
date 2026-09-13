@@ -20,18 +20,21 @@ use Tests\TestCase;
  *
  * WHAT WAS FOUND, BY MEASUREMENT NOT BY READING
  * ---------------------------------------------
- * Both portals throttle the verification submit at `throttle:10,1`. Laravel
- * keys an unauthenticated throttle on sha1(domain|IP)
- * (ThrottleRequests::resolveRequestSignature), with an EMPTY prefix for
- * unnamed limiters, which has two consequences that matter here:
+ * Both portals throttle the verification submit at 10 a minute, keyed on the
+ * IP. The admin side is still the raw `throttle:10,1`; the customer side is the
+ * named per-IP limiter `customer-verification` as of Pass 13 (2026-09-09), same
+ * 10/min. This matters here in two ways:
  *
  *   a) The limit is per IP ADDRESS. Not per session, not per code, not per
  *      account.
- *   b) Because the prefix is empty, every plain `throttle:X,Y` route shares
- *      one counter per IP — so the POST to /forgot-password that starts the
- *      flow spends one of the same 10 slots the verification step then uses.
- *      Measured: the first 429 arrives on the 10th verification attempt, not
- *      the 11th.
+ *   b) On the admin side, the empty-prefix raw throttle still means every plain
+ *      `throttle:X,Y` route shares one counter per IP — so the POST to
+ *      /admin/forgot-password that starts the flow spends one of the same 10
+ *      slots the verification step then uses (first 429 on the 10th attempt,
+ *      not the 11th). On the customer side the named limiter now has its own
+ *      counter, so /customer/verification gets its full 10 regardless of the
+ *      forgot-password POST. Either way one IP is capped well under 100 guesses
+ *      inside the code's 10-minute life.
  *
  * From a single IP that is a hard ceiling of well under 100 guesses inside the
  * code's 10-minute life. Against 1,000,000 that is nothing.
@@ -132,16 +135,32 @@ class ResetCodeBruteForceTest extends TestCase
      */
     public function test_both_verification_endpoints_are_throttled_at_ten_per_minute(): void
     {
-        foreach (['customer.verification.post', 'admin.verification.post'] as $name) {
-            $route = Route::getRoutes()->getByName($name);
-            $this->assertNotNull($route, "route {$name} should exist");
+        // admin.verification.post is still a raw throttle:10,1 (not in Pass 13's
+        // scope). customer.verification.post moved to the named per-IP limiter
+        // `customer-verification` in Pass 13 — same 10/min, its own counter — so
+        // it is pinned by resolving the limiter to a number instead.
+        $adminRoute = Route::getRoutes()->getByName('admin.verification.post');
+        $this->assertNotNull($adminRoute, 'route admin.verification.post should exist');
+        $this->assertContains(
+            'throttle:10,1',
+            $adminRoute->gatherMiddleware(),
+            'admin.verification.post must stay throttled at 10 requests per minute'
+        );
 
-            $this->assertContains(
-                'throttle:10,1',
-                $route->gatherMiddleware(),
-                "{$name} must stay throttled at 10 requests per minute"
-            );
-        }
+        $customerRoute = Route::getRoutes()->getByName('customer.verification.post');
+        $this->assertNotNull($customerRoute, 'route customer.verification.post should exist');
+        $this->assertContains(
+            'throttle:customer-verification',
+            $customerRoute->gatherMiddleware(),
+            'customer.verification.post must go through the named customer-verification limiter'
+        );
+
+        $request = \Illuminate\Http\Request::create('http://127.0.0.1/customer/verification', 'POST');
+        $request->server->set('REMOTE_ADDR', '127.0.0.1');
+        $limit = app(\Illuminate\Cache\RateLimiter::class)->limiter('customer-verification')($request);
+        $limit = is_array($limit) ? $limit[0] : $limit;
+        $this->assertSame(10, $limit->maxAttempts, 'customer verification must stay at 10 a minute');
+        $this->assertSame(60, $limit->decaySeconds, 'the window must stay one minute');
     }
 
     /** The code's life is what bounds the attack window. Pin it. */

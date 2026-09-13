@@ -11,6 +11,12 @@
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
 
+    {{-- Bootstrap Icons — used for the real-time field-validation checkmark
+         (same vendored stylesheet as customer/login.blade.php). --}}
+    @include('partials.icon-stability')
+    <link href="/vendor/bootstrap-icons.css"
+        rel="stylesheet">
+
     <style>
         :root {
             --deep-red: #8B1A1A;
@@ -234,24 +240,6 @@
             font-weight: 700;
         }
 
-        .brand-footer {
-            padding-top: 1.25rem;
-
-            border-top:
-                1px solid
-                rgba(255, 255, 255, 0.18);
-        }
-
-        .hours {
-            margin-top: 0.35rem;
-
-            font-family: "Fraunces", Georgia, serif;
-
-            font-size: 1.2rem;
-
-            color: #fff;
-        }
-
         /* =====================================================
            FORM PANEL
         ===================================================== */
@@ -382,6 +370,26 @@
 
         .field input.is-invalid {
             border-color: var(--terracotta);
+        }
+
+        /* Companion to .is-invalid: a field that has passed the same check the
+           server enforces on submit. Green tone (#155724 / #2E7D5B) is the one
+           already used for success messaging elsewhere in the app — no new
+           colour, and the tick is the shared bi-check-lg icon. */
+        .field input.is-valid {
+            border-color: #2E7D5B;
+        }
+
+        .field-valid-icon {
+            display: none;
+            margin-left: 0.4rem;
+            color: #155724;
+            font-size: 0.78rem;
+            vertical-align: -0.05em;
+        }
+
+        .field.is-valid .field-valid-icon {
+            display: inline-block;
         }
 
         .error-text {
@@ -694,10 +702,6 @@
                 display: none;
             }
 
-            .brand-footer {
-                display: none;
-            }
-
             .brand-description {
                 margin-bottom: 0;
             }
@@ -817,18 +821,6 @@
                 </ul>
 
 
-                <div class="brand-footer">
-
-                    <p class="eyebrow">
-                        Open daily
-                    </p>
-
-                    <p class="hours">
-                        7am – 9pm
-                    </p>
-
-                </div>
-
             </aside>
 
 
@@ -878,6 +870,7 @@
 
 
                 <form
+                    id="registerForm"
                     method="POST"
                     action="{{ route('customer.register.post') }}"
                 >
@@ -893,6 +886,7 @@
 
                             <span class="field-label">
                                 Name
+                                <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
                             <input
@@ -921,6 +915,7 @@
 
                             <span class="field-label">
                                 Email address
+                                <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
                             <input
@@ -948,6 +943,7 @@
 
                             <span class="field-label">
                                 Password
+                                <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
                             <input
@@ -974,6 +970,7 @@
 
                             <span class="field-label">
                                 Confirm password
+                                <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
                             <input
@@ -1000,6 +997,7 @@
 
                             <span class="field-label">
                                 Contact number
+                                <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
                             <input
@@ -1272,29 +1270,111 @@
                 checkbox.checked = true;
             }
 
-            if (window.location.hash === '#termsModal') {
+            /*
+             * Close the modal for good.
+             *
+             * The modal is shown purely by CSS — the rule is .modal:target.
+             * The old handler cleared the "#termsModal" fragment with
+             * history.replaceState(), which does NOT clear :target, so the modal
+             * stayed matched; the inline-style toggle that followed then let it
+             * snap straight back open on a short timer — the reported "loop".
+             *
+             * Pointing the fragment at an id that matches nothing clears :target
+             * reliably (and causes no scroll jump, since no element owns it). A
+             * final replaceState tidies the throwaway fragment out of the URL.
+             */
+            window.location.hash = 'terms-accepted';
 
-                history.replaceState(
-                    null,
-                    '',
-                    window.location.pathname +
-                    window.location.search
-                );
+            history.replaceState(
+                null,
+                '',
+                window.location.pathname +
+                window.location.search
+            );
+        }
 
+    </script>
+
+    <script>
+
+        /*
+         * Real-time field feedback for the registration form.
+         *
+         * Each check mirrors EXACTLY the rule AuthController::register()
+         * enforces on submit (see app/Http/Controllers/Customer/AuthController
+         * .php and App\Support\PasswordPolicy) — no extra business rule is
+         * introduced here; this only surfaces the existing rules as-you-type /
+         * on-blur instead of only after a round-trip. Email uniqueness and the
+         * "terms accepted" rule stay server-side (uniqueness can't be checked
+         * here; the checkbox is its own affordance).
+         */
+        (function () {
+
+            var form = document.getElementById('registerForm');
+            if (!form) return;
+
+            var pw = form.querySelector('input[name="password"]');
+
+            // Same as PasswordPolicy::rule(): >= 8 chars, mixed case, a number
+            // and a symbol.
+            function passwordOk(v) {
+                return v.length >= {{ \App\Support\PasswordPolicy::MIN_LENGTH }}
+                    && /[a-z]/.test(v)
+                    && /[A-Z]/.test(v)
+                    && /[0-9]/.test(v)
+                    && /[^A-Za-z0-9]/.test(v);
             }
 
-            document.getElementById(
-                'termsModal'
-            ).style.display = 'none';
+            var rules = {
+                // required|string|max:255
+                name: function (v) { return v.trim().length > 0 && v.length <= 255; },
+                // required|email  (format only — uniqueness is server-side)
+                email: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); },
+                // required + PasswordPolicy::rule()
+                password: passwordOk,
+                // 'confirmed' — must equal the password field
+                password_confirmation: function (v) { return v.length > 0 && !!pw && v === pw.value; },
+                // required|numeric|digits_between:10,13
+                contact_number: function (v) { return /^[0-9]{10,13}$/.test(v); }
+            };
 
-            setTimeout(function () {
+            // showInvalid: only true on blur / submit-style checks. While the
+            // user is still typing we confirm a pass (green tick) but never
+            // flash the red invalid state at a half-finished value — that stays
+            // the server's on-submit concern, mirrored here only on blur.
+            function apply(input, name, showInvalid) {
+                var field = input.closest('.field');
+                if (input.value === '') {
+                    input.classList.remove('is-valid', 'is-invalid');
+                    if (field) field.classList.remove('is-valid');
+                    return;
+                }
+                var ok = rules[name](input.value);
+                input.classList.toggle('is-valid', ok);
+                if (field) field.classList.toggle('is-valid', ok);
+                if (ok) {
+                    input.classList.remove('is-invalid');
+                } else if (showInvalid) {
+                    input.classList.add('is-invalid');
+                }
+            }
 
-                document.getElementById(
-                    'termsModal'
-                ).style.display = '';
+            Object.keys(rules).forEach(function (name) {
+                var input = form.querySelector('input[name="' + name + '"]');
+                if (!input) return;
+                input.addEventListener('input', function () { apply(input, name, false); });
+                input.addEventListener('blur', function () { apply(input, name, true); });
+            });
 
-            }, 50);
-        }
+            // Re-run the confirmation check whenever the password itself changes.
+            var pwc = form.querySelector('input[name="password_confirmation"]');
+            if (pw && pwc) {
+                pw.addEventListener('input', function () {
+                    if (pwc.value !== '') apply(pwc, 'password_confirmation', false);
+                });
+            }
+
+        })();
 
     </script>
 

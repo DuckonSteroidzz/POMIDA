@@ -241,6 +241,24 @@ public function selectBranch(Request $request)
         return view('customer.dineinqr');
     }
 
+    /**
+     * The live CSRF token for the /dineinqr code-entry form.
+     *
+     * The form there posts with a native submit (not fetch), so the app-wide
+     * session-guard wrapper cannot swap a stale token onto it. A tab left open
+     * past the session lifetime would therefore submit a dead token and land
+     * the customer on the branded 419 page — the one dead end this flow is not
+     * allowed to have. dineinqr.blade.php polls this every few minutes and
+     * rewrites both the <meta> tag and the form's hidden _token field.
+     *
+     * READ-ONLY, like tableSessionStatus(): it reads csrf_token() and nothing
+     * else. It writes no session key and makes no security decision.
+     */
+    public function sessionToken()
+    {
+        return response()->json(['token' => csrf_token()]);
+    }
+
     public function processQr(Request $request)
     {
         $manualCode = trim((string) $request->input('table_code'));
@@ -925,6 +943,14 @@ public function selectBranch(Request $request)
         session()->forget('discount_pending');
     }
 
+    // The Confirm Your Order modal renders outside the "cart has items" guard
+    // that wraps the summary block, so the order-type it reads for the Dine-In
+    // "Take Out" checkbox has to be passed in unconditionally — an empty cart
+    // otherwise left $sessionOrderType undefined and 500'd the page (regression
+    // from 9348f22, "Add Take Out flag for Dine-In orders"). Same expression and
+    // default the summary block uses.
+    $sessionOrderType = session('order_type', Auth::check() ? 'pick_up' : 'dine_in');
+
     $discountCards = collect();
 
     if (Auth::guard('customer')->check()) {
@@ -948,7 +974,8 @@ public function selectBranch(Request $request)
         'cartHasOutOfStockItem',
         'outOfStockItemIds',
         'cartHasNoRecipeItem',
-        'noRecipeItemIds'
+        'noRecipeItemIds',
+        'sessionOrderType'
     ));
 }
 
@@ -1251,9 +1278,24 @@ public function selectBranch(Request $request)
             ]);
         }
 
-        // Every redemption rule lives on the Voucher model so this preview and
-        // the real charge in OrderController::placeOrder() can never disagree.
-        $error = $voucher->redemptionErrorFor(Auth::guard('customer')->user(), $subtotal, $claim);
+        /*
+         * Every redemption rule lives on the Voucher model so this preview and
+         * the real charge in OrderController::placeOrder() can never disagree.
+         *
+         * The branch is read from the SESSION, which is the same place
+         * placeOrder() reads it from — so the branch this preview judges is the
+         * branch the order will be placed at. Null when no branch is chosen
+         * yet; a branch-scoped voucher is refused for that, which costs the
+         * customer nothing because checkout refuses a branchless order anyway.
+         */
+        $sessionBranchId = session('branch_id');
+
+        $error = $voucher->redemptionErrorFor(
+            Auth::guard('customer')->user(),
+            $subtotal,
+            $claim,
+            $sessionBranchId ? (int) $sessionBranchId : null
+        );
 
         if ($error !== null) {
             return response()->json([

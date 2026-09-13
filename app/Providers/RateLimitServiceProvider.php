@@ -70,11 +70,24 @@ use Illuminate\Support\ServiceProvider;
  * exactly the limit it had before, and each is still keyed on the IP — this
  * isolates counters, it does not loosen anything.
  *
- * STILL RAW, AND STILL SHARING ONE BUCKET (not in this pass's scope):
- * the customer auth routes, both verification steps, both forgot-password /
- * new-password steps, the notification polls, and the table/QR endpoints —
- * 21 routes in total. They are listed in docs/SECURITY_TESTING_SUMMARY.md
- * Pass 7. Anything added here in future should be a named limiter.
+ * Pass 13 (2026-09-09): the customer half of that list is now converted too.
+ * Every raw `throttle:N,M` route in the customer group — the auth routes, both
+ * verification steps, both forgot-password / new-password steps, the
+ * notification polls, the dine-in inactivity clock, the spin-replay cap — plus
+ * the shared discount-ID lookup, now has its own NAMED per-IP limiter below.
+ * Each keeps EXACTLY the limit it had as a raw throttle; only the counter
+ * isolation changed. The café reasoning for why these stay keyed on IP (rather
+ * than session) is unchanged: for a login / reset / enumeration endpoint "one
+ * address, many attempts" is the thing being defended against, and a shared
+ * café IP being throttled together is correct. What was wrong was that a first
+ * login attempt shared its counter with the 6-second notification poll, so
+ * background polling alone could 429 an unrelated action.
+ *
+ * The admin routes NOT in this pass's scope (admin.verification.post,
+ * admin.forgot-password.post, admin.new-password.post, admin.verification.resend,
+ * admin.tables.occupancy, admin.tables.clear, admin.notifications.*) are still
+ * raw and still listed in docs/SECURITY_TESTING_SUMMARY.md. Anything added here
+ * in future should be a named limiter.
  */
 class RateLimitServiceProvider extends ServiceProvider
 {
@@ -169,6 +182,56 @@ class RateLimitServiceProvider extends ServiceProvider
      */
     public const ADMIN_BOOTSTRAP_PER_IP = 5;
 
+    /**
+     * Customer-facing endpoints — Pass 13.
+     *
+     * Each value is the exact limit the route carried as a raw `throttle:N,M`
+     * before conversion; the point of the change is counter isolation, not
+     * strictness. All keyed on IP (see the class docblock): these are login,
+     * registration, password-reset, verification and enumeration-shaped
+     * endpoints where "one address, many attempts" is the abuse case, exactly
+     * as with admin-login.
+     */
+    public const CUSTOMER_LOGIN_PER_IP = 10;
+    public const CUSTOMER_REGISTER_PER_IP = 10;
+    public const CUSTOMER_FORGOT_PASSWORD_PER_IP = 6;
+    public const CUSTOMER_VERIFICATION_PER_IP = 10;
+    public const CUSTOMER_VERIFICATION_RESEND_PER_IP = 3;
+    public const CUSTOMER_NEW_PASSWORD_PER_IP = 6;
+
+    /**
+     * The customer notification bell polls unread-count every 6 seconds, and
+     * the counter is per IP, so in a café every phone in the room shares it.
+     * 120/min is the raw value these three routes already carried; isolating
+     * the counter is what stops that background polling spending the login or
+     * resend budget for the whole shop.
+     */
+    public const CUSTOMER_NOTIFICATIONS_PER_IP = 120;
+
+    /**
+     * The dine-in guest's fifteen-minute inactivity clock: one endpoint writes
+     * it on real interaction, the other only reads it as the page polls itself.
+     * Both were raw throttle:120,1; they share one named limiter because they
+     * are one feature and neither can act for a visitor holding no live
+     * occupancy — the ceiling is here to catch a runaway client.
+     */
+    public const CUSTOMER_TABLE_CLOCK_PER_IP = 120;
+
+    /**
+     * Spin-and-win points conversion. The award values are allowlisted
+     * server-side in AuthController::addPoints(); this only caps how fast a
+     * spin can be replayed. Raw value was throttle:30,1.
+     */
+    public const CUSTOMER_ADD_POINTS_PER_IP = 30;
+
+    /**
+     * GET /discount-id/{order} — a guessable integer read straight into a
+     * lookup that returns a person's identity document. Sits outside both guard
+     * groups (staff and the uploading customer authenticate on different
+     * guards); raw value was throttle:60,1.
+     */
+    public const CUSTOMER_DISCOUNT_LOOKUP_PER_IP = 60;
+
     public function boot(): void
     {
         /*
@@ -187,6 +250,22 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('admin-staff-password', self::ADMIN_STAFF_PASSWORD_PER_IP);
         $this->perIp('admin-issue-voucher-code', self::ADMIN_ISSUE_VOUCHER_CODE_PER_IP);
         $this->perIp('admin-bootstrap', self::ADMIN_BOOTSTRAP_PER_IP);
+
+        /*
+         * Customer-facing routes — Pass 13. Same treatment as the admin auth
+         * routes above: a named, per-IP counter each, every limit unchanged
+         * from the raw throttle it replaces.
+         */
+        $this->perIp('customer-login', self::CUSTOMER_LOGIN_PER_IP);
+        $this->perIp('customer-register', self::CUSTOMER_REGISTER_PER_IP);
+        $this->perIp('customer-forgot-password', self::CUSTOMER_FORGOT_PASSWORD_PER_IP);
+        $this->perIp('customer-verification', self::CUSTOMER_VERIFICATION_PER_IP);
+        $this->perIp('customer-verification-resend', self::CUSTOMER_VERIFICATION_RESEND_PER_IP);
+        $this->perIp('customer-new-password', self::CUSTOMER_NEW_PASSWORD_PER_IP);
+        $this->perIp('customer-notifications', self::CUSTOMER_NOTIFICATIONS_PER_IP);
+        $this->perIp('customer-table-clock', self::CUSTOMER_TABLE_CLOCK_PER_IP);
+        $this->perIp('customer-add-points', self::CUSTOMER_ADD_POINTS_PER_IP);
+        $this->perIp('customer-discount-lookup', self::CUSTOMER_DISCOUNT_LOOKUP_PER_IP);
 
         $this->pair('place-order', self::PLACE_ORDER_PER_SESSION, self::PLACE_ORDER_PER_IP);
         $this->pair('gcash-paid', self::GCASH_PAID_PER_SESSION, self::GCASH_PAID_PER_IP);

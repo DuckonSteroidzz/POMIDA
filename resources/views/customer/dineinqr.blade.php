@@ -464,6 +464,46 @@
                 submitTableCode();
             }
         });
+
+        /*
+            Keep the code-entry form's CSRF token alive.
+
+            The hidden #qrForm (in partials/dine-in-account-prompt) posts with a
+            native form submit, so the session-guard fetch wrapper never gets to
+            swap a fresh token onto it. Left open past SESSION_LIFETIME the form
+            would post a dead token and the customer would hit the branded 419
+            page — the one dead end this flow must not have. Every other refusal
+            here (ERR_QR_STALE, ERR_SESSION_IDLE) redirects back to this same
+            form with an inline message instead.
+
+            Same fetch-and-swap shape session-guard already uses for the
+            X-CSRF-TOKEN header; here it also rewrites the hidden _token field
+            the form actually submits. A poll well inside the session lifetime
+            also keeps the session itself from ageing out while the tab is open.
+        */
+        (function () {
+            var REFRESH_MS = 15 * 60 * 1000; // SESSION_LIFETIME is 480 min.
+
+            function refreshCsrfToken() {
+                fetch('{{ route('customer.session-token') }}', {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin'
+                })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (!data || !data.token) { return; }
+
+                        var meta = document.querySelector('meta[name="csrf-token"]');
+                        if (meta) { meta.setAttribute('content', data.token); }
+
+                        var field = document.querySelector('#qrForm input[name="_token"]');
+                        if (field) { field.value = data.token; }
+                    })
+                    .catch(function () { /* transient/offline — the next tick retries */ });
+            }
+
+            setInterval(refreshCsrfToken, REFRESH_MS);
+        })();
     </script>
 
 </body>

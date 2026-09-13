@@ -12,6 +12,22 @@
         'custom'=> 'Custom Range',
     ];
     $currentPeriodLabel = $periodLabels[$period] ?? 'Today';
+
+    /*
+     * This page is the matrix's one LIMITED report — Y | Y | LIMITED — so
+     * staff DO reach it, scoped by showSummary() to their own branch.
+     *
+     * The CSV is a different row. A bulk sales extract is "View Sales/
+     * Financial Data" (Y | Y | N), and admin.export.orders sits in the
+     * `role:admin,supervisor` group accordingly, so for a staff member this
+     * link led straight to a permission bounce the moment Summary opened up
+     * to them. Hidden here to match, the same way every other gated control
+     * in this portal is hidden rather than disabled.
+     *
+     * Print Report beside it is NOT gated: it is window.print() on the page
+     * they are already allowed to read.
+     */
+    $canExport = Auth::guard('admin')->user()?->isManager() ?? false;
 @endphp
 
 <div class="summary-toolbar" style="display:flex;justify-content:space-between;align-items:center;gap:0.5rem;flex-wrap:wrap;">
@@ -22,6 +38,7 @@
              custom range so a period that is relative to "now" (Today, This
              Week, This Month) cannot re-resolve to a different window between
              the page render and the click. --}}
+        @if($canExport)
         <a href="{{ route('admin.export.orders', [
                 'period'    => 'custom',
                 'date_from' => $periodStart->toDateString(),
@@ -30,6 +47,7 @@
            class="btn-primary-custom" style="padding:0.5rem 1rem;font-size:0.78rem;text-decoration:none;">
             <i class="bi bi-download"></i> Export CSV
         </a>
+        @endif
         <button type="button" onclick="window.print()" class="btn-primary-custom" style="padding:0.5rem 1rem;font-size:0.78rem;">
             <i class="bi bi-printer"></i> Print Report
         </button>

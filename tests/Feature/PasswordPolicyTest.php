@@ -169,6 +169,10 @@ class PasswordPolicyTest extends TestCase
                 'name' => 'Strong Staff',
                 'email' => 'strong-staff@invalid.local',
                 'branch_id' => $branchId,
+                // Required since the supervisor pass — the form no longer
+                // hard-codes 'staff'. Irrelevant to what this test asserts,
+                // which is the password policy.
+                'role' => 'staff',
                 'password' => self::STRONG,
                 'password_confirmation' => self::STRONG,
             ])

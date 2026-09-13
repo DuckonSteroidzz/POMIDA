@@ -38,10 +38,12 @@
     {{-- LEFT: Create staff form --}}
     <div class="content-card">
         <p style="font-size:0.9rem; font-weight:700; color:#333; margin-bottom:0.25rem;">
-            <i class="bi bi-person-plus"></i> Create Staff Account
+            <i class="bi bi-person-plus"></i> Create Portal Account
         </p>
         <p style="font-size:0.72rem; color:#888; margin-bottom:0.85rem;">
-            Only admins can create staff accounts. Role is always set to <strong>staff</strong>.
+            Only admins can create portal accounts, and only as
+            <strong>staff</strong> or <strong>supervisor</strong> — never another admin.
+            Both roles are locked to the branch you assign below.
         </p>
 
         <form action="{{ route('admin.users.store') }}" method="POST" autocomplete="off">
@@ -60,6 +62,28 @@
                 value="{{ old('email') }}" readonly onfocus="this.removeAttribute('readonly');" autocomplete="off"
                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
                 class="form-control-custom">
+
+            {{-- Role. The options come from $assignableRoles, which is
+                 AdminController::assignableRoles() — the SAME method
+                 storeUser() and updateUser() pass to Rule::in(). So this list
+                 cannot drift into offering something the server would refuse,
+                 nor into offering 'admin', which neither constant behind that
+                 method contains.
+
+                 For a SUPERVISOR the list is 'staff' alone: "Change Staff
+                 Role" is Y | N | N, so a manager may only create accounts at
+                 the tier below their own. The select is not the control either
+                 way — a hand-crafted POST with role=supervisor from a
+                 supervisor fails validation with a 422. --}}
+            <label class="form-label-custom" for="create-staff-role">Role</label>
+            <select name="role" id="create-staff-role" required class="form-control-custom">
+                @foreach($assignableRoles as $roleOption)
+                    <option value="{{ $roleOption }}"
+                        {{ old('role', 'staff') === $roleOption ? 'selected' : '' }}>
+                        {{ ucfirst($roleOption) }}
+                    </option>
+                @endforeach
+            </select>
 
             <label class="form-label-custom">Assigned Branch</label>
             <select name="branch_id" required class="form-control-custom">
@@ -103,7 +127,7 @@
             </p>
 
             <button type="submit" class="btn-primary-custom" style="width:100%; padding:0.6rem; margin-top:0.4rem;">
-                <i class="bi bi-check2-circle"></i> Create Staff Account
+                <i class="bi bi-check2-circle"></i> Create Account
             </button>
         </form>
     </div>
@@ -111,13 +135,13 @@
     {{-- RIGHT: Staff list --}}
     <div class="content-card">
         <p style="font-size:0.9rem; font-weight:700; color:#333; margin-bottom:0.75rem;">
-            All Staff ({{ $staff->count() }})
+            All Portal Accounts ({{ $staff->count() }})
         </p>
 
         @if($staff->isEmpty())
             <div style="text-align:center; color:#aaa; padding:1.5rem; font-size:0.85rem;">
                 <i class="bi bi-people" style="font-size:2rem; display:block; margin-bottom:0.5rem; color:#ddd;"></i>
-                No staff accounts yet. Use the form on the left to add one.
+                No staff or supervisor accounts yet. Use the form on the left to add one.
             </div>
         @else
             {{-- Horizontal scroll wrapper, matching the pattern already used on
@@ -131,6 +155,7 @@
                     <tr style="text-align:left; color:#888; font-size:0.7rem;">
                         <th style="padding:0.3rem 0.4rem;">Name</th>
                         <th style="padding:0.3rem 0.4rem;">Email</th>
+                        <th style="padding:0.3rem 0.4rem;">Role</th>
                         <th style="padding:0.3rem 0.4rem;">Branch</th>
                         <th style="padding:0.3rem 0.4rem;">Status</th>
                         <th style="padding:0.3rem 0.4rem; text-align:right;">Action</th>
@@ -141,6 +166,11 @@
                     <tr style="border-top:1px solid #f0f0f0;">
                         <td style="padding:0.4rem;">{{ $s->name }}</td>
                         <td style="padding:0.4rem; color:#666;">{{ $s->email }}</td>
+                        <td style="padding:0.4rem;">
+                            <span style="background:{{ $s->role === 'supervisor' ? '#e7d9f5' : '#e3eaf2' }}; color:{{ $s->role === 'supervisor' ? '#4a2c68' : '#2c3e50' }}; padding:0.15rem 0.5rem; border-radius:10px; font-size:0.7rem; font-weight:600;">
+                                {{ ucfirst($s->role) }}
+                            </span>
+                        </td>
                         <td style="padding:0.4rem;">{{ $s->branch->name ?? '—' }}</td>
                         <td style="padding:0.4rem;">
                             @if($s->is_active)
@@ -150,6 +180,19 @@
                             @endif
                         </td>
                         <td style="padding:0.4rem; text-align:right; white-space:nowrap;">
+                            {{-- "Edit Staff Information" — Y | Y | N. Same
+                                 expandable-row pattern as Set Password below,
+                                 rather than a modal or a separate page, so the
+                                 two per-row forms behave identically. --}}
+                            <button type="button"
+                                class="js-toggle-pw-row"
+                                data-target="edit-row-{{ $s->id }}"
+                                aria-expanded="false"
+                                aria-controls="edit-row-{{ $s->id }}"
+                                style="background:#2c3e50; color:white; border:none; border-radius:6px; padding:0.25rem 0.55rem; font-size:0.7rem; cursor:pointer; margin-right:0.25rem;">
+                                Edit
+                            </button>
+
                             <button type="button"
                                 class="js-toggle-pw-row"
                                 data-target="pw-row-{{ $s->id }}"
@@ -163,9 +206,92 @@
                                 onsubmit="return confirm('{{ $s->is_active ? 'Deactivate' : 'Reactivate' }} this staff account?')">
                                 @csrf @method('PUT')
                                 <button type="submit"
-                                    style="background:{{ $s->is_active ? '#C0392B' : '#4CAF50' }}; color:white; border:none; border-radius:6px; padding:0.25rem 0.55rem; font-size:0.7rem; cursor:pointer;">
+                                    style="background:{{ $s->is_active ? '#C0392B' : '#4CAF50' }}; color:white; border:none; border-radius:6px; padding:0.25rem 0.55rem; font-size:0.7rem; cursor:pointer; margin-right:0.25rem;">
                                     {{ $s->is_active ? 'Deactivate' : 'Reactivate' }}
                                 </button>
+                            </form>
+
+                            {{-- Delete — irreversible, so it is the one action
+                                 here that names the account in its confirm
+                                 text and warns that deactivating is usually
+                                 what was meant.
+
+                                 Every row rendered on this page is already one
+                                 the viewer may manage (manageableUsersQuery()
+                                 and canManageAccount() are derived from the
+                                 same two constants), so there is no per-row
+                                 condition to add here — the LIMITED rule was
+                                 applied when the list was built, and is
+                                 applied again by destroyUser() against a
+                                 crafted request. --}}
+                            <form action="{{ route('admin.users.destroy', $s->id) }}" method="POST" style="margin:0; display:inline;"
+                                onsubmit="return confirm('Permanently delete the account for {{ $s->name }}? This cannot be undone — deactivating keeps their history instead.')">
+                                @csrf @method('DELETE')
+                                <button type="submit"
+                                    style="background:#8B1A1A; color:white; border:none; border-radius:6px; padding:0.25rem 0.55rem; font-size:0.7rem; cursor:pointer;">
+                                    Delete
+                                </button>
+                            </form>
+                        </td>
+                    </tr>
+
+                    {{-- Edit this account's details. Role and branch are
+                         rendered from the same $assignableRoles / $branches
+                         the create form uses, so a supervisor is offered
+                         'staff' and their own branch only — and updateUser()
+                         forces both server-side regardless of what is
+                         posted. --}}
+                    <tr id="edit-row-{{ $s->id }}" hidden>
+                        <td colspan="6" style="padding:0.5rem 0.4rem 0.9rem; background:#fbfbfb;">
+                            <form action="{{ route('admin.users.update', $s->id) }}" method="POST"
+                                style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:0.5rem 0.75rem; align-items:end;">
+                                @csrf @method('PUT')
+
+                                <div>
+                                    <label class="form-label-custom" for="edit-name-{{ $s->id }}">Name</label>
+                                    <input type="text" id="edit-name-{{ $s->id }}" name="name" required maxlength="255"
+                                        value="{{ $s->name }}" autocomplete="off" class="form-control-custom">
+                                </div>
+
+                                <div>
+                                    <label class="form-label-custom" for="edit-email-{{ $s->id }}">Email</label>
+                                    <input type="email" id="edit-email-{{ $s->id }}" name="email" required maxlength="255"
+                                        value="{{ $s->email }}" autocomplete="off" class="form-control-custom">
+                                </div>
+
+                                <div>
+                                    <label class="form-label-custom" for="edit-contact-{{ $s->id }}">Contact Number</label>
+                                    <input type="text" id="edit-contact-{{ $s->id }}" name="contact_number" maxlength="30"
+                                        value="{{ $s->contact_number }}" autocomplete="off" class="form-control-custom">
+                                </div>
+
+                                <div>
+                                    <label class="form-label-custom" for="edit-role-{{ $s->id }}">Role</label>
+                                    <select name="role" id="edit-role-{{ $s->id }}" required class="form-control-custom">
+                                        @foreach($assignableRoles as $roleOption)
+                                            <option value="{{ $roleOption }}" {{ $s->role === $roleOption ? 'selected' : '' }}>
+                                                {{ ucfirst($roleOption) }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <label class="form-label-custom" for="edit-branch-{{ $s->id }}">Assigned Branch</label>
+                                    <select name="branch_id" id="edit-branch-{{ $s->id }}" required class="form-control-custom">
+                                        @foreach($branches as $b)
+                                            <option value="{{ $b->id }}" {{ $s->branch_id == $b->id ? 'selected' : '' }}>
+                                                {{ $b->name }}
+                                            </option>
+                                        @endforeach
+                                    </select>
+                                </div>
+
+                                <div>
+                                    <button type="submit" class="btn-primary-custom" style="width:100%;">
+                                        Save changes
+                                    </button>
+                                </div>
                             </form>
                         </td>
                     </tr>
@@ -179,7 +305,7 @@
                          staff account is exercised by SETTING a new password,
                          not by viewing the old one. --}}
                     <tr id="pw-row-{{ $s->id }}" hidden style="border-top:1px solid #f0f0f0; background:#fbfbfb;">
-                        <td colspan="5" style="padding:0.6rem 0.4rem;">
+                        <td colspan="6" style="padding:0.6rem 0.4rem;">
                             <form action="{{ route('admin.users.password.update', $s->id) }}" method="POST"
                                 onsubmit="return confirm('Set a new password for {{ $s->name }}? They will need to be told the new password.')">
                                 <input type="text" name="prevent_autofill_username" id="prevent_autofill_username_{{ $s->id }}" value="" style="position:absolute; top:-9999px; left:-9999px;" tabindex="-1" aria-hidden="true" autocomplete="off" />

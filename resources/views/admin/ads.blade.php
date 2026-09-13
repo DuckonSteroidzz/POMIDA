@@ -21,6 +21,38 @@
     .pchy-modal-foot .btn-ghost:hover{background:#fff4ec}
 </style>
 
+@php
+    /*
+     * "Manage Advertisements" is Y | LIMITED | N. The role:admin,supervisor
+     * group already keeps staff off this page entirely, so everyone who gets
+     * here may manage SOMETHING — the question this block answers is WHICH ads.
+     *
+     * ads.branch_id is nullable and NULL means GLOBAL, exactly as it does on
+     * vouchers and menu items. showAds() has already narrowed a supervisor's
+     * listing to their own branch plus the globals; the globals are rendered
+     * read-only here so a branch manager can see the company-wide campaigns
+     * running alongside theirs without being able to edit, toggle or delete
+     * one.
+     *
+     * $canManageAd mirrors AdminController::promotionScopeRefusal() exactly.
+     * That method is the security boundary; this closure only keeps the buttons
+     * honest about it.
+     */
+    $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+    $canManageAd = function ($ad) use ($lockedBranchId) {
+        // Owner — every ad, global ones included.
+        if ($lockedBranchId === null) {
+            return true;
+        }
+
+        // Supervisor — own branch only, never a global ad. The NULL arm is
+        // spelled out rather than left to `null !== int`, for the reason
+        // promotionScopeRefusal() gives at length.
+        return $ad->branch_id !== null && (int) $ad->branch_id === $lockedBranchId;
+    };
+@endphp
+
 <p class="page-title">Ads Management</p>
 
 <div class="content-card" style="margin-bottom:1rem;">
@@ -61,7 +93,30 @@
                 <label class="form-label-custom">End Date</label>
                 <input type="date" name="ends_at" class="form-control-custom">
             </div>
+            {{-- Owner only, and global by default — same control and same
+                 reasoning as the Vouchers page. A supervisor's ad is scoped
+                 from their account by promotionBranchIdFor(). --}}
+            @if($lockedBranchId === null)
+            <div>
+                <label class="form-label-custom">Branch Scope</label>
+                <select name="branch_id" class="form-control-custom">
+                    <option value="">All Branches (global)</option>
+                    @foreach(($branches ?? collect()) as $b)
+                        <option value="{{ $b->id }}" {{ old('branch_id') == $b->id ? 'selected' : '' }}>
+                            {{ $b->name }}
+                        </option>
+                    @endforeach
+                </select>
+                <small style="font-size:0.7rem;color:#aaa;">Leave as All Branches for a company-wide campaign</small>
+            </div>
+            @endif
         </div>
+        @if($lockedBranchId !== null)
+        <p style="font-size:0.75rem;color:#4B5563;font-weight:500;margin:0 0 0.75rem;">
+            <i class="bi bi-building"></i>
+            This ad will be scoped to your own branch.
+        </p>
+        @endif
         <button type="submit" class="btn-primary-custom">
             <i class="bi bi-plus-circle"></i> Create Ad
         </button>
@@ -81,6 +136,7 @@
                     <th style="padding:0.6rem;text-align:left;border-bottom:2px solid #eee;">Description</th>
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Placement</th>
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Period</th>
+                    <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Branch</th>
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Status</th>
                     <th style="padding:0.6rem;text-align:center;border-bottom:2px solid #eee;">Actions</th>
                 </tr>
@@ -114,7 +170,20 @@
                         Always
                         @endif
                     </td>
+                    {{-- Same two badges as the Menu Items and Vouchers lists. --}}
                     <td style="padding:0.6rem;text-align:center;">
+                        @if($ad->branch_id)
+                        <span style="background:#fde8de;color:#C0392B;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600;">
+                            {{ $ad->branch->name ?? 'Branch #'.$ad->branch_id }}
+                        </span>
+                        @else
+                        <span style="background:#d4edda;color:#155724;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600;">
+                            All Branches
+                        </span>
+                        @endif
+                    </td>
+                    <td style="padding:0.6rem;text-align:center;">
+                        @if($canManageAd($ad))
                         <form action="{{ route('admin.ads.toggle', $ad->id) }}" method="POST" style="display:inline;">
                             @csrf @method('PUT')
                             <button type="submit"
@@ -122,8 +191,22 @@
                                 {{ $ad->is_active ? '✓ On' : '✗ Off' }}
                             </button>
                         </form>
+                        @else
+                        {{-- A global campaign, seen by a supervisor: state
+                             read-only, exactly as the menu-items Available
+                             column does for staff. --}}
+                        <span style="background:{{ $ad->is_active ? '#4CAF50' : '#ccc' }};color:white;border-radius:20px;padding:0.2rem 0.8rem;font-size:0.72rem;font-weight:600;">
+                            {{ $ad->is_active ? 'Active' : 'Inactive' }}
+                        </span>
+                        @endif
                     </td>
+                    {{-- The LIMITED row, per ad. A supervisor gets Edit and
+                         Delete only on their OWN branch's ads. The cell itself
+                         stays so the column does not go ragged; updateAd(),
+                         toggleAd() and deleteAd() all enforce the same rule
+                         server-side. --}}
                     <td style="padding:0.6rem;text-align:center;white-space:nowrap;">
+                        @if($canManageAd($ad))
                         <button type="button"
                             class="btn-edit-custom"
                             title="Edit ad"
@@ -135,6 +218,7 @@
                             data-placement="{{ $ad->placement }}"
                             data-starts-at="{{ $ad->starts_at ? $ad->starts_at->format('Y-m-d') : '' }}"
                             data-ends-at="{{ $ad->ends_at ? $ad->ends_at->format('Y-m-d') : '' }}"
+                            data-branch="{{ $ad->branch_id ?? '' }}"
                             onclick="openEditAdModal(this)"
                             style="margin-right:0.35rem;padding:0.3rem 0.6rem;font-size:0.75rem;">
                             <i class="bi bi-pencil-square"></i>
@@ -145,6 +229,9 @@
                                 <i class="bi bi-trash"></i>
                             </button>
                         </form>
+                        @else
+                        <span style="color:#aaa;font-size:0.72rem;">Company-wide</span>
+                        @endif
                     </td>
                 </tr>
                 @endforeach
@@ -211,6 +298,20 @@
                     <label class="form-label-custom">End Date</label>
                     <input type="date" name="ends_at" id="editAdEndsAt" class="form-control-custom">
                 </div>
+                {{-- Owner only: updateAd() re-derives a supervisor's branch_id
+                     from their account whatever the form posts, so there is no
+                     choice to offer them. --}}
+                @if($lockedBranchId === null)
+                <div>
+                    <label class="form-label-custom">Branch Scope</label>
+                    <select name="branch_id" id="editAdBranch" class="form-control-custom">
+                        <option value="">All Branches (global)</option>
+                        @foreach(($branches ?? collect()) as $b)
+                            <option value="{{ $b->id }}">{{ $b->name }}</option>
+                        @endforeach
+                    </select>
+                </div>
+                @endif
             </div>
 
             <div class="pchy-modal-foot">
@@ -230,6 +331,12 @@
         document.getElementById('editAdPlacement').value = btn.dataset.placement || 'game';
         document.getElementById('editAdStartsAt').value = btn.dataset.startsAt || '';
         document.getElementById('editAdEndsAt').value = btn.dataset.endsAt || '';
+
+        // Absent for a supervisor — the field is not rendered for them.
+        var branchField = document.getElementById('editAdBranch');
+        if (branchField) {
+            branchField.value = btn.dataset.branch || '';
+        }
 
         var preview = document.getElementById('editAdPreview');
         var placeholder = document.getElementById('editAdPreviewPh');

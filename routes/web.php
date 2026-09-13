@@ -44,7 +44,7 @@ Route::get('/', function () {
 */
 Route::get('/discount-id/{order}', [\App\Http\Controllers\DiscountIdController::class, 'show'])
     ->whereNumber('order')
-    ->middleware('throttle:60,1')
+    ->middleware('throttle:customer-discount-lookup')
     ->name('discount-id.show');
 
 
@@ -64,14 +64,14 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // Unlimited password guessing was possible here; 10/min per IP still
     // leaves plenty of room for a real customer mistyping a password.
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:customer-login')
         ->name('login.post');
 
     Route::get('/register', [AuthController::class, 'showRegister'])
         ->name('register');
 
     Route::post('/register', [AuthController::class, 'register'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:customer-register')
         ->name('register.post');
 
     Route::get('/terms', [AuthController::class, 'showTerms'])
@@ -84,18 +84,18 @@ Route::prefix('customer')->name('customer.')->group(function () {
         ->name('forgot-password');
 
     Route::post('/forgot-password', [AuthController::class, 'forgotPassword'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:customer-forgot-password')
         ->name('forgot-password.post');
 
     Route::get('/verification', [AuthController::class, 'showVerification'])
         ->name('verification');
 
     Route::post('/verification', [AuthController::class, 'verifyCode'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:customer-verification')
         ->name('verification.post');
 
     Route::get('/verification/resend', [AuthController::class, 'resendCode'])
-        ->middleware('throttle:3,1')
+        ->middleware('throttle:customer-verification-resend')
         ->name('verification.resend');
 
     Route::get('/new-password', [AuthController::class, 'showNewPassword'])
@@ -103,7 +103,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
 
     // Final step of the reset flow — throttled like the rest of that flow.
     Route::post('/new-password', [AuthController::class, 'updatePassword'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:customer-new-password')
         ->name('new-password.post');
 
 
@@ -123,6 +123,13 @@ Route::prefix('customer')->name('customer.')->group(function () {
 
     Route::get('/dineinqr', [AuthController::class, 'showDineInQr'])
         ->name('dineinqr');
+
+    // The live CSRF token, so the code-entry form on a long-open /dineinqr tab
+    // can refresh its own token before the customer submits and never dead-end
+    // on the branded 419 page. READ-ONLY — it only reads csrf_token(), the same
+    // way tableSessionStatus() is read-only; it touches no session key.
+    Route::get('/session-token', [AuthController::class, 'sessionToken'])
+        ->name('session-token');
 
     // Opens a dine-in session, from a camera scan or from a typed code.
     //
@@ -166,11 +173,11 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // is holding a live table_session_token.
 
     Route::post('/table-activity', [AuthController::class, 'tableActivity'])
-        ->middleware('throttle:120,1')
+        ->middleware('throttle:customer-table-clock')
         ->name('table-activity');
 
     Route::get('/table-session-status', [AuthController::class, 'tableSessionStatus'])
-        ->middleware('throttle:120,1')
+        ->middleware('throttle:customer-table-clock')
         ->name('table-session-status');
 
 
@@ -294,15 +301,15 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // to ration a busy room.
 
     Route::get('/notifications', [CustomerNotificationController::class, 'index'])
-        ->middleware('throttle:120,1')
+        ->middleware('throttle:customer-notifications')
         ->name('notifications.index');
 
     Route::get('/notifications/unread-count', [CustomerNotificationController::class, 'unreadCount'])
-        ->middleware('throttle:120,1')
+        ->middleware('throttle:customer-notifications')
         ->name('notifications.unread-count');
 
     Route::post('/notifications/read', [CustomerNotificationController::class, 'markAllRead'])
-        ->middleware('throttle:120,1')
+        ->middleware('throttle:customer-notifications')
         ->name('notifications.read');
 
 
@@ -341,7 +348,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // Points convert into vouchers. The value is allowlisted server-side in
     // AuthController::addPoints(); this caps how fast spins can be replayed.
     Route::post('/add-points', [AuthController::class, 'addPoints'])
-        ->middleware('throttle:30,1')
+        ->middleware('throttle:customer-add-points')
         ->name('add-points');
 
     Route::get('/vouchers', [AuthController::class, 'showVouchers'])
@@ -508,7 +515,13 @@ Route::prefix('admin')
         |
         */
 
-        Route::middleware('role:admin,staff')->group(function () {
+        // supervisor joins this group and ONLY this group (Sept 2026 role
+        // pass). It gets exactly the staff shift surface, branch-locked by
+        // AdminOrderAccess, and is deliberately NOT added to the `role:admin`
+        // group below — so branch CRUD, the "Viewing:" branch picker, portal
+        // account management and system configuration all refuse it
+        // server-side, not merely in the sidebar.
+        Route::middleware('role:admin,staff,supervisor')->group(function () {
 
             // ══════════ DASHBOARD ══════════
 
@@ -536,13 +549,18 @@ Route::prefix('admin')
                 ->name('manual-order.voucher-preview');
 
 
-            // ══════════ MENU ITEMS — view + availability only ══════════
+            // ══════════ MENU ITEMS — view only ══════════
+            //
+            // "View Menu Items" is Y for all three roles. Availability
+            // (menu-items.toggle) used to sit here as well, so any staff
+            // member could take a dish off sale mid-shift. The Sept 2026
+            // matrix makes "Enable/Disable Menu Items" Y | Y | N, so the
+            // toggle moved to the manager group below. Taking a dish off the
+            // customer-facing menu changes what the business sells, which is
+            // the line that group draws.
 
             Route::get('/menu-items', [AdminController::class, 'showMenuItems'])
                 ->name('menu-items');
-
-            Route::put('/menu-items/toggle/{id}', [AdminController::class, 'toggleMenuItem'])
-                ->name('menu-items.toggle');
 
 
             // ══════════ ARCHIVED CATALOGUE — view only ══════════
@@ -567,6 +585,29 @@ Route::prefix('admin')
                 ->name('completed-orders');
 
 
+            // ══════════ SUMMARY — the matrix's one LIMITED report ══════════
+            //
+            // "View Summary/Reports" is Y | Y | LIMITED, where LIMITED means
+            // "their own assigned branch only, never a consolidated view".
+            //
+            // That is why this route is in the ALL-THREE group rather than the
+            // manager group, and why it needs no extra check to be safe:
+            // showSummary() scopes every figure through
+            // ResolvesBranchScope::getSelectedBranch(), which returns
+            // AdminOrderAccess::lockedBranchId() for a branch-locked role and
+            // only falls through to the 'all' picker for an admin. A staff
+            // member therefore cannot reach the consolidated numbers here —
+            // there is no request they can make that widens the scope, because
+            // the scope is never read from the request.
+            //
+            // The CSV at admin.export.orders is deliberately NOT here. It is a
+            // bulk sales extract rather than a branch summary screen, which
+            // puts it under "View Sales/Financial Data" (Y | Y | N); it sits
+            // in the manager group below.
+            Route::get('/summary', [AdminController::class, 'showSummary'])
+                ->name('summary');
+
+
             // ══════════ QR CODE ══════════
 
             Route::get('/qr-generator', [AdminController::class, 'showQrGenerator'])
@@ -584,13 +625,22 @@ Route::prefix('admin')
             // App\Services\TableEntry.
 
             // Replaces ONE table's permanent code — the escape hatch for a code
-            // that is being abused. Admin only (see the role group below):
-            // rotating a code invalidates a printed standee and sends somebody
-            // to the table with a new one, which is an owner decision rather
-            // than a counter action. Throttled low because a legitimate admin
-            // rotates one table, occasionally.
+            // that is being abused. Rotating a code invalidates a printed
+            // standee and sends somebody to the table with a new one, which is
+            // a management call rather than a counter action.
+            //
+            // MANAGER tier as of the Sept 2026 matrix, widened from
+            // `role:admin`: "QR & Table Codes" is Y | Y | VIEW-ONLY, so a
+            // supervisor gets the full capability and staff get the page
+            // without this button. A supervisor is still refused another
+            // branch's table by regenerateTableCode() itself, which asks
+            // AdminOrderAccess::allowsBranch() — the VIEW-ONLY half is the
+            // role gate here, the branch half is the check in the controller.
+            //
+            // Throttled low because a legitimate rotation is one table,
+            // occasionally.
             Route::post('/qr-generator/regenerate-code', [AdminController::class, 'regenerateTableCode'])
-                ->middleware(['role:admin', 'throttle:20,1'])
+                ->middleware(['role:admin,supervisor', 'throttle:20,1'])
                 ->name('qr-generator.regenerate-code');
 
 
@@ -618,16 +668,23 @@ Route::prefix('admin')
                 ->name('tables.clear');
 
 
-            // ══════════ INVENTORY — view + stock movement only ══════════
+            // ══════════ INVENTORY — VIEW ONLY ══════════
+            //
+            // "View Inventory" is Y | Y | VIEW-ONLY, and this GET is the whole
+            // of what VIEW-ONLY means: staff still see the stock list for
+            // their branch (they need to know what has run out) but move
+            // nothing.
+            //
+            // stock-in and stock-out used to sit here, giving staff the
+            // ability to change recorded quantities directly. "Update Stock"
+            // and "Stock Adjustments" are both Y | Y | N in the matrix, so
+            // they moved to the manager group below. This is a real reduction
+            // in what a staff account can do, and it is the intended one:
+            // a stock movement is an inventory correction, not a shift action,
+            // and stock_movements rows are what the cost figures are built on.
 
             Route::get('/inventory', [AdminController::class, 'showInventory'])
                 ->name('inventory');
-
-            Route::post('/inventory/stock-in/{id}', [AdminController::class, 'stockIn'])
-                ->name('inventory.stock-in');
-
-            Route::post('/inventory/stock-out/{id}', [AdminController::class, 'stockOut'])
-                ->name('inventory.stock-out');
 
 
             // ══════════ ORDERS MANAGEMENT ══════════
@@ -694,6 +751,13 @@ Route::prefix('admin')
                 ->middleware('throttle:120,1')
                 ->name('notifications.read');
 
+            // The X on a single tray card — soft dismiss, scoped to the caller's
+            // own branch. Same 120/min ceiling as the rest of the bell traffic.
+            Route::post('/notifications/{notification}/dismiss', [AdminNotificationController::class, 'dismiss'])
+                ->whereNumber('notification')
+                ->middleware('throttle:120,1')
+                ->name('notifications.dismiss');
+
 
             // ══════════ RECEIPT ══════════
 
@@ -741,11 +805,336 @@ Route::prefix('admin')
 
         /*
         |----------------------------------------------------------------------
-        | ADMIN ONLY
+        | MANAGER TIER — admin AND supervisor
         |----------------------------------------------------------------------
         |
-        | Anything that changes what the business sells, what it charges,
-        | who works here, or what the reports say.
+        | Every row the Sept 2026 permission matrix marks Y for the owner and Y
+        | for a manager/supervisor, but N for staff.
+        |
+        | The theme is running the shop's catalogue, promotions, stock records
+        | and people: things a branch manager decides, that a counter shift
+        | does not. What is deliberately NOT here is anything DESTRUCTIVE at
+        | the business level (deleting a voucher, deleting an inventory item)
+        | and anything defining the shape of the business itself (branches,
+        | roles, system configuration) — those stay in the owner-only group
+        | below.
+        |
+        | `role:admin,supervisor` is spelled from User::MANAGER_ROLES. Two
+        | matrix rows are LIMITED for a supervisor rather than plain Y —
+        | deleting a staff account and deleting a menu item — and route
+        | middleware cannot express "own branch only", so those two carry an
+        | additional per-row check inside the controller. The route gate says
+        | WHO may call; the controller check says WHICH RECORD they may call it
+        | on. Neither is sufficient alone and both are always applied.
+        |
+        */
+
+        Route::middleware('role:admin,supervisor')->group(function () {
+
+            // ══════════ REPORTS — analytics + the sales extract ══════════
+            //
+            // "View Analytics" and "View Sales/Financial Data" are both
+            // Y | Y | N, so unlike admin.summary (which is LIMITED for staff
+            // and lives in the all-three group above) these are closed to
+            // staff outright.
+            //
+            // Both are still branch-scoped for a supervisor by
+            // getSelectedBranch(): a supervisor sees their branch's analytics,
+            // never the consolidated 'all' view, because they have no picker
+            // and lockedBranchId() answers before the session is consulted.
+
+            Route::get('/analytics', [AdminController::class, 'showAnalytics'])
+                ->name('analytics');
+
+            Route::get('/export/orders', [AdminController::class, 'exportOrders'])
+                ->name('export.orders');
+
+
+            // ══════════ STAFF MANAGEMENT ══════════
+            //
+            // View / Create / Edit / Reset Password / Activate / Deactivate
+            // are all Y | Y | N. Delete is Y | LIMITED | N.
+            //
+            // The role gate here admits a supervisor to the SCREEN. Which
+            // ACCOUNTS they may then act on is decided per row by
+            // User::canManageAccount(), which for a supervisor means a
+            // `staff` account in their own branch and nothing else — not a
+            // peer supervisor, not the owner, not another branch's staff even
+            // when that account's id is typed straight into the URL. Every one
+            // of the five endpoints below asks that same method, so they
+            // cannot drift apart from one another.
+
+            Route::get('/users', [AdminController::class, 'showUsers'])
+                ->name('users');
+
+            Route::post('/users', [AdminController::class, 'storeUser'])
+                ->name('users.store');
+
+            // Edit an account's details — name, email, contact, branch, and
+            // (owner only) its role. "Change Staff Role" is Y | N | N, so the
+            // role field is ignored for a supervisor rather than refused: see
+            // updateUser(). Without that, "Create Staff Accounts = Y" plus a
+            // writable role field would have let a supervisor mint or promote
+            // a peer, which is the escalation ADMIN_MANAGEABLE_ROLES exists to
+            // prevent one tier up.
+            Route::put('/users/{id}', [AdminController::class, 'updateUser'])
+                ->whereNumber('id')
+                ->name('users.update');
+
+            Route::put('/users/{id}/toggle', [AdminController::class, 'toggleUser'])
+                ->name('users.toggle');
+
+            // Set a NEW password for a staff member. Not "view" — a stored
+            // password is a bcrypt hash and cannot be read back by anyone,
+            // including the owner. Control over an account is achieved by
+            // replacing the password, never by revealing it.
+            //
+            // Guarded twice over: this group admits only manager roles, and
+            // updateStaffPassword() re-checks the TARGET through
+            // canManageAccount() so the endpoint can never be pointed at an
+            // admin, at a peer supervisor, or across a branch boundary.
+            //
+            // Named limiter `admin-staff-password`, 6/min per IP. As raw
+            // throttle:6,1 this shared one counter with admin-login (limit 3),
+            // so a single legitimate use here helped lock the owner out of
+            // their own login form.
+            Route::put('/users/{id}/password', [AdminController::class, 'updateStaffPassword'])
+                ->middleware('throttle:admin-staff-password')
+                ->name('users.password.update');
+
+            // Delete a portal account outright — the matrix's LIMITED row.
+            // Throttled: it is irreversible and there is no bulk use for it.
+            Route::delete('/users/{id}', [AdminController::class, 'destroyUser'])
+                ->whereNumber('id')
+                ->middleware('throttle:20,1')
+                ->name('users.destroy');
+
+
+            // ══════════ MENU ITEMS — create / edit / availability ══════════
+            //
+            // Add, Edit and Enable/Disable are Y | Y | N. Delete is
+            // Y | LIMITED | N and carries its own branch check inside
+            // deleteMenuItem().
+            //
+            // Add and Edit both happen inside the modal on the Menu Items list
+            // (menu-items.blade.php) — there is no standalone page for either
+            // any more, so only the actions that WRITE are routed.
+
+            Route::put('/menu-items/toggle/{id}', [AdminController::class, 'toggleMenuItem'])
+                ->name('menu-items.toggle');
+
+            Route::put('/menu-items/{id}', [AdminController::class, 'updateMenuItem'])
+                ->name('menu-items.update');
+
+            Route::delete('/menu-items/{id}', [AdminController::class, 'deleteMenuItem'])
+                ->name('menu-items.delete');
+
+            Route::post('/new-menu-item', [AdminController::class, 'storeNewMenuItem'])
+                ->name('new-menu-item.post');
+
+
+            // ══════════ MENU ITEM INGREDIENTS ══════════
+            //
+            // A recipe is part of the menu item it belongs to, so it follows
+            // "Edit Menu Items" (Y | Y | N) rather than the inventory rows.
+
+            Route::post('/menu-items/{menuItem}/ingredients', [AdminController::class, 'addIngredient'])
+                ->name('menu-items.ingredients.add');
+
+            Route::delete('/menu-items/{menuItem}/ingredients/{ingredient}', [AdminController::class, 'deleteIngredient'])
+                ->name('menu-items.ingredients.delete');
+
+
+            // ══════════ CATEGORIES ══════════
+            //
+            // "Manage Categories" is Y | Y | N — the whole CRUD, delete
+            // included. The matrix gives categories no LIMITED entry, unlike
+            // menu items, so no per-row branch rule is added here: doing so
+            // would be inventing a narrowing that was not specified.
+
+            Route::get('/add-category', [AdminController::class, 'showAddCategory'])
+                ->name('add-category');
+
+            Route::post('/add-category', [AdminController::class, 'storeCategory'])
+                ->name('add-category.post');
+
+            Route::get('/add-category/edit/{id}', [AdminController::class, 'editCategory'])
+                ->name('add-category.edit');
+
+            Route::put('/add-category/{id}', [AdminController::class, 'updateCategory'])
+                ->name('add-category.update');
+
+            Route::delete('/add-category/{id}', [AdminController::class, 'deleteCategory'])
+                ->name('add-category.delete');
+
+
+            // ══════════ SUB CATEGORIES ══════════
+
+            Route::get('/add-subcategory', function () {
+                return redirect()->route('admin.add-category');
+            })->name('add-subcategory');
+
+            Route::post('/add-subcategory', [AdminController::class, 'storeSubcategory'])
+                ->name('add-subcategory.post');
+
+            // Name and parent category only — see updateSubcategory() for why
+            // moving to a new parent also updates the category_id of every
+            // menu item already filed under this subcategory.
+            Route::put('/add-subcategory/{id}', [AdminController::class, 'updateSubcategory'])
+                ->name('add-subcategory.update');
+
+            Route::delete('/add-subcategory/{id}', [AdminController::class, 'deleteSubcategory'])
+                ->name('add-subcategory.delete');
+
+
+            // ══════════ MENU OPTIONS / ADD-ONS ══════════
+            //
+            // "Manage Menu Options/Add-ons" is Y | Y | N.
+
+            Route::get('/menu-options', [AdminController::class, 'showMenuOptions'])
+                ->name('menu-options');
+
+            Route::post('/menu-options', [AdminController::class, 'storeMenuOption'])
+                ->name('menu-options.post');
+
+            // Name/price only — assignments (menu_item_options) are untouched.
+            Route::put('/menu-options/{id}', [AdminController::class, 'updateMenuOption'])
+                ->name('menu-options.update');
+
+            Route::delete('/menu-options/{id}', [AdminController::class, 'deleteMenuOption'])
+                ->name('menu-options.delete');
+
+            Route::post('/menu-options/assign/{menuItemId}', [AdminController::class, 'assignOptions'])
+                ->name('menu-options.assign');
+
+            // Recipe ingredients for an add-on option (MenuOptionIngredient).
+            // Mirrors the menu-items ingredient routes above.
+            Route::post('/menu-options/{menuOption}/ingredients', [AdminController::class, 'addOptionIngredient'])
+                ->name('menu-options.ingredients.add');
+
+            Route::delete('/menu-options/{menuOption}/ingredients/{ingredient}', [AdminController::class, 'deleteOptionIngredient'])
+                ->name('menu-options.ingredients.delete');
+
+
+            // ══════════ INVENTORY — definitions + stock movement ══════════
+            //
+            // "Add Inventory", "Update Stock" and "Stock Adjustments" are all
+            // Y | Y | N. "Delete Inventory Records" is Y | N | N and stays in
+            // the owner-only group below — deleting a stock item cascades
+            // through menu_item_ingredients and silently stops menu items
+            // deducting anything, which is why it is the one inventory action
+            // a manager does not get.
+            //
+            // stock-in and stock-out moved here FROM the all-three group: they
+            // write stock_movements rows, which the cost and profit figures are
+            // built on, so they are an inventory correction rather than a
+            // counter action.
+
+            Route::post('/inventory', [AdminController::class, 'storeInventory'])
+                ->name('inventory.store');
+
+            Route::get('/inventory/edit/{id}', [AdminController::class, 'editInventory'])
+                ->name('inventory.edit');
+
+            Route::put('/inventory/{id}', [AdminController::class, 'updateInventory'])
+                ->name('inventory.update');
+
+            Route::post('/inventory/stock-in/{id}', [AdminController::class, 'stockIn'])
+                ->name('inventory.stock-in');
+
+            Route::post('/inventory/stock-out/{id}', [AdminController::class, 'stockOut'])
+                ->name('inventory.stock-out');
+
+
+            // ══════════ VOUCHERS — author / edit / activate ══════════
+            //
+            // Create, Edit and Activate/Deactivate are Y | LIMITED | N. DELETE
+            // is Y | N | N and stays in the owner-only group below.
+            //
+            // The LIMITED changed here (Sept 2026). This group used to say the
+            // vouchers table had no branch_id and that a voucher was therefore
+            // global by construction, so no own-branch narrowing was possible
+            // for a supervisor. That was true of the SCHEMA, not of the intent:
+            // a branch manager authoring a company-wide promotion was never
+            // wanted. vouchers.branch_id now exists (nullable, NULL = global),
+            // so the narrowing is real:
+            //
+            //   owner      -> any voucher, and may author a global one or scope
+            //                 one to a branch, their choice.
+            //   supervisor -> their OWN branch's vouchers only. Their new
+            //                 vouchers are auto-scoped to their branch, and a
+            //                 global voucher or another branch's is refused.
+            //
+            // As with menu items, route middleware cannot express "own branch
+            // only", so each of the three carries a per-record check inside the
+            // controller — AdminController::promotionScopeRefusal(), which is
+            // deleteMenuItem()'s pattern factored into one definition. The route
+            // gate says WHO may call; that check says WHICH RECORD.
+            //
+            // Deleting one stays owner-only regardless: it cascades to every
+            // customer's unused claims, which is not a per-branch act.
+
+            Route::post('/vouchers', [AdminController::class, 'storeVoucher'])
+                ->name('vouchers.store');
+
+            Route::put('/vouchers/{id}', [AdminController::class, 'updateVoucher'])
+                ->name('vouchers.update');
+
+            Route::put('/vouchers/{id}/toggle', [AdminController::class, 'toggleVoucher'])
+                ->name('vouchers.toggle');
+
+
+            // ══════════ ADS ══════════
+            //
+            // "Manage Advertisements" is Y | LIMITED | N — the whole CRUD,
+            // delete included, bounded for a supervisor to their own branch.
+            //
+            // ads.branch_id was added alongside vouchers.branch_id and carries
+            // the same NULL-means-global convention, so all four writes below
+            // go through the same promotionScopeRefusal() the voucher routes
+            // do. Unlike vouchers, DELETE is not pulled out to the owner: it is
+            // part of the one "Manage Advertisements" row, and an ad has no
+            // claim history to destroy.
+
+            Route::get('/ads', [AdminController::class, 'showAds'])
+                ->name('ads');
+
+            Route::post('/ads', [AdminController::class, 'storeAd'])
+                ->name('ads.store');
+
+            Route::put('/ads/{id}', [AdminController::class, 'updateAd'])
+                ->name('ads.update');
+
+            Route::put('/ads/{id}/toggle', [AdminController::class, 'toggleAd'])
+                ->name('ads.toggle');
+
+            Route::delete('/ads/{id}', [AdminController::class, 'deleteAd'])
+                ->name('ads.delete');
+
+        });
+
+
+        /*
+        |----------------------------------------------------------------------
+        | OWNER ONLY (role:admin)
+        |----------------------------------------------------------------------
+        |
+        | What is left after the manager tier above: the owner's own account,
+        | the four DESTRUCTIVE actions a manager does not get (delete a
+        | voucher, delete an inventory record, restore an archived catalogue
+        | row), the shape of the business (branches, the "Viewing:" picker),
+        | and system configuration.
+        |
+        | Three routes here are deliberately NOT widened to the manager tier
+        | even though a sibling of theirs was, because the matrix does not list
+        | them and the rule for anything unlisted is deny:
+        |
+        |   - admin.archived.restore — putting a withdrawn dish back on sale.
+        |   - admin.vouchers.issue-reward — minting a points-priced reward
+        |     code (its walk-in sibling, vouchers.issue-code, is a counter task
+        |     and is shared with staff).
+        |   - admin.account.gcash-qr.update — the payment QR the whole shop
+        |     collects money through.
         |
         */
 
@@ -792,65 +1181,6 @@ Route::prefix('admin')
                 ->name('account.gcash-qr.update');
 
 
-            // ══════════ STAFF MANAGEMENT ══════════
-
-            Route::get('/users', [AdminController::class, 'showUsers'])
-                ->name('users');
-
-            Route::post('/users', [AdminController::class, 'storeUser'])
-                ->name('users.store');
-
-            Route::put('/users/{id}/toggle', [AdminController::class, 'toggleUser'])
-                ->name('users.toggle');
-
-            // Set a NEW password for a staff member. Not "view" — a stored
-            // password is a bcrypt hash and cannot be read back by anyone,
-            // including the admin. Admin control over a staff account is
-            // achieved by replacing the password, never by revealing it.
-            //
-            // Admin-only twice over: this whole group is `role:admin`, and
-            // updateStaffPassword() re-checks that the target is a staff row so
-            // the endpoint can never be pointed at an admin.
-            //
-            // Throttled like the other password-setting endpoints.
-            // Pass 7: named limiter `admin-staff-password`. Still 6/min per IP.
-            // As raw throttle:6,1 this shared one counter with admin-login
-            // (limit 3), so a single legitimate use here helped lock the admin
-            // out of their own login form.
-            Route::put('/users/{id}/password', [AdminController::class, 'updateStaffPassword'])
-                ->middleware('throttle:admin-staff-password')
-                ->name('users.password.update');
-
-
-            // ══════════ REPORTS ══════════
-
-            Route::get('/summary', [AdminController::class, 'showSummary'])
-                ->name('summary');
-
-            Route::get('/analytics', [AdminController::class, 'showAnalytics'])
-                ->name('analytics');
-
-            Route::get('/export/orders', [AdminController::class, 'exportOrders'])
-                ->name('export.orders');
-
-
-            // ══════════ MENU ITEMS — create/edit/delete ══════════
-            // Add and Edit both happen inside the modal on the Menu Items list
-            // (menu-items.blade.php) — there is no standalone page for either
-            // any more, so only the two actions that WRITE remain routed. GET
-            // showNewMenuItem()/editMenuItem() and their view were removed with
-            // them; nothing else in the app linked to those GET routes.
-
-            Route::put('/menu-items/{id}', [AdminController::class, 'updateMenuItem'])
-                ->name('menu-items.update');
-
-            Route::delete('/menu-items/{id}', [AdminController::class, 'deleteMenuItem'])
-                ->name('menu-items.delete');
-
-            Route::post('/new-menu-item', [AdminController::class, 'storeNewMenuItem'])
-                ->name('new-menu-item.post');
-
-
             // ══════════ ARCHIVED CATALOGUE — restore only ══════════
             //
             // RESTORING changes what the business sells, so it stays with the
@@ -864,114 +1194,27 @@ Route::prefix('admin')
             Route::put('/archived/{type}/{id}/restore', [AdminController::class, 'restoreArchivedCatalogue'])
                 ->name('archived.restore');
 
-
-            // ══════════ MENU ITEM INGREDIENTS ══════════
-
-            Route::post('/menu-items/{menuItem}/ingredients', [AdminController::class, 'addIngredient'])
-                ->name('menu-items.ingredients.add');
-
-            Route::delete('/menu-items/{menuItem}/ingredients/{ingredient}', [AdminController::class, 'deleteIngredient'])
-                ->name('menu-items.ingredients.delete');
-
-
-            // ══════════ CATEGORIES ══════════
-
-            Route::get('/add-category', [AdminController::class, 'showAddCategory'])
-                ->name('add-category');
-
-            Route::post('/add-category', [AdminController::class, 'storeCategory'])
-                ->name('add-category.post');
-
-            Route::get('/add-category/edit/{id}', [AdminController::class, 'editCategory'])
-                ->name('add-category.edit');
-
-            Route::put('/add-category/{id}', [AdminController::class, 'updateCategory'])
-                ->name('add-category.update');
-
-            Route::delete('/add-category/{id}', [AdminController::class, 'deleteCategory'])
-                ->name('add-category.delete');
-
-
-            // ══════════ SUB CATEGORIES ══════════
-
-            Route::get('/add-subcategory', function () {
-                return redirect()->route('admin.add-category');
-            })->name('add-subcategory');
-
-            Route::post('/add-subcategory', [AdminController::class, 'storeSubcategory'])
-                ->name('add-subcategory.post');
-
-            // Name and parent category only — see updateSubcategory() for why
-            // moving to a new parent also updates the category_id of every
-            // menu item already filed under this subcategory.
-            Route::put('/add-subcategory/{id}', [AdminController::class, 'updateSubcategory'])
-                ->name('add-subcategory.update');
-
-            Route::delete('/add-subcategory/{id}', [AdminController::class, 'deleteSubcategory'])
-                ->name('add-subcategory.delete');
-
-
-            // ══════════ MENU OPTIONS ══════════
-
-            Route::get('/menu-options', [AdminController::class, 'showMenuOptions'])
-                ->name('menu-options');
-
-            Route::post('/menu-options', [AdminController::class, 'storeMenuOption'])
-                ->name('menu-options.post');
-
-            // Name/price only — assignments (menu_item_options) are untouched.
-            // Delete/archive stays on the DELETE route above; this pass does
-            // not change that flow at all.
-            Route::put('/menu-options/{id}', [AdminController::class, 'updateMenuOption'])
-                ->name('menu-options.update');
-
-            Route::delete('/menu-options/{id}', [AdminController::class, 'deleteMenuOption'])
-                ->name('menu-options.delete');
-
-            Route::post('/menu-options/assign/{menuItemId}', [AdminController::class, 'assignOptions'])
-                ->name('menu-options.assign');
-
-            // Recipe ingredients for an add-on option (MenuOptionIngredient).
-            // Mirrors the menu-items ingredient routes above.
-            Route::post('/menu-options/{menuOption}/ingredients', [AdminController::class, 'addOptionIngredient'])
-                ->name('menu-options.ingredients.add');
-
-            Route::delete('/menu-options/{menuOption}/ingredients/{ingredient}', [AdminController::class, 'deleteOptionIngredient'])
-                ->name('menu-options.ingredients.delete');
-
-
-            // ══════════ INVENTORY — item definitions ══════════
-
-            Route::post('/inventory', [AdminController::class, 'storeInventory'])
-                ->name('inventory.store');
-
-            Route::get('/inventory/edit/{id}', [AdminController::class, 'editInventory'])
-                ->name('inventory.edit');
-
-            Route::put('/inventory/{id}', [AdminController::class, 'updateInventory'])
-                ->name('inventory.update');
-
             Route::delete('/inventory/{id}', [AdminController::class, 'deleteInventory'])
                 ->name('inventory.delete');
 
 
-            // ══════════ VOUCHERS ══════════
+            // ══════════ VOUCHERS — the owner-only half ══════════
             //
-            // The read-only GET /vouchers list lives in the role:admin,staff
-            // group above. Everything that creates or changes a voucher is
-            // admin-only and stays here.
-
-            Route::post('/vouchers', [AdminController::class, 'storeVoucher'])
-                ->name('vouchers.store');
-
-            Route::put('/vouchers/{id}', [AdminController::class, 'updateVoucher'])
-                ->name('vouchers.update');
+            // The read-only GET /vouchers list is shared with staff, and
+            // authoring (create / edit / activate) moved to the manager group
+            // above. DELETE is the one voucher action the matrix keeps at
+            // Y | N | N and it stays here — UNCHANGED by the branch-scope
+            // pass, which deliberately left this row alone. A voucher now has a
+            // branch_id, so "it reaches every branch" is no longer the reason;
+            // the reason that remains is the one that always mattered more.
+            // user_vouchers.voucher_id is ON DELETE CASCADE, so destroying a
+            // voucher destroys every customer's unused claim on it, wheel
+            // prizes included. That is irreversible and it is not a per-branch
+            // act, so no promotionScopeRefusal() is added here: a supervisor is
+            // refused outright by this group, exactly as before.
 
             Route::delete('/vouchers/{id}', [AdminController::class, 'deleteVoucher'])
                 ->name('vouchers.delete');
-
-            Route::put('/vouchers/{id}/toggle', [AdminController::class, 'toggleVoucher'])
-                ->name('vouchers.toggle');
 
             // The bearer-code issuance route (vouchers.issue-code) moved to the
             // role:admin,staff group above — issuing a walk-in code is a
@@ -999,24 +1242,6 @@ Route::prefix('admin')
                 ->name('game.toggle');
 
 
-            // ══════════ ADS ══════════
-
-            Route::get('/ads', [AdminController::class, 'showAds'])
-                ->name('ads');
-
-            Route::post('/ads', [AdminController::class, 'storeAd'])
-                ->name('ads.store');
-
-            Route::put('/ads/{id}', [AdminController::class, 'updateAd'])
-                ->name('ads.update');
-
-            Route::put('/ads/{id}/toggle', [AdminController::class, 'toggleAd'])
-                ->name('ads.toggle');
-
-            Route::delete('/ads/{id}', [AdminController::class, 'deleteAd'])
-                ->name('ads.delete');
-
-
             // ══════════ BRANCHES ══════════
 
             Route::get('/branches', [AdminController::class, 'showBranches'])
@@ -1031,7 +1256,13 @@ Route::prefix('admin')
             Route::put('/branches/{id}/toggle', [AdminController::class, 'toggleBranch'])
                 ->name('branches.toggle');
 
-            Route::post('/branches/select', [AdminController::class, 'selectBranch'])
+            // The branch bar's "Viewing:" picker. A GET on purpose: it only
+            // rewrites one key in the admin's OWN session (selected_branch_id)
+            // and writes no record, so there is nothing for CSRF to protect —
+            // and as a POST it dead-ended the admin on the raw 419 page when a
+            // completed-orders tab had sat open past the session lifetime. The
+            // {branch} segment is 'all' or a branch id, validated server-side.
+            Route::get('/branches/select/{branch}', [AdminController::class, 'selectBranch'])
                 ->name('branches.select');
 
         });

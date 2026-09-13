@@ -38,10 +38,14 @@ use Illuminate\Support\Facades\Auth;
  *
  * THE RULE
  * --------
- *  - Staff  -> may only reach an order whose branch_id is their own branch.
+ *  - Staff and supervisor (User::BRANCH_LOCKED_ROLES)
+ *           -> may only reach an order whose branch_id is their own branch.
  *              Identical to the lock getSelectedBranch() already applies to the
  *              lists; getSelectedBranch() now asks THIS class for it, so there
- *              is exactly one definition of "a staff member's branch".
+ *              is exactly one definition of "a branch-locked user's branch".
+ *              Supervisor was added to that set in the Sept 2026 role pass and
+ *              inherited every check below unchanged — which was the point of
+ *              having one definition.
  *  - Admin  -> unchanged, and deliberately unrestricted. An admin has a branch
  *              picker whose default is 'all', and the existing per-order
  *              behaviour is that they can open and act on any order regardless
@@ -75,14 +79,45 @@ class AdminOrderAccess
     {
         $user = Auth::guard('admin')->user();
 
-        if (! $user || $user->role !== 'staff') {
+        // Not signed in on the admin guard at all -> no lock to report. The
+        // caller is not thereby authorised: every route that reaches here is
+        // already behind AdminMiddleware, which refuses an unauthenticated
+        // visitor long before this runs.
+        if (! $user) {
             return null;
         }
 
-        // ?? 1 is carried over verbatim from getSelectedBranch(): a staff row
-        // with no branch has always been treated as the main branch, and this
-        // is not the pass that changes that.
-        return (int) ($user->branch_id ?? 1);
+        // The role SET, not a single string comparison.
+        //
+        // This read `$user->role !== 'staff'` until the supervisor pass. A
+        // hard-coded role name here is precisely how a new branch-locked role
+        // becomes an unlocked one: an unrecognised role falls to the null
+        // branch below, ResolvesBranchScope::getSelectedBranch() then falls
+        // through to session('selected_branch_id', 'all'), and the account
+        // reads EVERY branch. Membership of User::BRANCH_LOCKED_ROLES is now
+        // the whole test, so locking a future role is a one-line change there
+        // and cannot be forgotten here.
+        if (! in_array($user->role, \App\Models\User::BRANCH_LOCKED_ROLES, true)) {
+            return null;
+        }
+
+        // A branch-locked account with NO branch assigned.
+        //
+        // Staff keep the historic ?? 1: a staff row with no branch has always
+        // been treated as the main branch, every live staff row has a branch,
+        // and silently moving them is not this pass's job.
+        //
+        // Supervisor is deny-by-default instead. 0 is not a real branch id, so
+        // `where('branch_id', 0)` matches nothing and the account sees an empty
+        // portal rather than being handed Main Branch's orders, inventory and
+        // customer ID documents by an omission. storeUser() requires a branch
+        // for a supervisor, so this is the unreachable-by-design path — which
+        // is exactly the kind that must fail closed.
+        if ($user->branch_id === null) {
+            return $user->role === 'staff' ? 1 : 0;
+        }
+
+        return (int) $user->branch_id;
     }
 
     /**

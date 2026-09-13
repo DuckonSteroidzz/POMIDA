@@ -57,6 +57,27 @@ class CatalogueLifecycleTest extends TestCase
         return User::where('role', 'staff')->orderBy('id')->first();
     }
 
+    /**
+     * A branch-locked MANAGER — the lowest-privileged role that may change the
+     * catalogue after the Sept 2026 permission matrix.
+     *
+     * Minted rather than looked up: unlike admin and staff there may be no
+     * supervisor row in a given database, and a null actor here would fail as
+     * a confusing auth error rather than a clear one. Branch 1 matches the
+     * items freshItem() creates.
+     */
+    private function supervisor(): User
+    {
+        return User::create([
+            'name'      => 'Lifecycle Supervisor',
+            'email'     => 'lifecycle-sup-' . uniqid() . '@example.test',
+            'password'  => 'Aa1!aaaaaa',
+            'role'      => 'supervisor',
+            'branch_id' => 1,
+            'is_active' => true,
+        ]);
+    }
+
     /** A brand-new item nothing has ever ordered. */
     private function freshItem(string $name = 'Lifecycle test item', ?int $categoryId = null, ?int $subcategoryId = null): MenuItem
     {
@@ -587,11 +608,25 @@ class CatalogueLifecycleTest extends TestCase
     }
 
     /** But staff keep the availability toggle — that is running a shift, not editing the catalogue. */
-    public function test_staff_can_still_toggle_availability(): void
+    /**
+     * A manager's availability toggle takes an item off sale WITHOUT archiving
+     * it — the point this test has always made, and the reason it lives in the
+     * lifecycle file rather than a permissions one.
+     *
+     * The actor was `staff` until the Sept 2026 permission matrix, which makes
+     * "Enable/Disable Menu Items" Y | Y | N and moves admin.menu-items.toggle
+     * to the `role:admin,supervisor` group — taking a dish off the
+     * customer-facing menu changes what the business sells. Staff no longer
+     * reach this route at all (RolePermissionMatrixTest asserts that refusal,
+     * and that it leaves availability untouched), so the assertion here is now
+     * made with the lowest-privileged role that CAN toggle. The lifecycle
+     * guarantee under test is unchanged.
+     */
+    public function test_a_manager_toggle_never_archives(): void
     {
         $item = $this->freshItem('Lifecycle toggle probe');
 
-        $this->actingAs($this->staff(), 'admin')
+        $this->actingAs($this->supervisor(), 'admin')
             ->put('/admin/menu-items/toggle/' . $item->id)
             ->assertRedirect();
 

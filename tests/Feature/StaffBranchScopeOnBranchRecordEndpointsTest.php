@@ -32,10 +32,25 @@ use Tests\TestCase;
  *   POST admin/tables/clear                acts on a (branch_id, table) pair
  *
  * They all go through App\Services\AdminOrderAccess now — the SAME rule the
- * order endpoints use, not a second copy of it. A staff refusal is the app's
- * standard 404, indistinguishable from a nonexistent id, so it leaks nothing
- * about another branch's trade. (tables/clear keeps its long-standing 403 — see
- * the test for why, and TableOccupancyTest for the behaviour it pins.)
+ * order endpoints use, not a second copy of it. A branch-locked refusal is the
+ * app's standard 404, indistinguishable from a nonexistent id, so it leaks
+ * nothing about another branch's trade. (tables/clear keeps its long-standing
+ * 403 — see the test for why, and TableOccupancyTest for the behaviour it
+ * pins.)
+ *
+ * WHICH ROLE EACH TEST ACTS AS (changed by the Sept 2026 permission matrix)
+ * ------------------------------------------------------------------------
+ * The first three endpoints above — stock-in, stock-out and the menu-item
+ * availability toggle — are now `role:admin,supervisor`: "Update Stock",
+ * "Stock Adjustments" and "Enable/Disable Menu Items" are Y | Y | N, so staff
+ * no longer reach them at all. Those tests therefore act as a SUPERVISOR, the
+ * lowest-privileged role that still gets there, and see managerAt() for why
+ * leaving them on a staff account would have quietly turned them into tests of
+ * RoleMiddleware. Supervisor is branch-locked identically, so the guarantee
+ * asserted is unchanged.
+ *
+ * Help requests, manual orders and tables/clear are still shift work shared
+ * with staff, and those tests still act as staff.
  *
  * stock-in / stock-out are the point of the pass: branch-1 staff adjusting
  * branch-2 stock is how missing goods get hidden, so those assert the far
@@ -60,6 +75,35 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
             'email'     => strtolower(self::PREFIX) . '-staff-' . uniqid() . '@example.test',
             'password'  => 'Aa1!aaaaaa',
             'role'      => 'staff',
+            'branch_id' => $branchId,
+            'is_active' => true,
+        ]);
+    }
+
+    /**
+     * A branch-locked MANAGER (supervisor).
+     *
+     * The Sept 2026 permission matrix moved stock-in, stock-out and the
+     * menu-item availability toggle out of the shared admin+staff group and
+     * into `role:admin,supervisor` — "Update Stock", "Stock Adjustments" and
+     * "Enable/Disable Menu Items" are all Y | Y | N. A staff member is now
+     * stopped by RoleMiddleware before AdminOrderAccess is ever consulted, so
+     * pointing those tests at a staff account would assert the ROLE gate while
+     * claiming to assert the BRANCH gate — and would keep passing if the
+     * branch check were deleted outright.
+     *
+     * Supervisor is in User::BRANCH_LOCKED_ROLES, so it carries exactly the
+     * same lock staff did. Swapping the actor keeps this file testing the thing
+     * it was written to test: that a branch-locked account cannot reach another
+     * branch's record by typing its id.
+     */
+    private function managerAt(int $branchId): User
+    {
+        return User::create([
+            'name'      => self::PREFIX . ' Supervisor',
+            'email'     => strtolower(self::PREFIX) . '-sup-' . uniqid() . '@example.test',
+            'password'  => 'Aa1!aaaaaa',
+            'role'      => 'supervisor',
             'branch_id' => $branchId,
             'is_active' => true,
         ]);
@@ -130,12 +174,12 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
 
     // ══════════════════ stock-in ══════════════════
 
-    public function test_staff_cannot_stock_in_another_branchs_inventory(): void
+    public function test_a_manager_cannot_stock_in_another_branchs_inventory(): void
     {
         $far  = $this->otherBranch();
         $item = $this->inventoryIn($far->id, 100);
 
-        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+        $this->actingAs($this->managerAt(self::HOME_BRANCH), 'admin')
             ->post('/admin/inventory/stock-in/' . $item->id, ['amount' => 25])
             ->assertNotFound();
 
@@ -145,11 +189,11 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
             'a refused stock-in must not write a stock movement');
     }
 
-    public function test_staff_can_stock_in_their_own_branchs_inventory(): void
+    public function test_a_manager_can_stock_in_their_own_branchs_inventory(): void
     {
         $item = $this->inventoryIn(self::HOME_BRANCH, 100);
 
-        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+        $this->actingAs($this->managerAt(self::HOME_BRANCH), 'admin')
             ->post('/admin/inventory/stock-in/' . $item->id, ['amount' => 25])
             ->assertRedirect();
 
@@ -171,12 +215,12 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
 
     // ══════════════════ stock-out — the point of the pass ══════════════════
 
-    public function test_staff_cannot_stock_out_another_branchs_inventory(): void
+    public function test_a_manager_cannot_stock_out_another_branchs_inventory(): void
     {
         $far  = $this->otherBranch();
         $item = $this->inventoryIn($far->id, 100);
 
-        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+        $this->actingAs($this->managerAt(self::HOME_BRANCH), 'admin')
             ->post('/admin/inventory/stock-out/' . $item->id, ['amount' => 40])
             ->assertNotFound();
 
@@ -186,11 +230,11 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
         $this->assertSame(0, DB::table('stock_movements')->where('inventory_id', $item->id)->count());
     }
 
-    public function test_staff_can_stock_out_their_own_branchs_inventory(): void
+    public function test_a_manager_can_stock_out_their_own_branchs_inventory(): void
     {
         $item = $this->inventoryIn(self::HOME_BRANCH, 100);
 
-        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+        $this->actingAs($this->managerAt(self::HOME_BRANCH), 'admin')
             ->post('/admin/inventory/stock-out/' . $item->id, ['amount' => 40])
             ->assertRedirect();
 
@@ -214,7 +258,7 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
     {
         $far   = $this->otherBranch();
         $item  = $this->inventoryIn($far->id, 100);
-        $staff = $this->staffAt(self::HOME_BRANCH);
+        $staff = $this->managerAt(self::HOME_BRANCH);
 
         $missingId = (int) Inventory::max('id') + 99999;
 
@@ -249,7 +293,7 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
 
     // ══════════════════ menu-item availability toggle ══════════════════
 
-    public function test_staff_cannot_toggle_another_branchs_menu_item(): void
+    public function test_a_manager_cannot_toggle_another_branchs_menu_item(): void
     {
         $far  = $this->otherBranch();
         $item = MenuItem::create([
@@ -260,7 +304,7 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
             'is_available' => true,
         ]);
 
-        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+        $this->actingAs($this->managerAt(self::HOME_BRANCH), 'admin')
             ->put('/admin/menu-items/toggle/' . $item->id)
             ->assertNotFound();
 
@@ -268,7 +312,7 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
             'a refused toggle must leave the far branch item\'s availability unchanged');
     }
 
-    public function test_staff_can_toggle_their_own_branchs_menu_item(): void
+    public function test_a_manager_can_toggle_their_own_branchs_menu_item(): void
     {
         $item = MenuItem::create([
             'category_id'  => Category::query()->value('id'),
@@ -278,7 +322,7 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
             'is_available' => true,
         ]);
 
-        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+        $this->actingAs($this->managerAt(self::HOME_BRANCH), 'admin')
             ->put('/admin/menu-items/toggle/' . $item->id)
             ->assertRedirect();
 

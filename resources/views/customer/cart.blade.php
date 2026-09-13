@@ -647,13 +647,33 @@
                             {{-- Accepts a promo code AND the PCH-… claim code a
                                  guest is given when they win on the wheel; the
                                  server tells them apart in
-                                 VoucherClaims::resolveTypedCode(). --}}
-                            <input type="text" id="voucherInput" aria-label="Voucher or claim code" autocomplete="off"
-                                class="min-w-0 flex-1 rounded-full border border-peach-soft bg-white px-4 py-2.5 text-sm outline-none transition placeholder:text-peach-deep/35 focus:border-peach focus:ring-4 focus:ring-peach/20">
+                                 VoucherClaims::resolveTypedCode().
+
+                                 The box used to carry nothing but an aria-label,
+                                 so on screen it was an unlabelled rounded
+                                 rectangle — nothing said it wanted a voucher
+                                 code. The placeholder says it, and the icon is
+                                 bi-ticket-perforated, already THE voucher icon
+                                 across customer/vouchers and admin/vouchers.
+                                 The wrapper is `relative` and the input carries
+                                 pl-10 so the icon sits inside the field rather
+                                 than stealing a third column from a 375px
+                                 row. --}}
+                            <div class="relative min-w-0 flex-1">
+                                <i class="bi bi-ticket-perforated pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-peach-deep/35"
+                                   aria-hidden="true"></i>
+                                <input type="text" id="voucherInput" aria-label="Voucher or claim code" autocomplete="off"
+                                    placeholder="Enter voucher code"
+                                    class="w-full rounded-full border border-peach-soft bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-peach-deep/35 focus:border-peach focus:ring-4 focus:ring-peach/20">
+                            </div>
                             <button type="button" onclick="applyVoucher()"
                                 class="shrink-0 rounded-full border border-peach-soft bg-white px-4 py-2.5 text-sm font-bold text-peach-red transition hover:bg-peach-soft">Apply</button>
                         </div>
-                        <div id="voucherMsg" class="mt-1.5 text-xs font-semibold"></div>
+                        {{-- Painted by setVoucherMessage() in the same alert
+                             shape showDiscountCardMessage() already uses for the
+                             PWD/Senior card, so the two refusals on this page
+                             look like one system. --}}
+                        <div id="voucherMsg" class="mt-1.5 hidden"></div>
                     </div>
 
                     <input type="hidden" name="voucher_code_confirmed" id="voucher_code_hidden" value="">
@@ -936,8 +956,12 @@
                      outside that form; confirmOrderNow() submits mainOrderForm and
                      an unticked checkbox simply sends nothing, which the server
                      reads as false. Placed directly below the item list and above
-                     Subtotal, in a card matching the .order-review-totals section. --}}
-                @if($sessionOrderType === 'dine_in')
+                     Subtotal, in a card matching the .order-review-totals section.
+
+                     This modal renders even for an empty cart, i.e. outside the
+                     summary block that defines $sessionOrderType, so fall back to
+                     the session directly if the controller ever stops passing it. --}}
+                @if(($sessionOrderType ?? session('order_type', Auth::check() ? 'pick_up' : 'dine_in')) === 'dine_in')
                 <div class="order-review-takeout">
                     <label class="order-review-row" for="isTakeoutCheckbox">
                         <span>Take Out</span>
@@ -1316,6 +1340,23 @@
         }
 
         window.addEventListener('load', function() {
+            /*
+             * A voucher applied to one cart must not survive onto a different
+             * cart built after this one emptied out. The only way this page's
+             * cart reaches zero items is the remove form's full page reload
+             * (quantity can never be stepped down to 0 — cartNormalizeQty
+             * floors it at 1), so an empty cart on load is exactly the signal
+             * that whatever 'peachy_voucher' still holds belongs to a cart
+             * that no longer exists. Clearing it here — rather than only when
+             * applyVoucher() itself fails or is cleared by hand — is what
+             * stops the stale code from being silently reapplied once a new
+             * item is added and #voucherInput exists again.
+             */
+            if (!@json(isset($cart) && count($cart) > 0)) {
+                localStorage.removeItem('peachy_voucher');
+                return;
+            }
+
             var savedVoucher = localStorage.getItem('peachy_voucher');
             if (savedVoucher && document.getElementById('voucherInput')) {
                 document.getElementById('voucherInput').value = savedVoucher;
@@ -1323,9 +1364,66 @@
             }
         });
 
+        /**
+         * The one place that paints the voucher box's message.
+         *
+         * THE BUG THIS EXISTS FOR
+         * -----------------------
+         * applyVoucher() used to hand-set msg.style.color at four separate
+         * call sites — '#16a34a' here, '#C0392B' there, '#802323' for a
+         * cleared code — so a refusal arrived as a bare 12px line under the
+         * field in a colour that appears nowhere else in the design. Reported
+         * as "no confirmed visible error message", and fairly: it did not look
+         * like the page's other refusals.
+         *
+         * The classes below are showDiscountCardMessage()'s, verbatim — the
+         * PWD/Senior card a few hundred lines down this same file already had
+         * this page's message pattern. Nothing new is invented here; the two
+         * controls now refuse in the same voice.
+         *
+         * `kind` is 'error' | 'success' | 'neutral'; anything falsy hides the
+         * box entirely rather than leaving an empty coloured strip.
+         */
+        function setVoucherMessage(message, kind) {
+            var msg = document.getElementById('voucherMsg');
+
+            if (!msg) return;
+
+            if (!message) {
+                msg.textContent = '';
+                msg.className = 'mt-1.5 hidden';
+                return;
+            }
+
+            var tone = kind === 'success'
+                ? 'bg-green-50 text-green-700'
+                : (kind === 'neutral'
+                    ? 'bg-peach-soft/60 text-peach-deep/70'
+                    : 'bg-red-50 text-red-700');
+
+            var icon = kind === 'success'
+                ? 'bi-check-circle'
+                : (kind === 'neutral' ? 'bi-info-circle' : 'bi-exclamation-circle');
+
+            msg.className = 'mt-1.5 flex items-start gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold ' + tone;
+            msg.innerHTML = '';
+
+            var i = document.createElement('i');
+            i.className = 'bi ' + icon + ' mt-px shrink-0';
+            i.setAttribute('aria-hidden', 'true');
+
+            var span = document.createElement('span');
+            span.className = 'min-w-0';
+            // textContent, never innerHTML: `message` is the server's sentence
+            // and may quote a code the customer typed.
+            span.textContent = message;
+
+            msg.appendChild(i);
+            msg.appendChild(span);
+        }
+
         function applyVoucher() {
             var code = document.getElementById('voucherInput').value.trim().toUpperCase();
-            var msg = document.getElementById('voucherMsg');
             var discountType = document.getElementById('discountType');
 
             /*
@@ -1345,8 +1443,7 @@
 
                 localStorage.removeItem('peachy_voucher');
 
-                msg.textContent = 'Voucher cleared.';
-                msg.style.color = '#802323';
+                setVoucherMessage('Voucher cleared.', 'neutral');
                 return;
             }
 
@@ -1368,8 +1465,7 @@
                 })
                 .then(function(data) {
                     if (data.success) {
-                        msg.style.color = '#16a34a';
-                        msg.textContent = '✓ Voucher applied';
+                        setVoucherMessage('Voucher applied.', 'success');
                         document.getElementById('voucher_code_hidden').value = code;
 
                         /*
@@ -1382,9 +1478,23 @@
                         appliedVoucherDiscount = data.discount;
                         refreshDiscountSummary();
                     } else {
-                        msg.style.color = '#C0392B';
-                        msg.textContent = '✗ ' + data.message;
+                        setVoucherMessage(data.message, 'error');
                         document.getElementById('voucher_code_hidden').value = '';
+
+                        /*
+                         * RESET THE FIELD. The rejected code used to be left
+                         * sitting in the box, so the customer's next attempt
+                         * began by clearing it by hand — and, because the window
+                         * load handler above re-applies whatever is in
+                         * localStorage, a bad code could be re-typed into the
+                         * box and re-refused on every later visit to the cart.
+                         * The refusal itself stays on screen; only the dead
+                         * input is cleared.
+                         */
+                        var field = document.getElementById('voucherInput');
+                        if (field) {
+                            field.value = '';
+                        }
 
                         // Rejected, so it is worth nothing — but a card that is
                         // still selected keeps its own discount.
@@ -1395,8 +1505,13 @@
                     }
                 })
                 .catch(function() {
-                    msg.textContent = 'Error applying voucher.';
-                    msg.style.color = '#C0392B';
+                    // The code is NOT cleared here: nothing said it was wrong,
+                    // only that the check could not be made, so the customer
+                    // keeps what they typed and can press Apply again.
+                    setVoucherMessage(
+                        'We could not check that code just now. Please try again.',
+                        'error'
+                    );
                 });
         }
 

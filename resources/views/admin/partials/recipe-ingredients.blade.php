@@ -58,7 +58,11 @@
     <tbody id="recipe-tbody-{{ $blockId }}">
         {{-- Saved rows (Edit) or nothing yet (Add). --}}
         @foreach($recipe as $row)
-        <tr style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}">
+        {{-- data-unit-cost + data-qty let the live "Cost from recipe" preview
+             (recalcRecipeCost() in menu-items.blade.php) recompute from the
+             rows on screen after an ingredient is added or removed in Edit
+             mode, the same way it already does from draft rows in Add mode. --}}
+        <tr style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}" data-unit-cost="{{ $row->inventory->unit_cost ?? 0 }}" data-qty="{{ $row->quantity_used }}">
             <td style="padding:0.35rem 0.4rem;">{{ $row->inventory->item_name ?? '(removed)' }}</td>
             <td style="padding:0.35rem 0.4rem;">
                 {{ rtrim(rtrim(number_format($row->quantity_used, 3), '0'), '.') }} {{ $row->inventory->unit ?? '' }}

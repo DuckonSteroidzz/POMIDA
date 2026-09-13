@@ -961,7 +961,11 @@
                 <div class="pc-order-top">
                     <p class="pc-order-type">
                         @if($order->type === 'dine_in')
-                        <i class="bi bi-shop"></i> Dine-in — Table {{ $order->table_number ?? 'N/A' }}
+                        {{-- A flagged Take Out order drops the "Dine-in" wording and
+                             reads as just the table reference plus "Take Out", so the
+                             label never implies two conflicting order types. An
+                             un-flagged Dine-In order is unchanged. --}}
+                        <i class="bi bi-shop"></i> @if($order->is_takeout)Table {{ $order->table_number ?? 'N/A' }} · Take Out @else Dine-in — Table {{ $order->table_number ?? 'N/A' }}@endif
                         @elseif($order->type === 'pick_up')
                         <i class="bi bi-bag"></i> Pickup
                         @else
@@ -970,11 +974,6 @@
                     </p>
                     <p class="pc-order-num">Order #{{ $order->order_number }}</p>
                     <span class="pc-status" style="background-color: {{ $statusColor }};">{{ $order->status }}</span>
-                    {{-- Dine-in customer asked to take the order away. Same pill
-                         as the status badge, in the order-type dark red. --}}
-                    @if($order->type === 'dine_in' && $order->is_takeout)
-                    <span class="pc-status" style="background-color: #8B1A1A;">Take Out</span>
-                    @endif
                 </div>
 
                 @php
@@ -2380,7 +2379,14 @@ function checkManualVoucher()
             'Accept': 'application/json',
             'X-CSRF-TOKEN': document.querySelector('meta[name="csrf-token"]').content,
         },
-        body: JSON.stringify({ code: code, subtotal: subtotal }),
+        // The chosen branch travels with the check: a branch-scoped voucher is
+        // only redeemable for an order at its own branch, and this preview must
+        // judge that against the branch the order will actually be saved to.
+        body: JSON.stringify({
+            code: code,
+            subtotal: subtotal,
+            branch_id: (document.getElementById('manualBranch') || {}).value || null,
+        }),
     })
     .then(function (response) { return response.json(); })
     .then(function (data) {
@@ -2515,8 +2521,10 @@ function openOrderDetails(button) {
             ? 'Pickup'
             : 'Walk-in';
 
+    // A flagged Take Out Dine-In order reads as the table reference plus
+    // "Take Out" only — never "Dine-in" alongside "Take Out".
     if (type === 'dine_in' && button.dataset.takeout === '1') {
-        typeLabel += ' · Take Out';
+        typeLabel = table ? `Table ${table} · Take Out` : 'Take Out';
     }
 
     document.getElementById('pcOrderModalType').textContent = typeLabel;

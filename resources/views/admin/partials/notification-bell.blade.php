@@ -25,7 +25,12 @@
     <div class="pc-notif-panel" data-anotif-panel hidden>
         <div class="pc-notif-head">
             <span>Notifications</span>
-            <button type="button" data-anotif-markread class="pc-notif-mark">Mark all read</button>
+            <span class="pc-notif-head-actions">
+                <button type="button" data-anotif-markread class="pc-notif-mark">Mark all read</button>
+                <button type="button" data-anotif-close class="pc-notif-x" aria-label="Close">
+                    <i class="bi bi-x-lg"></i>
+                </button>
+            </span>
         </div>
         <div class="pc-notif-list" data-anotif-list>
             <p class="pc-notif-empty">Loading…</p>
@@ -101,6 +106,18 @@
     }
     .pc-notif-mark:hover { background: rgba(139, 26, 26, 0.07); }
 
+    /* Close (X) — same borderless treatment as .pc-notif-mark and the toast's
+       .pc-toast-x, using the shared bi-x-lg icon already used by the admin
+       modal close buttons. */
+    .pc-notif-head-actions { display: inline-flex; align-items: center; gap: 0.15rem; }
+    .pc-notif-x {
+        border: 0; background: transparent;
+        color: rgba(90, 62, 54, 0.5);
+        font-size: 0.8rem; line-height: 1;
+        cursor: pointer; padding: 0.25rem 0.35rem; border-radius: 999px;
+    }
+    .pc-notif-x:hover { background: rgba(139, 26, 26, 0.07); color: var(--pc-maroon); }
+
     .pc-notif-list { max-height: 55vh; overflow-y: auto; }
 
     .pc-notif-item {
@@ -115,6 +132,21 @@
         border-radius: 999px; background: transparent;
     }
     .pc-notif-item.unread .pc-notif-dot { background: var(--pc-red); }
+
+    /* Per-card dismiss (X). Borderless + transparent like .pc-notif-mark,
+       .pc-notif-x and .pc-toast-x, using the shared bi-x-lg icon. flex:0 0 auto
+       so a long title never squeezes it off the card, and it stays inside the
+       55vh scroll container — no new overflow at any width. */
+    .pc-notif-dismiss {
+        align-self: flex-start;
+        flex: 0 0 auto;
+        margin: -0.15rem -0.15rem 0 0;
+        border: 0; background: transparent;
+        color: rgba(90, 62, 54, 0.4);
+        font-size: 0.72rem; line-height: 1;
+        cursor: pointer; padding: 0.25rem 0.3rem; border-radius: 999px;
+    }
+    .pc-notif-dismiss:hover { background: rgba(139, 26, 26, 0.07); color: var(--pc-maroon); }
 
     .pc-notif-title { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--pc-maroon); }
     .pc-notif-item.unread .pc-notif-title { font-weight: 900; }
@@ -226,10 +258,18 @@
     var badge   = root.querySelector('[data-anotif-badge]');
     var list    = root.querySelector('[data-anotif-list]');
     var markBtn = root.querySelector('[data-anotif-markread]');
+    var closeBtn = root.querySelector('[data-anotif-close]');
+
+    function closePanel() {
+        panel.hidden = true;
+        toggle.setAttribute('aria-expanded', 'false');
+    }
 
     var URL_COUNT = @json(route('admin.notifications.unread-count'));
     var URL_LIST  = @json(route('admin.notifications.index'));
     var URL_READ  = @json(route('admin.notifications.read'));
+    // {notification} placeholder swapped per click — one X per card.
+    var URL_DISMISS = @json(route('admin.notifications.dismiss', ['notification' => '__ID__']));
     var CSRF      = @json(csrf_token());
 
     function setBadge(n) {
@@ -256,6 +296,9 @@
                        '<p class="pc-notif-msg">' + esc(n.message) + '</p>' +
                        '<p class="pc-notif-ago">' + esc(n.ago) + '</p>' +
                      '</div>' +
+                     '<button type="button" class="pc-notif-dismiss" data-anotif-dismiss ' +
+                       'data-id="' + esc(n.id) + '" aria-label="Dismiss">' +
+                       '<i class="bi bi-x-lg"></i></button>' +
                    '</div>';
         }).join('');
     }
@@ -406,6 +449,13 @@
         }
     });
 
+    if (closeBtn) {
+        closeBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            closePanel();
+        });
+    }
+
     markBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         fetch(URL_READ, { method: 'POST', headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' } })
@@ -414,14 +464,41 @@
             .catch(function () {});
     });
 
+    // Per-card dismiss (X). Delegated so it survives every list re-render.
+    list.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-anotif-dismiss]');
+        if (!btn) return;
+        e.stopPropagation();
+
+        var id = btn.getAttribute('data-id');
+        if (!id || btn.disabled) return;
+        btn.disabled = true;
+
+        fetch(URL_DISMISS.replace('__ID__', encodeURIComponent(id)), {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
+        })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d) { btn.disabled = false; return; }
+                // Drop the row immediately; keep the badge honest.
+                var item = btn.closest('.pc-notif-item');
+                if (item && item.parentNode) item.parentNode.removeChild(item);
+                if (typeof d.unread === 'number') setBadge(d.unread);
+                if (!list.querySelector('.pc-notif-item')) {
+                    list.innerHTML = '<p class="pc-notif-empty">No notifications yet.</p>';
+                }
+            })
+            .catch(function () { btn.disabled = false; });
+    });
+
     document.addEventListener('click', function (e) {
         if (!panel.hidden && !root.contains(e.target)) {
-            panel.hidden = true;
-            toggle.setAttribute('aria-expanded', 'false');
+            closePanel();
         }
     });
     document.addEventListener('keydown', function (e) {
-        if (e.key === 'Escape') { panel.hidden = true; }
+        if (e.key === 'Escape' && !panel.hidden) { closePanel(); }
     });
 
     poll();

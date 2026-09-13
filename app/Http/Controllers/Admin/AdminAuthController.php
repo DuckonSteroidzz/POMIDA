@@ -261,11 +261,25 @@ class AdminAuthController extends Controller
      */
     public function logout(Request $request)
     {
+        // The role is still knowable right here, before the guard is cleared —
+        // the shared portal login page otherwise gives no sign of which account
+        // you just left, which matters now there are three portal roles.
+        $role = Auth::guard('admin')->user()?->role;
+
         Auth::guard('admin')->logout();
         $request->session()->invalidate();
         $request->session()->regenerateToken();
 
+        $labels = [
+            'admin' => 'Administrator',
+            'staff' => 'Staff',
+            'supervisor' => 'Supervisor',
+        ];
+        $message = isset($labels[$role])
+            ? 'You have been logged out of your ' . $labels[$role] . ' account.'
+            : 'You have been logged out.';
+
         return redirect()->route('admin.login')
-            ->with('success', 'You have been logged out.');
+            ->with('success', $message);
     }
 }

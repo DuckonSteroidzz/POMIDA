@@ -28,6 +28,34 @@ class Notification extends Model
     public const AUDIENCE_CUSTOMER = 'customer';
     public const AUDIENCE_STAFF    = 'staff';
 
+    /**
+     * How long an informational notification stays in the tray.
+     *
+     * Past this it is still in the table (nothing is deleted) but
+     * scopeInTray() stops selecting it, so the tray cannot fill with
+     * week-old "order complete" rows nobody will ever act on.
+     */
+    public const AUTO_EXPIRY_DAYS = 7;
+
+    /**
+     * Types that represent UNFINISHED STAFF WORK, not just information.
+     *
+     * A gcash_awaiting_verification row means a payment still needs checking;
+     * refund_pending means money still has to be sent back. Letting either of
+     * those age out of the tray on a timer would hide real, unresolved work —
+     * so scopeInTray() never auto-expires them by age. The only way one leaves
+     * the tray is a person dismissing it by hand after dealing with it.
+     *
+     * There is no separate "resolved" flag on the row: the resolution lives on
+     * the order (payment_status moves off awaiting_verification / refund_pending
+     * once staff act). Rather than mirror that state onto the notification, the
+     * manual dismiss IS the acknowledgement.
+     */
+    public const ACTIONABLE_TYPES = [
+        'gcash_awaiting_verification',
+        'refund_pending',
+    ];
+
     protected $fillable = [
         'user_id',
         'order_id',
@@ -37,10 +65,12 @@ class Notification extends Model
         'title',
         'message',
         'read_at',
+        'dismissed_at',
     ];
 
     protected $casts = [
-        'read_at' => 'datetime',
+        'read_at'      => 'datetime',
+        'dismissed_at' => 'datetime',
     ];
 
     public function order()
@@ -107,6 +137,33 @@ class Notification extends Model
         }
 
         return $query;
+    }
+
+    /**
+     * Limit a query to the notifications that should show in the TRAY right now.
+     *
+     * Two filters, layered on top of whichever ownership scope was already
+     * applied (visibleToStaff / visibleToCurrentCustomer):
+     *
+     *   1. Not dismissed — a row whose X has been tapped never comes back.
+     *   2. Not stale — an informational row older than AUTO_EXPIRY_DAYS is
+     *      dropped. Actionable rows (ACTIONABLE_TYPES) are kept regardless of
+     *      age, because ageing out unfinished work is exactly the failure this
+     *      guard exists to avoid.
+     *
+     * Nothing here deletes or mutates a row; a report that wants the full
+     * history just queries Notification without this scope.
+     */
+    public function scopeInTray(Builder $query): Builder
+    {
+        $cutoff = now()->subDays(self::AUTO_EXPIRY_DAYS);
+
+        return $query
+            ->whereNull('dismissed_at')
+            ->where(function (Builder $q) use ($cutoff) {
+                $q->whereIn('type', self::ACTIONABLE_TYPES)
+                    ->orWhere('created_at', '>=', $cutoff);
+            });
     }
 
     /*

@@ -6,6 +6,7 @@ use App\Http\Controllers\Concerns\ResolvesBranchScope;
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Staff/admin notification feed.
@@ -26,7 +27,7 @@ class NotificationController extends Controller
 
     public function unreadCount(): JsonResponse
     {
-        $scoped = fn () => Notification::visibleToStaff($this->getSelectedBranch());
+        $scoped = fn () => Notification::visibleToStaff($this->getSelectedBranch())->inTray();
 
         return response()->json([
             'unread' => $scoped()->whereNull('read_at')->count(),
@@ -43,6 +44,7 @@ class NotificationController extends Controller
     public function index(): JsonResponse
     {
         $notifications = Notification::visibleToStaff($this->getSelectedBranch())
+            ->inTray()
             ->latest('id')
             ->limit(self::FEED_LIMIT)
             ->get();
@@ -71,5 +73,33 @@ class NotificationController extends Controller
             ->update(['read_at' => now()]);
 
         return response()->json(['unread' => 0]);
+    }
+
+    /**
+     * Soft-dismiss ONE notification: the X on an individual tray card.
+     *
+     * The id is resolved against visibleToStaff() for the caller's own branch
+     * scope, exactly like every read here — a staff member cannot dismiss a
+     * notification for a branch they cannot see, and a missing/out-of-scope id
+     * is a 404, matching the rest of the admin area (see AdminOrderAccess).
+     *
+     * Idempotent: dismissing an already-dismissed row just re-stamps it.
+     */
+    public function dismiss(int $notification): JsonResponse
+    {
+        $scope = fn () => Notification::visibleToStaff($this->getSelectedBranch());
+
+        $row = $scope()->whereKey($notification)->first();
+
+        if ($row === null) {
+            throw new NotFoundHttpException();
+        }
+
+        $row->forceFill(['dismissed_at' => now()])->save();
+
+        return response()->json([
+            'dismissed' => true,
+            'unread'    => $scope()->inTray()->whereNull('read_at')->count(),
+        ]);
     }
 }

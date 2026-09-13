@@ -244,24 +244,81 @@ class TakeoutFlagTest extends TestCase
 
         $html = $this->actingAs($admin, 'admin')->get('/admin/home')->assertOk()->getContent();
 
-        // One "Take Out" pill, for the flagged Dine-In order only.
-        $this->assertSame(
-            1,
-            substr_count($html, '>Take Out<'),
-            'expected exactly one Take Out badge on the board (the flagged Dine-In order)'
+        // A flagged Take Out order reads as the table reference plus "Take Out"
+        // ONLY — the "Dine-in" wording is dropped so the label never implies two
+        // conflicting order types. The flagged order (table 7) reads "Table 7 ·
+        // Take Out"; the plain Dine-In order (table 8) still reads "Dine-in —
+        // Table 8" with no modifier; the Pick-Up order carries neither.
+        $this->assertMatchesRegularExpression(
+            '/Table 7\s*·\s*Take Out/u',
+            $html,
+            'the flagged Dine-In order should read "Table 7 · Take Out" on the board'
         );
-
-        $flaggedPos = strpos($html, $flagged->order_number);
-        $plainPos   = strpos($html, $plain->order_number);
-        $badgePos   = strpos($html, '>Take Out<');
-
-        $this->assertNotFalse($flaggedPos);
-        $this->assertNotFalse($plainPos);
-        // The badge sits in the flagged order's card header, before the next card.
-        $this->assertTrue(
-            $badgePos > $flaggedPos && ($plainPos === false || $badgePos < $plainPos || $flaggedPos < $plainPos),
-            'the Take Out badge is not rendered against the flagged order'
+        $this->assertDoesNotMatchRegularExpression(
+            '/Dine-in\s*—\s*Table 7/u',
+            $html,
+            'the flagged order must not still say "Dine-in — Table 7" next to "Take Out"'
         );
+        $this->assertMatchesRegularExpression(
+            '/Dine-in\s*—\s*Table 8/u',
+            $html,
+            'the un-flagged Dine-In order should still read "Dine-in — Table 8"'
+        );
+        $this->assertDoesNotMatchRegularExpression(
+            '/Table 8[^<]*·\s*Take Out/u',
+            $html,
+            'the un-flagged Dine-In order must not carry the Take Out modifier'
+        );
+        // Pick-Up never carries it (the flag is impossible there, but assert anyway).
+        $this->assertStringNotContainsString('Pickup · Take Out', $html);
+
+        $this->assertNotFalse(strpos($html, $flagged->order_number));
+        $this->assertNotFalse(strpos($html, $plain->order_number));
+    }
+
+    public function test_the_completed_orders_list_labels_a_flagged_dine_in_order(): void
+    {
+        $admin = User::where('role', 'admin')->firstOrFail();
+
+        $flagged = Order::create($this->boardOrder([
+            'type'         => 'dine_in',
+            'is_takeout'   => true,
+            'table_number' => '7',
+            'status'       => 'completed',
+        ]));
+
+        $plain = Order::create($this->boardOrder([
+            'type'         => 'dine_in',
+            'is_takeout'   => false,
+            'table_number' => '8',
+            'status'       => 'completed',
+        ]));
+
+        $pickup = Order::create($this->boardOrder([
+            'type'         => 'pick_up',
+            'is_takeout'   => true, // impossible in practice; the label still must not show it
+            'table_number' => null,
+            'status'       => 'completed',
+        ]));
+
+        $html = $this->actingAs($admin, 'admin')
+            ->get('/admin/completed-orders')
+            ->assertOk()
+            ->getContent();
+
+        // The Type badge has no separate Table column beside it on this page, so a
+        // flagged order reads "Table 7 · Take Out" — never "Dine In" next to
+        // "Take Out".
+        $this->assertMatchesRegularExpression('/Table 7\s*·\s*Take Out/u', $html);
+        $this->assertDoesNotMatchRegularExpression('/Dine In[^<]*·\s*Take Out/u', $html);
+        // An un-flagged Dine-In order still shows the plain "Dine In" type, no modifier.
+        $this->assertDoesNotMatchRegularExpression('/Table 8\s*·\s*Take Out/u', $html);
+        // Pick-Up never carries it.
+        $this->assertStringNotContainsString('Pickup · Take Out', $html);
+
+        $this->assertNotFalse(strpos($html, $flagged->order_number));
+        $this->assertNotFalse(strpos($html, $plain->order_number));
+        $this->assertNotFalse(strpos($html, $pickup->order_number));
     }
 
     private function boardOrder(array $attrs): array

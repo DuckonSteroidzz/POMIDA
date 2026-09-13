@@ -6,6 +6,38 @@
 
 @php
     $adminUser = Auth::guard('admin')->user();
+
+    /*
+     * The permission matrix, as this page needs it.
+     *
+     * Add / Edit / Enable-Disable Menu Items are Y | Y | N, so they follow
+     * isManager() — the same User::MANAGER_ROLES the `role:admin,supervisor`
+     * route group is spelled from. Staff keep "View Menu Items" (Y | Y | Y),
+     * which is this table without any of the controls.
+     *
+     * Delete is the LIMITED row and is decided PER ITEM below, not here: a
+     * supervisor may delete only an item belonging to their own branch, never
+     * a shared (branch_id IS NULL) one. $lockedBranchId is null for the owner,
+     * which is what makes every branchDeletable() test below pass for them.
+     */
+    $canManageMenu  = $adminUser && $adminUser->isManager();
+    $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+    $canDeleteItem = function ($item) use ($canManageMenu, $lockedBranchId) {
+        if (! $canManageMenu) {
+            return false;
+        }
+
+        // Owner — not branch bound, so every item including shared ones.
+        if ($lockedBranchId === null) {
+            return true;
+        }
+
+        // Manager — own branch only, and never a shared item. Mirrors exactly
+        // what AdminController::deleteMenuItem() enforces server-side; this is
+        // the button agreeing with that check, never a substitute for it.
+        return $item->branch_id !== null && (int) $item->branch_id === $lockedBranchId;
+    };
 @endphp
 
 <p class="page-title">Menu Items</p>
@@ -43,7 +75,7 @@
             @endforeach
             @endif
         </select>
-        @if($adminUser && $adminUser->role === 'admin')
+        @if($canManageMenu)
         @if(isset($selectedBranch) && $selectedBranch === 'all')
         <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:0.5rem 0.85rem;font-size:0.78rem;color:#856404;">
             <i class="bi bi-exclamation-triangle"></i>
@@ -112,7 +144,7 @@
                 <th>Gross Profit</th>
                 <th>Branch</th>
                 <th>Available</th>
-                @if($adminUser && $adminUser->role === 'admin')
+                @if($canManageMenu)
                 <th>Edit</th>
                 <th>Delete</th>
                 @endif
@@ -185,12 +217,25 @@
                     @endif
                 </td>
                 <td data-label="Available">
+                    {{-- "Enable/Disable Menu Items" is Y | Y | N. Staff still
+                         need to SEE whether a dish is on sale — that is the
+                         View row — so they get the state as a read-only badge
+                         instead of the toggle. Hiding the cell entirely would
+                         take away information they are entitled to; showing a
+                         dead checkbox would invite a click that 302s them back
+                         to the dashboard with a permission error. --}}
+                    @if($canManageMenu)
                     <form action="{{ route('admin.menu-items.toggle', $item->id) }}" method="POST" style="margin: 0;">
                         @csrf @method('PUT')
                         <input type="checkbox" onchange="this.form.submit()" {{ $item->is_available ? 'checked' : '' }} style="width:16px; height:16px; accent-color:#F4845F; cursor:pointer;">
                     </form>
+                    @else
+                    <span style="background:{{ $item->is_available ? '#d4edda' : '#f8d7da' }};color:{{ $item->is_available ? '#155724' : '#721c24' }};padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600;">
+                        {{ $item->is_available ? 'Available' : 'Unavailable' }}
+                    </span>
+                    @endif
                 </td>
-                @if($adminUser && $adminUser->role === 'admin')
+                @if($canManageMenu)
                 <td data-label="Edit">
                     <button type="button" class="btn-edit-custom"
                         data-id="{{ $item->id }}"
@@ -213,9 +258,18 @@
                     </button>
                 </td>
                 <td data-label="Delete">
+                    {{-- The matrix's LIMITED row, per item. A supervisor gets
+                         the button only on their OWN branch's items — never on
+                         a shared "All Branches" item, and never on another
+                         branch's. The cell itself stays so the column does not
+                         go ragged; deleteMenuItem() enforces the same rule
+                         server-side, which is what actually stops a crafted
+                         DELETE. --}}
+                    @if($canDeleteItem($item))
                     <button class="btn-danger-custom" data-id="{{ $item->id }}" onclick="confirmDelete(this.dataset.id)">
                         <i class="bi bi-trash3"></i>
                     </button>
+                    @endif
                 </td>
                 @endif
             </tr>
@@ -229,6 +283,13 @@
     </table>
 </div>
 
+{{-- The write modals. Gated on $canManageMenu, matching the buttons that open
+     them: a staff member has no Add New Item and no Edit control, so shipping
+     these forms (and the recipe editor inside the second one) would leave
+     hidden POST targets for manager-only routes in their page for nothing. The
+     route groups are what refuse a crafted request; this just stops rendering
+     the form. --}}
+@if($canManageMenu)
 {{-- ADD/EDIT MODAL --}}
 <div id="itemModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center; padding:1rem;">
     <div style="background:white; border-radius:12px; padding:1.5rem; max-width:600px; width:100%; max-height:90vh; overflow-y:auto;">
@@ -455,10 +516,17 @@
         </div>
     </div>
 </div>
+@endif
 
 @endsection
 
 @push('scripts')
+{{-- The whole modal script — openAddModal/openEditModal, the recipe editor
+     wiring and the delete confirmation. All of it drives controls only a
+     manager has, and every element it reaches for lives inside the gated
+     modals above, so for staff it would be dead code that still names
+     manager-only endpoints in the page source. --}}
+@if($canManageMenu)
 <script>
     // Both Add and Edit share this one modal. openAddModal()/openEditModal()
     // decide which state it is in: title, submit label, form action/method,
@@ -633,28 +701,35 @@
         });
     }
 
-    // ══════════ ADD MODE: recompute the running total from the table's own rows ══════════
-    // Runs after every add/remove of a draft row. Deliberately the SAME
-    // arithmetic as App\Services\MenuItemCosting: sum(quantity_used x
-    // unit_cost). It is only a preview — storeNewMenuItem() recomputes from
-    // the saved rows and never trusts this number.
-    function recalcAddModeCost() {
-        var tbody = document.getElementById('recipe-tbody-add');
+    // ══════════ Live "Cost from recipe" — ONE function for both Add and Edit ══════════
+    // Recomputes the running total straight from the rows the table is showing,
+    // for whichever Recipe Ingredients block is named ('add' for a new item, a
+    // menu item's id for Edit). Deliberately the SAME arithmetic as
+    // App\Services\MenuItemCosting: sum(quantity_used x unit_cost). It is only a
+    // preview — the server recomputes from the saved rows on submit / on each
+    // add-ingredient POST and never trusts this number.
+    //
+    // Every costed row (a draft row in Add, a saved row in Edit, and the row JS
+    // appends after an Edit add-ingredient succeeds) carries data-unit-cost and
+    // data-qty; Add-mode draft rows also keep the authoritative quantity in a
+    // hidden input, which wins while it is being typed.
+    function recalcRecipeCost(blockId) {
+        var tbody = document.getElementById('recipe-tbody-' + blockId);
         if (!tbody) return;
 
         var total = 0;
         var filled = 0;
-        tbody.querySelectorAll('tr[data-draft-row]').forEach(function (row) {
-            var qtyInput = row.querySelector('input[name$="[quantity_used]"]');
-            if (!qtyInput) return;
-            filled++;
+        tbody.querySelectorAll('tr[data-unit-cost]').forEach(function (row) {
             var unitCost = parseFloat(row.dataset.unitCost || '0');
-            var amount = parseFloat(qtyInput.value || '0');
+            var amount = parseFloat(row.dataset.qty || '0');
+            var qtyInput = row.querySelector('input[name$="[quantity_used]"]');
+            if (qtyInput) amount = parseFloat(qtyInput.value || '0');
+            filled++;
             if (!isNaN(unitCost) && !isNaN(amount)) total += unitCost * amount;
         });
 
-        var totalEl = document.getElementById('recipe-cost-add');
-        var profitEl = document.getElementById('recipe-profit-add');
+        var totalEl = document.getElementById('recipe-cost-' + blockId);
+        var profitEl = document.getElementById('recipe-profit-' + blockId);
         if (totalEl) totalEl.textContent = '₱' + total.toFixed(2);
 
         applyCostLock(filled > 0, total.toFixed(2));
@@ -673,6 +748,10 @@
             }
         }
     }
+
+    // Add mode keeps its own name for the existing call sites (draft add/remove,
+    // quantity input, price input, the failed-submit re-open).
+    function recalcAddModeCost() { recalcRecipeCost('add'); }
     window.riRecalc = recalcAddModeCost;
 
     // Draft rows use an ever-increasing index (never reused), so removing one
@@ -801,8 +880,15 @@
             return;
         }
 
-        // ── EDIT MODE — persist via fetch(), unchanged from before.
+        // ── EDIT MODE — persist via fetch().
         addBtn.disabled = true;
+
+        // The picker option carries the same per-unit cost the live preview
+        // computes from (data-cost); keep it so the appended row can feed
+        // recalcRecipeCost() exactly like a draft row does in Add mode.
+        var editOpt = select.options[select.selectedIndex];
+        var editUnitCost = (editOpt && editOpt.dataset.cost) || '0';
+        var editQty = qtyInput.value;
 
         var token = document.querySelector('#itemForm input[name="_token"]').value;
         var fd = new FormData();
@@ -833,6 +919,8 @@
                 row.style.borderTop = '1px solid #f0f0f0';
                 row.dataset.ingredientId = ing.id;
                 if (ing.inventory_id) row.dataset.inventoryId = ing.inventory_id;
+                row.dataset.unitCost = editUnitCost;
+                row.dataset.qty = editQty;
                 row.innerHTML =
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
@@ -848,6 +936,7 @@
                 document.getElementById('recipe-table-' + blockId).style.display = '';
 
                 resetEntryRow();
+                recalcRecipeCost(blockId);
             })
             .catch(function () {
                 addBtn.disabled = false;
@@ -898,8 +987,10 @@
                         document.getElementById('recipe-empty-' + blockId).style.display = 'block';
                         document.getElementById('recipe-table-' + blockId).style.display = 'none';
                     }
+                    recalcRecipeCost(blockId);
                 }
             });
     });
 </script>
+@endif
 @endpush

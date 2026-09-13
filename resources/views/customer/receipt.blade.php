@@ -107,17 +107,26 @@
         }
 
 @media print {
+    /* 80mm thermal slip, not A4: no page margins.
+
+       The height MUST be an explicit length. `size: <length> auto` is not valid
+       CSS — Chrome drops the whole declaration and falls back to the selected
+       paper (Letter/A4), so the 80mm column overflowed that page height and the
+       receipt printed across two sheets (Items on p1, Order Details + Thank You
+       on p2). A generous fixed length keeps a normal receipt on one continuous
+       slip; a very long order flows on as an unbroken strip on a thermal feed. */
     @page {
-        size: auto;
-        margin: 10mm;
+        size: 80mm 297mm;
+        margin: 0;
     }
 
     html,
     body {
-        width: 100% !important;
+        width: 80mm !important;
+        max-width: 80mm !important;
         height: auto !important;
         min-height: 0 !important;
-        margin: 0 !important;
+        margin: 0 auto !important;
         padding: 0 !important;
         background: #ffffff !important;
     }
@@ -132,11 +141,15 @@
         display: none !important;
     }
 
-    /* Collapse layout to a single centered column */
+    /* Collapse layout to a single centered column sized for the 80mm roll, and
+       keep the whole slip on one continuous length so a short order does not
+       spill onto a second page. */
     main {
-        padding: 0 !important;
-        margin: 0 !important;
-        max-width: 100% !important;
+        padding: 10px !important;
+        margin: auto !important;
+        max-width: 80mm !important;
+        break-inside: avoid !important;
+        page-break-inside: avoid !important;
     }
 
     .paper-bg {
@@ -148,20 +161,65 @@
         display: block !important;
     }
 
-    /* Keep each receipt block intact on one page */
-    section,
-    aside,
+    /* Keep the SMALL receipt blocks intact on one page. The outer <section>
+       (the whole ticket) and <aside> are deliberately NOT listed here: on a
+       long order they can exceed one page length, and forcing them unbreakable
+       made the browser shunt the entire aside — Order Details + Thank You —
+       onto a second sheet instead of letting the slip flow on continuously.
+
+       Also strips their on-screen "card" look (rounded corners, tinted
+       background) so the ticket, Order Details and Thank You note read as one
+       continuous slip instead of three floating cards. */
     aside > div,
     .card-surface,
     li {
+        background: transparent !important;
+        border: 0 !important;
+        border-radius: 0 !important;
         break-inside: avoid !important;
         page-break-inside: avoid !important;
         box-shadow: none !important;
     }
 
-    aside {
-        margin-top: 5mm !important;
+    section {
+        border-radius: 0 !important;
+        background: transparent !important;
+        box-shadow: none !important;
     }
+
+    aside {
+        margin-top: 0 !important;
+    }
+
+    /* The torn-paper notches were a decorative edge for the ticket when it was
+       a separate floating card; on the unified slip they'd land mid-column and
+       read as a stray gap. */
+    .ticket-notch {
+        display: none !important;
+    }
+
+    /* Replace the removed card boundaries with hairline dashed rules between
+       logical sections — the ticket, Order Details, and the Thank You note —
+       so the slip reads as one continuous column. Reuses the #ccc divider
+       colour and 0.5rem spacing already used elsewhere in this block. The
+       extra type-selector weight (vs. the `aside > div` / `.card-surface`
+       rule above) is intentional so these dashed rules are not clobbered by
+       the `border: 0` reset. */
+    section + aside > :first-child,
+    aside > div + div {
+        border-top: 1px dashed #ccc !important;
+        margin-top: 0.5rem !important;
+    }
+
+    /* Compact the on-screen card padding and vertical rhythm for the narrow
+       slip so a normal receipt prints as one continuous length. Print-only —
+       the 375px screen layout keeps its roomier spacing. */
+    main .py-5 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+    main .p-5 { padding: 0.6rem !important; }
+    main .pt-5 { padding-top: 0.5rem !important; }
+    main .pb-6 { padding-bottom: 0.5rem !important; }
+    main .gap-5 { gap: 0.5rem !important; }
+    main .space-y-5 > * + * { margin-top: 0.5rem !important; }
 
     /* Disable entrance animations for print */
     .rise {

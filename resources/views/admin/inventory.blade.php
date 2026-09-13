@@ -6,7 +6,36 @@
 
 @php
     $adminUser = Auth::guard('admin')->user();
-    $isAdmin = $adminUser && $adminUser->role === 'admin';
+
+    /*
+     * Three tiers on this page, not two.
+     *
+     *  $canManageStock (owner + supervisor) — "Add Inventory", "Update Stock"
+     *      and "Stock Adjustments" are Y | Y | N. This covers Add Item, Edit,
+     *      and the Stock In / Stock Out buttons. Stock In/Out USED to be shown
+     *      to everyone, matching a route group that admitted staff; both moved
+     *      together, because a stock movement writes the rows the cost figures
+     *      are built from.
+     *
+     *  $isAdmin (owner alone) — "Delete Inventory Records" is Y | N | N.
+     *      Deleting a stock item cascades through menu_item_ingredients and
+     *      silently stops menu items deducting anything, which is why it is
+     *      the one inventory action a manager does not get.
+     *
+     *  staff — "View Inventory" is VIEW-ONLY: the table, the totals and the
+     *      status badges, and none of the buttons.
+     */
+    $isAdmin = $adminUser && $adminUser->isAdmin();
+    $canManageStock = $adminUser && $adminUser->isManager();
+
+    /*
+     * How wide the table actually is for THIS viewer, so the "no items" and
+     * "no matching items" rows still span it. Seven always-present columns,
+     * plus Stock In / Stock Out / Edit for a manager and Delete for the owner.
+     * Hard-coded at 11 before the roles split, which for staff left the empty
+     * state spanning four columns that are no longer rendered.
+     */
+    $ivColumnCount = 7 + ($canManageStock ? 3 : 0) + ($isAdmin ? 1 : 0);
     $invItems = isset($inventory) ? $inventory : collect();
     $countTotal = count($invItems);
     $countOut = 0; $countLow = 0; $countOk = 0;
@@ -41,7 +70,8 @@
     </div>
     <div class="iv-actions">
         <span class="iv-chip">Total Items: {{ $countTotal }}</span>
-        @if($isAdmin)
+        {{-- "Add Inventory" is Y | Y | N — a manager gets this, staff do not. --}}
+        @if($canManageStock)
         <button type="button" class="iv-btn iv-btn-solid" onclick="openAddModal()">
             <i class="bi bi-plus-circle"></i> Add Item
         </button>
@@ -129,10 +159,23 @@
                 <th class="iv-ta-right">Low Stock Alert</th>
                 <th class="iv-ta-right">Stock Value</th>
                 <th class="iv-ta-center">Status</th>
+                {{-- Stock In / Stock Out are "Update Stock" and "Stock
+                     Adjustments", both Y | Y | N. For staff the whole pair of
+                     columns disappears rather than showing two dead buttons —
+                     VIEW-ONLY means the stock list, not a list with controls
+                     that bounce. --}}
+                @if($canManageStock)
                 <th class="iv-ta-center">Stock In</th>
                 <th class="iv-ta-center">Stock Out</th>
-                @if($isAdmin)
+                @endif
+                {{-- Edit is the inventory DEFINITION (name, unit cost, alert
+                     level) — part of "Add Inventory", so manager tier. Delete
+                     is the one Y | N | N inventory row and stays with the
+                     owner. --}}
+                @if($canManageStock)
                 <th class="iv-ta-center">Edit</th>
+                @endif
+                @if($isAdmin)
                 <th class="iv-ta-center">Delete</th>
                 @endif
             </tr>
@@ -169,6 +212,7 @@
                             <span class="iv-badge iv-badge-ok">In Stock</span>
                         @endif
                     </td>
+                    @if($canManageStock)
                     <td data-label="Stock In" class="iv-ta-center">
                         <button class="iv-mini iv-mini-in"
                             data-id="{{ $item->id }}" data-name="{{ $item->item_name }}" data-unit="{{ $item->unit }}"
@@ -183,7 +227,6 @@
                             <i class="bi bi-dash"></i> Out
                         </button>
                     </td>
-                    @if($isAdmin)
                     <td data-label="Edit" class="iv-ta-center">
                         <button class="iv-icon iv-icon-edit"
                             data-id="{{ $item->id }}"
@@ -199,6 +242,8 @@
                             <i class="bi bi-pencil-square"></i>
                         </button>
                     </td>
+                    @endif
+                    @if($isAdmin)
                     <td data-label="Delete" class="iv-ta-center">
                         <button class="iv-icon iv-icon-del" data-id="{{ $item->id }}" onclick="confirmDelete(this.dataset.id)" title="Delete">
                             <i class="bi bi-trash3"></i>
@@ -209,7 +254,7 @@
                 @endforeach
             @else
                 <tr class="iv-empty-row">
-                    <td colspan="11">
+                    <td colspan="{{ $ivColumnCount }}">
                         <div class="iv-empty">
                             <i class="bi bi-box-seam"></i>
                             <p>No inventory items yet</p>
@@ -219,7 +264,7 @@
                 </tr>
             @endif
             <tr class="iv-nores-row" id="ivNoResults" hidden>
-                <td colspan="11">
+                <td colspan="{{ $ivColumnCount }}">
                     <div class="iv-empty">
                         <i class="bi bi-search"></i>
                         <p>No matching items</p>
@@ -343,6 +388,12 @@
     </table>
 </div>
 
+{{-- The write modals. Gated on the same flags as the buttons that open them:
+     a staff member has no Add Item, no Edit and no Stock In/Out control, so
+     rendering their forms would leave a hidden POST target for a manager-only
+     route sitting in their page for no reason. The route gate is what refuses
+     a crafted request; this simply stops shipping the form. --}}
+@if($canManageStock)
 {{-- ADD/EDIT MODAL --}}
 <div id="itemModal" class="iv-modal">
     <div class="iv-modal-box iv-modal-lg">
@@ -457,8 +508,10 @@
         </form>
     </div>
 </div>
+@endif
 
-{{-- DELETE MODAL --}}
+{{-- DELETE MODAL — owner only, like the Delete column it belongs to. --}}
+@if($isAdmin)
 <div id="deleteModal" class="iv-modal">
     <div class="iv-modal-box iv-modal-sm">
         <div class="iv-confirm-ico"><i class="bi bi-trash3"></i></div>
@@ -472,6 +525,7 @@
         </div>
     </div>
 </div>
+@endif
 
 @endsection
 
@@ -675,6 +729,12 @@
 
 @push('scripts')
 <script>
+{{-- The modal drivers — Add / Edit / Stock In / Stock Out / Delete. Gated on
+     the same flags as the buttons and modals they operate, so a staff member's
+     page does not carry manager-only endpoint URLs in dead JS. The search,
+     status filter and pagination below are NOT gated: staff use those on the
+     VIEW-ONLY table. --}}
+@if($canManageStock)
     function openAddModal() {
         document.getElementById('modalTitle').innerText = 'Add Inventory Item';
         document.getElementById('submitBtn').innerText = 'Add Item';
@@ -744,6 +804,13 @@
     function closeStockModal() {
         document.getElementById('stockModal').style.display = 'none';
     }
+    @endif
+
+    {{-- The delete modal driver is owner-only, matching the Delete column and
+         the delete modal itself. A separate gate rather than a nested one:
+         "Delete Inventory Records" is Y | N | N, so a manager passes the block
+         above and not this one. --}}
+    @if($isAdmin)
 
     function confirmDelete(id) {
         document.getElementById('deleteForm').action = `/admin/inventory/${id}`;
@@ -753,6 +820,7 @@
     function closeDeleteModal() {
         document.getElementById('deleteModal').style.display = 'none';
     }
+    @endif
 
     /* ── Search + status filter + pagination ── */
     var ivPage = 1;

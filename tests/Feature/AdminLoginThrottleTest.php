@@ -118,7 +118,28 @@ class AdminLoginThrottleTest extends TestCase
         );
 
         $this->assertNotNull($route);
-        $this->assertContains('throttle:10,1', $route->gatherMiddleware());
+
+        // Pass 13: customer.login.post moved from a raw throttle:10,1 to the
+        // named per-IP limiter `customer-login` — same 10/min, same keying, its
+        // own counter instead of one shared with the notification poll. Assert
+        // the limit as a number, the way the admin-login test above does.
+        $this->assertContains(
+            'throttle:customer-login',
+            $route->gatherMiddleware(),
+            'the customer login must go through the named customer-login limiter'
+        );
+
+        $request = \Illuminate\Http\Request::create('http://127.0.0.1/customer/login', 'POST');
+        $request->server->set('REMOTE_ADDR', '127.0.0.1');
+
+        $limiter = app(\Illuminate\Cache\RateLimiter::class)->limiter('customer-login');
+        $this->assertNotNull($limiter, 'the customer-login limiter is not registered');
+
+        $limit = $limiter($request);
+        $limit = is_array($limit) ? $limit[0] : $limit;
+
+        $this->assertSame(10, $limit->maxAttempts, 'the customer login must stay at 10 attempts a minute');
+        $this->assertSame(60, $limit->decaySeconds, 'the window must stay one minute');
     }
 
     public function test_the_fourth_wrong_attempt_in_a_minute_is_refused(): void

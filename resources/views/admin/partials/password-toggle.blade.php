@@ -130,9 +130,15 @@
         });
 
         /*
-         * The "Set Password" expander on the Staff Accounts page. Kept here
-         * rather than in that view so the two behaviours that touch the same
-         * rows stay together.
+         * The per-row expanders on the Staff Accounts page — "Set Password"
+         * and, since the role-matrix pass, "Edit". Kept here rather than in
+         * that view so the behaviours that touch the same rows stay together.
+         *
+         * Driven entirely by data-target, so a new expander needs a button
+         * with the class and a row with the matching id and nothing else. The
+         * focus call below deliberately looks for a text OR password input, so
+         * it lands on the Name field of an edit row and on the password field
+         * of a password row without knowing which it opened.
          */
         document.addEventListener('click', function (event) {
             var button = event.target.closest ? event.target.closest('.js-toggle-pw-row') : null;

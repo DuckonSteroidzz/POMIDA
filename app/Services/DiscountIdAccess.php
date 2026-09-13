@@ -134,8 +134,14 @@ class DiscountIdAccess
 
         $user = Auth::guard('admin')->user();
 
+        // User::PORTAL_ROLES, not an inline ['admin', 'staff'] — verifying a
+        // PWD/Senior ID at the counter is part of the shared shift surface and
+        // a supervisor works that counter. Granting it changes nothing about
+        // WHICH document they can reach: resolveViewableOrder() hands the
+        // lookup straight to AdminOrderAccess::findInScope(), so a supervisor
+        // sees only their own branch's customers, exactly as staff do.
         return $user
-            && in_array($user->role, ['admin', 'staff'], true)
+            && in_array($user->role, \App\Models\User::PORTAL_ROLES, true)
             && (bool) $user->is_active;
     }
 }
