@@ -78,13 +78,13 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
         return User::where('role', 'admin')->orderBy('id')->firstOrFail();
     }
 
-    private function makeOrder(string $status = 'completed'): Order
+    private function makeOrder(string $status = 'completed', int $branchId = 1): Order
     {
         $item = MenuItem::where('is_available', true)->orderBy('id')->firstOrFail();
 
         $order = Order::create([
             'order_number'   => self::ORDER_PREFIX . strtoupper(substr(uniqid(), -8)),
-            'branch_id'      => 1,
+            'branch_id'      => $branchId,
             'type'           => 'dine_in',
             'table_number'   => '7',
             'status'         => $status,
@@ -107,10 +107,10 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
         return $order;
     }
 
-    private function receiptHtml(): string
+    private function receiptHtml(int $branchId = 1): string
     {
         return $this->actingAs($this->admin(), 'admin')
-            ->get(route('admin.receipt', $this->makeOrder()->id))
+            ->get(route('admin.receipt', $this->makeOrder('completed', $branchId)->id))
             ->assertOk()
             ->getContent();
     }
@@ -283,7 +283,7 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
         $this->assertStringContainsString('text-white', $cls);
 
         // Print: the badge span inside the details list is stripped to plain text.
-        $decls = $this->ruleFor($this->printBlock($html), '.card-surface dd span');
+        $decls = $this->ruleFor($this->printBlock($html), '.card-surface-lg dd span');
         $this->assertMatchesRegularExpression('/background:\s*transparent\s*!important/', $decls);
         $this->assertMatchesRegularExpression('/border-radius:\s*0\s*!important/', $decls);
         $this->assertMatchesRegularExpression('/border:\s*0\s*!important/', $decls);
@@ -357,7 +357,7 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
         $this->assertMatchesRegularExpression('/box-shadow:\s*none\s*!important/', $section);
 
         // Same for the "Order Details" card: it merges into the same column.
-        $cardSurface = $this->ruleFor($css, '.card-surface');
+        $cardSurface = $this->ruleFor($css, '.card-surface-lg');
         $this->assertMatchesRegularExpression('/border-radius:\s*0\s*!important/', $cardSurface);
         $this->assertMatchesRegularExpression('/background:\s*transparent\s*!important/', $cardSurface);
         $this->assertMatchesRegularExpression('/border:\s*0\s*!important/', $cardSurface);
@@ -389,6 +389,44 @@ class ReceiptAndCompletedOrdersPrintTest extends TestCase
 
         // The badge markup on screen is untouched: rounded pill, inline fill.
         $this->assertMatchesRegularExpression('/rounded-full[^"]*text-white[^"]*"\s+style="background:/', $html);
+    }
+
+    public function test_the_receipt_shows_the_serving_branchs_own_name_on_the_printed_slip(): void
+    {
+        $branchA = \App\Models\Branch::orderBy('id')->firstOrFail();
+        $branchB = \App\Models\Branch::where('id', '!=', $branchA->id)->orderBy('id')->firstOrFail();
+
+        $htmlA = $this->receiptHtml($branchA->id);
+        $htmlB = $this->receiptHtml($branchB->id);
+
+        // Each receipt shows its OWN branch's name, not a hardcoded string
+        // shared by every branch.
+        $this->assertStringContainsString($branchA->name, $htmlA);
+        $this->assertStringNotContainsString($branchB->name, $htmlA);
+
+        $this->assertStringContainsString($branchB->name, $htmlB);
+        $this->assertStringNotContainsString($branchA->name, $htmlB);
+
+        // Visible on the ACTUAL printed slip: the branch name sits in the
+        // ticket head, not inside a .no-print region (unlike the pickup-store
+        // contact block, which is intentionally print-hidden).
+        $xp = $this->xpath($htmlA);
+        $nameNodes = $xp->query("//p[normalize-space(text())='{$branchA->name}']");
+        $this->assertGreaterThan(0, $nameNodes->length, 'branch name is not rendered as visible text');
+
+        foreach ($nameNodes as $node) {
+            for ($p = $node->parentNode; $p && $p->nodeName !== 'body'; $p = $p->parentNode) {
+                $this->assertStringNotContainsString(
+                    'no-print',
+                    $p->getAttribute('class') ?? '',
+                    'branch name must be visible on the printed receipt, not print-hidden'
+                );
+            }
+        }
+
+        // The brand header ("Peachy" / "Cakes & Deli Cafe") stays the primary
+        // identity — the branch name is an addition, not a replacement.
+        $this->assertStringContainsString('Cakes &amp; Deli Cafe', $htmlA);
     }
 
     // ══════════════════════════════════════════════════════════════════════

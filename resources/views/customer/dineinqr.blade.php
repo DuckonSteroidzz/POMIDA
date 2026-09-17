@@ -15,6 +15,7 @@
 
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
     @include('partials.icon-stability')
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">

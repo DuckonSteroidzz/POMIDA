@@ -228,4 +228,78 @@ class OccupiedTablesAutoRefreshTest extends TestCase
         $this->assertNotNull($row);
         $this->assertFalse($row['staff_opened']);
     }
+
+    // ══════════ Visibility: the device count on the panel ══════════
+
+    public function test_the_panel_reports_one_device_for_a_single_scan(): void
+    {
+        $this->occupyByScan('77');
+        $this->flushSession();
+
+        $row = collect($this->actingAs($this->admin(), 'admin')
+            ->getJson('/admin/tables/occupancy')
+            ->json('tables'))
+            ->firstWhere('table_number', '77');
+
+        $this->assertNotNull($row);
+        $this->assertSame(1, $row['device_count']);
+    }
+
+    public function test_the_panel_reports_the_device_count_for_a_multi_device_table(): void
+    {
+        $this->occupyByScan('78');
+
+        $this->flushSession();
+        RateLimiter::clear('qr-scan:127.0.0.1');
+        $this->occupyByScan('78');
+
+        $this->flushSession();
+
+        $row = collect($this->actingAs($this->admin(), 'admin')
+            ->getJson('/admin/tables/occupancy')
+            ->json('tables'))
+            ->firstWhere('table_number', '78');
+
+        $this->assertNotNull($row);
+        $this->assertSame(2, $row['device_count']);
+    }
+
+    public function test_a_counter_order_reports_zero_devices(): void
+    {
+        $item = \App\Models\MenuItem::where('is_available', true)
+            ->where(fn ($q) => $q->where('branch_id', 1)->orWhereNull('branch_id'))
+            ->firstOrFail();
+
+        $this->actingAs($this->staff(), 'admin')
+            ->from('/admin/home')
+            ->post('/admin/manual-order', [
+                'branch_id'      => 1,
+                'order_type'     => 'dine_in',
+                'table_number'   => '79',
+                'payment_method' => 'cash',
+                'amount_paid'    => '5000',
+                'items'          => [
+                    (string) $item->id => ['menu_item_id' => (string) $item->id, 'quantity' => '1'],
+                ],
+            ])
+            ->assertSessionHasNoErrors();
+
+        $row = collect($this->actingAs($this->admin(), 'admin')
+            ->getJson('/admin/tables/occupancy')
+            ->json('tables'))
+            ->firstWhere('table_number', '79');
+
+        $this->assertNotNull($row);
+        // No customer browser ever claimed this table, so there is no device
+        // to count — 0 here is the normal, expected reading, not a bug.
+        $this->assertSame(0, $row['device_count']);
+    }
+
+    public function test_the_panel_source_carries_a_devices_column(): void
+    {
+        $view = $this->panelSource();
+
+        $this->assertStringContainsString('<th>Devices</th>', $view);
+        $this->assertStringContainsString('device_count', $view);
+    }
 }

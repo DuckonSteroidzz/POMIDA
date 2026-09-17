@@ -86,6 +86,13 @@ class AuthController extends Controller
             ->orderBy('id')
             ->get();
 
+        // Set by login()/register()/startDineIn()'s guest branch on the
+        // request before this one (a real redirect), so it's already here by
+        // the time this request's own logic runs. The QR-landing branch below
+        // is the one case that renders this same view without a prior
+        // redirect, so it fills this in directly instead of flashing.
+        $welcomeCustomer = session('welcome_customer');
+
         /*
          * Dine-in via QR. A phone's built-in camera app opens the QR's URL
          * directly instead of posting the payload to our scanner, so this
@@ -156,8 +163,18 @@ class AuthController extends Controller
             }
 
             session()->put('table_number', $parsed['table_number']);
-            session()->put('branch_id', $parsed['branch']->id);
+            $this->switchBranch($parsed['branch']->id);
             session()->put('order_type', 'dine_in');
+
+            // Same "genuinely new claim" gate as startDineIn()'s guest branch —
+            // a refresh of this same URL must not re-show the popup.
+            if (($occupancy['continued'] ?? false) === false) {
+                $authUser = Auth::guard('customer')->user();
+
+                $welcomeCustomer = $authUser
+                    ? ['type' => $authUser->orders()->exists() ? 'returning' : 'new', 'name' => $authUser->name]
+                    : ['type' => 'new', 'name' => null];
+            }
         }
         if (session('order_type') === 'pick_up') {
             session()->forget('table_number');
@@ -207,12 +224,20 @@ class AuthController extends Controller
                 ->get();
         }
 
+        // Stock already promised to open orders but not yet deducted, so the
+        // Out-of-Stock and low-stock badges show what a customer can actually
+        // still order rather than what the pantry looks like on paper. One
+        // query for the whole grid — see InventoryDeductionService.
+        $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+
         return view('customer.menu', compact(
             'categories',
             'menuItems',
             'branches',
             'selectedBranchId',
-            'orderType'
+            'orderType',
+            'reserved',
+            'welcomeCustomer'
         ));
     }
 
@@ -220,20 +245,57 @@ public function selectBranch(Request $request)
 {
     $branchId = $request->input('branch_id');
 
-    // If the customer changes pickup branch, clear the old cart
-    // so items from another branch are not mixed.
-    if (session('branch_id') && session('branch_id') != $branchId) {
-        session()->forget('cart');
+    $branch = \App\Models\Branch::find($branchId);
+    if (!$branch || !$branch->is_active) {
+        return redirect()->route('customer.menu')
+            ->with('error', 'That branch is currently closed and cannot accept pick-up orders. Please choose another branch.');
     }
 
     // Explicitly switch the customer to PICKUP mode.
     // Remove all Dine-In-only information.
-    session()->put('branch_id', $branchId);
+    $this->switchBranch($branchId);
     session()->put('order_type', 'pick_up');
     session()->forget('table_number');
 
     return redirect()->route('customer.menu')
         ->with('success', 'Branch selected!');
+}
+
+/**
+ * The ONE place that changes session('branch_id') for any reason — the
+ * pickup selector, a QR scan, a typed table code, or the phone-camera URL
+ * landing.
+ *
+ * Branches never share inventory or stock (Phase 3 multi-branch audit,
+ * 2026-09-13): a cart line added under one branch and checked out under
+ * another deducts the WRONG branch's stock, because completion deducts by
+ * the item's own branch_id, not the order's. Reproduced live — orders
+ * 115-121 (May 2026) already have this shape. So every branch change, not
+ * only a switch between two already-known branches, clears the cart
+ * whenever the branch is actually different from what it was a moment
+ * ago — including a previously branchless guest's FIRST branch pick, which
+ * the old check (`session('branch_id') && ...`) skipped because null is
+ * falsy. The comparison is deliberately loose (!=): null must count as
+ * different from any real branch id, not be treated as "nothing to compare".
+ *
+ * Re-selecting the SAME branch never clears the cart — only a genuine
+ * change does.
+ */
+private function switchBranch($branchId): void
+{
+    if (session('branch_id') != $branchId) {
+        // Only worth telling the customer about it if the cart actually had
+        // something in it — a branchless guest's first pick, or re-landing
+        // with an already-empty cart, shouldn't produce a "cart cleared" toast.
+        if (!empty(session('cart'))) {
+            session()->flash('branch_changed_warning', true);
+            session()->flash('branch_changed_message', 'Your cart was cleared because you switched branches — menu items and prices are branch-specific.');
+        }
+
+        session()->forget('cart');
+    }
+
+    session()->put('branch_id', $branchId);
 }
 
     public function showDineInQr()
@@ -397,13 +459,32 @@ public function selectBranch(Request $request)
         return null;
     }
 
+    /**
+     * The one place both dine-in doors — the QR/code entry flow's
+     * startDineIn() and the phone-camera URL landing in showMenu() — claim a
+     * table, so a visibility side effect added here reaches both without being
+     * duplicated in each caller.
+     */
     private function claimTable(\App\Models\Branch $branch, string $tableNumber, ?string $ip): array
     {
         try {
-            return \App\Services\TableOccupancy::claim($branch, $tableNumber, $ip);
+            $occupancy = \App\Services\TableOccupancy::claim($branch, $tableNumber, $ip);
         } catch (\App\Services\TableAlreadyOccupied) {
             return ['ok' => false, 'error' => \App\Services\TableOccupancy::BLOCKED_MESSAGE];
         }
+
+        // Visibility only — see TableOccupancy::claim()'s docblock. Never a
+        // refusal: it only tells a joining device it landed on a table someone
+        // else already opened, the same table it was always going to land on.
+        // Flashed rather than returned to the caller so it survives exactly
+        // one redirect (startDineIn's guest path goes through customer.menu
+        // via a redirect; showMenu's own URL-landing branch reads it back in
+        // the very same request).
+        if (($occupancy['continued'] ?? false) === true) {
+            session()->flash('table_session_joined_table', $tableNumber);
+        }
+
+        return $occupancy;
     }
 
     private function startDineIn(Request $request, \App\Models\Branch $branch, $tableNumber)
@@ -426,7 +507,7 @@ public function selectBranch(Request $request)
 
         // Always establish the Dine-In context before authentication.
         // This lets Login/Sign Up preserve the scanned branch and table.
-        session()->put('branch_id', $branch->id);
+        $this->switchBranch($branch->id);
         session()->put('table_number', $tableNumber);
         session()->put('order_type', 'dine_in');
 
@@ -454,7 +535,7 @@ public function selectBranch(Request $request)
                 Auth::guard('customer')->logout();
             }
 
-            session()->put('branch_id', $branch->id);
+            $this->switchBranch($branch->id);
             session()->put('table_number', $tableNumber);
             session()->put('order_type', 'dine_in');
 
@@ -462,6 +543,13 @@ public function selectBranch(Request $request)
             // Clearing the whole set matters now that a visit can hold several
             // orders: the next party at this table must not inherit them.
             \App\Support\GuestOrders::forget();
+
+            // Only a genuinely new table claim is a "just scanned the QR"
+            // moment — a refresh or a re-scan of the same table (continued)
+            // must not re-show the welcome popup every time.
+            if (($occupancy['continued'] ?? false) === false) {
+                session()->flash('welcome_customer', ['type' => 'new', 'name' => null]);
+            }
         }
 
         return redirect()->route('customer.menu');
@@ -495,11 +583,13 @@ public function selectBranch(Request $request)
     }
 
     /**
-     * "Is my table session still good?" — asked on page load and whenever the
-     * tab comes back to the foreground.
+     * "Is my table session still good?" — asked on page load, on a short
+     * interval, and whenever the tab comes back to the foreground.
      *
-     * READ-ONLY, and that is load-bearing: the answer must never be the reason
-     * the session survives. All the reasoning lives on
+     * READ-ONLY WHERE IT COUNTS, and that is load-bearing: this answer must
+     * never be the reason the session SURVIVES. It writes no clock and touches
+     * no occupancy row, so hammering it cannot keep a phone-left-on-the-table
+     * session alive — a test pins exactly that. All the reasoning lives on
      * App\Services\TableOccupancy::inspectGuestSession(), which is also where
      * App\Services\TableEntry::validate() is reused so this cannot drift from
      * what the three dine-in doors enforce.
@@ -508,6 +598,25 @@ public function selectBranch(Request $request)
      * the QR-stale refusal already uses and the code-entry route is handed back
      * for the page to navigate to — the identical alert, in the identical
      * place, as every other dine-in refusal. Nothing new was invented for it.
+     *
+     * THE ONE CASE THAT ALSO TEARS THE SESSION DOWN
+     * ----------------------------------------------
+     * A staff-cleared table is the only failure where somebody deliberately
+     * ended this visit, and it is the only one where leaving the customer's
+     * session half-standing would matter. Every other failure is an expiry the
+     * customer can simply scan out of; this one means the table has been handed
+     * back to the floor and may already be seating a new party.
+     *
+     * So the dine-in keys go, and the cart goes with them. The cart is the
+     * point: those lines were priced against THIS branch for THIS table, and
+     * forgetting the table while keeping the basket is how a customer ends up
+     * checking out against a table that is no longer theirs. Cart-follows-table
+     * is the same rule switchBranch() already applies when the branch changes,
+     * and for the same reason.
+     *
+     * Not an invalidate(): a signed-in customer stays signed in, keeps their
+     * points and their vouchers, and lands on the code-entry page ready to
+     * scan back in. Ending their dine-in visit is not a reason to log them out.
      */
     public function tableSessionStatus(Request $request)
     {
@@ -515,6 +624,15 @@ public function selectBranch(Request $request)
 
         if ($result['valid']) {
             return response()->json(['valid' => true]);
+        }
+
+        if (($result['reason'] ?? null) === \App\Services\TableOccupancy::RELEASE_STAFF_CLEARED) {
+            $request->session()->forget([
+                \App\Services\TableOccupancy::SESSION_KEY,
+                'cart',
+                'order_type',
+                'table_number',
+            ]);
         }
 
         session()->flash('error', $result['error']);
@@ -561,16 +679,52 @@ public function selectBranch(Request $request)
 
     public function showItem($id)
     {
+        // findOrFail() first, unscoped by branch, so an archived or genuinely
+        // nonexistent id still 404s exactly as it always has — that refusal
+        // has nothing to do with branches and must not change shape here.
         $item = \App\Models\MenuItem::with([
             'category',
             'subcategory',
-            'options',
+            // .ingredients.inventory so optionsAvailableForBranch() below can
+            // check each option's branch mapping without an N+1.
+            'options.ingredients.inventory',
             // Automatic out-of-stock check on the item-details page.
             'recipeIngredients.inventory',
             'inventoryItem',
         ])->findOrFail($id);
 
-        return view('customer.item-details', compact('item'));
+        /*
+         * Branch scoping (Phase 3 audit, Door B). This route is reachable by
+         * URL alone — no menu link — so a visitor with no branch chosen yet
+         * used to be able to open ANY branch's item details, and one whose
+         * branch didn't match the item's could too. A shared item
+         * (branch_id NULL) stays visible everywhere, exactly like the menu
+         * and category listings already treat it.
+         *
+         * "No branch chosen yet" is decided as "nothing to see" here, not
+         * "show everything" — 404, the same refusal a genuinely missing item
+         * gets, so this endpoint never distinguishes "no such item" from
+         * "not open to you" any more than the admin's per-branch endpoints do.
+         */
+        if ($item->branch_id !== null && (int) $item->branch_id !== (int) session('branch_id')) {
+            abort(404);
+        }
+
+        /*
+         * Branch-aware add-ons (Phase 3 audit, Finding #3). $item->branch_id
+         * is either this session's own branch (checked above) or null (a
+         * shared item, viewable from any branch) — either way the actual
+         * ordering branch is the customer's session branch, which is what
+         * MenuOption::isMappedForBranch() must be checked against. An option
+         * assigned to this item but with no ingredient link for this branch
+         * is left off the list entirely rather than shown-but-inert.
+         */
+        $branchId = session('branch_id') ? (int) session('branch_id') : null;
+        $availableOptions = $item->optionsAvailableForBranch($branchId);
+
+        $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+
+        return view('customer.item-details', compact('item', 'availableOptions', 'reserved'));
     }
 
     public function showItems($id)
@@ -578,9 +732,18 @@ public function selectBranch(Request $request)
         $selectedBranchId = session('branch_id');
         $orderType = session('order_type');
 
-        // Pickup customer — kailangan ng branch
+        /*
+         * Kailangan ng branch bago makita ang listing na ito.
+         *
+         * This used to only apply to a LOGGED-IN customer — a guest with no
+         * branch chosen yet fell through the `if ($selectedBranchId)` filter
+         * below untouched and saw every branch's items in the category
+         * (Phase 3 audit, Door B). Branches never share inventory, so that
+         * was a real leak, not just an inconvenience. Forcing branch
+         * selection first, for guest and account alike, is the same rule
+         * addToCart() now enforces unconditionally.
+         */
         if (
-            Auth::guard('customer')->check() &&
             $orderType !== 'dine_in' &&
             !$selectedBranchId
         ) {
@@ -624,6 +787,8 @@ public function selectBranch(Request $request)
             ->orderBy('id')
             ->get();
 
+        $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+
         return view('customer.menu', compact(
             'categories',
             'items',
@@ -631,7 +796,8 @@ public function selectBranch(Request $request)
             'subcategories',
             'branches',
             'selectedBranchId',
-            'orderType'
+            'orderType',
+            'reserved'
         ));
     }
 
@@ -758,18 +924,30 @@ public function selectBranch(Request $request)
 
             $selectedBranchId = session('branch_id');
 
-            if ($selectedBranchId) {
-                $item = \App\Models\MenuItem::where('id', $request->input('item_id'))
-                    ->where(function ($q) use ($selectedBranchId) {
-                        $q->where('branch_id', $selectedBranchId)
-                        ->orWhereNull('branch_id');
-                    })
-                    ->first();
+            /*
+             * A branch must be chosen before anything reaches the cart — no
+             * exception for "branchless" (Phase 3 audit, Door B). This used
+             * to skip the branch check entirely when no branch was selected,
+             * which let a guest add ANY branch's item; branches never share
+             * inventory or stock, so checking that item out would deduct the
+             * wrong branch's stock regardless of what branch the order was
+             * eventually placed at.
+             */
+            if (!$selectedBranchId) {
+                return redirect()->back()
+                    ->with('error', 'Please select a pick-up branch first.');
+            }
 
-                if (!$item) {
-                    return redirect()->back()
-                        ->with('error', 'This item is not available for your selected branch.');
-                }
+            $item = \App\Models\MenuItem::where('id', $request->input('item_id'))
+                ->where(function ($q) use ($selectedBranchId) {
+                    $q->where('branch_id', $selectedBranchId)
+                    ->orWhereNull('branch_id');
+                })
+                ->first();
+
+            if (!$item) {
+                return redirect()->back()
+                    ->with('error', 'This item is not available for your selected branch.');
             }
 
             $cart = session()->get('cart', []);
@@ -782,9 +960,20 @@ public function selectBranch(Request $request)
             $optionsTotal = 0;
 
             if (!empty($selectedOptions)) {
-                $options = \App\Models\MenuOption::whereIn('id', $selectedOptions)->get();
+                $options = \App\Models\MenuOption::with('ingredients.inventory')->whereIn('id', $selectedOptions)->get();
 
                 foreach ($options as $opt) {
+                    // Branch-aware add-on guard (Phase 3 audit, Finding #3),
+                    // defense in depth alongside showItem() hiding an
+                    // unmapped option from the checkbox list — a stale tab,
+                    // a cached page, or a crafted request could still post
+                    // its id. Refused the same way orderBlockedReason()
+                    // below refuses the base item.
+                    if (! $opt->isMappedForBranch((int) $selectedBranchId)) {
+                        return redirect()->back()
+                            ->with('error', 'Sorry, "' . $opt->name . '" is not available for your selected branch right now.');
+                    }
+
                     $optionDetails[] = [
                         'id' => $opt->id,
                         'name' => $opt->name,
@@ -809,12 +998,33 @@ public function selectBranch(Request $request)
             // what the admin's is_available toggle says. Checked against the
             // TOTAL this add would bring the line to, not just this request.
             $alreadyInCart = isset($cart[$cartKey]) ? (int) $cart[$cartKey]['quantity'] : 0;
+            $wanted = $alreadyInCart + $quantity;
 
-            // Refuses both "no recipe set" and "recipe can't be covered by
-            // current inventory", with the right message for each — see
-            // MenuItem::orderBlockedReason().
-            if ($reason = $menuItem->orderBlockedReason($alreadyInCart + $quantity)) {
-                return redirect()->back()->with('error', $reason);
+            // No recipe set at all is an admin problem with its own wording.
+            if ($menuItem->isMissingRecipe()) {
+                return redirect()->back()
+                    ->with('error', $menuItem->orderBlockedReason($wanted));
+            }
+
+            /*
+             * Stock is judged against what is genuinely still promisable —
+             * inventory MINUS the stock open orders have already committed but
+             * not yet had deducted. Checkout applies the very same rule under a
+             * row lock; doing it here too means the customer finds out while
+             * they can still fix it, rather than at the confirm screen.
+             */
+            $deduction = app(\App\Services\InventoryDeductionService::class);
+            $available = $deduction->unitsAvailableFor(
+                $menuItem,
+                (int) $selectedBranchId,
+                $selectedOptions ?: []
+            );
+
+            if ($available !== null && $wanted > $available) {
+                return redirect()->back()->with(
+                    'error',
+                    $deduction->shortfallMessage($menuItem->name, $available, $wanted)
+                );
             }
 
             $unitPrice = $menuItem->price + $optionsTotal;
@@ -863,10 +1073,12 @@ public function selectBranch(Request $request)
     // inventory can no longer cover. Drives the per-line badge, the banner
     // and the disabled Place Order button; checkout re-checks server-side
     // regardless.
+    $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+
     $outOfStockItemIds = collect($priced['lines'])
         ->filter(fn ($line) => $line['menu_item']
             && $line['menu_item']->hasRecipe()
-            && ! $line['menu_item']->hasIngredientStock((int) $line['quantity']))
+            && ! $line['menu_item']->hasIngredientStock((int) $line['quantity'], $reserved))
         ->map(fn ($line) => (int) $line['menu_item_id'])
         ->values()
         ->all();
@@ -903,34 +1115,55 @@ public function selectBranch(Request $request)
      */
     $pendingDiscountOrderId = session('pending_order_id');
 
+    // Defensive: a stale/corrupted session value (anything but a genuine
+    // order id — an array, a non-numeric string, a leftover from an older
+    // session shape) must never reach a where('id', ...) query. Treat it the
+    // same as "no order to monitor" instead of letting a malformed value
+    // surface as a 500 on a page every customer visits after every order.
+    if ($pendingDiscountOrderId !== null && !is_numeric($pendingDiscountOrderId)) {
+        session()->forget(['discount_pending', 'pending_order_id']);
+        $pendingDiscountOrderId = null;
+    }
+
     if ($pendingDiscountOrderId) {
-        $pendingDiscountOrderQuery = Order::where('id', $pendingDiscountOrderId);
+        // The cart page is where every customer lands right after an order
+        // event (placed, completed, cancelled — several of which also fire a
+        // bell notification), so this lookup runs on nearly every visit.
+        // Anything unexpected here (a since-deleted order, a session left
+        // over from a code path this was never updated for) must degrade to
+        // "nothing to monitor" rather than 500 the whole cart page.
+        try {
+            $pendingDiscountOrderQuery = Order::where('id', (int) $pendingDiscountOrderId);
 
-        if (Auth::guard('customer')->check()) {
-            $pendingDiscountOrderQuery->where(
-                'user_id',
-                Auth::guard('customer')->id()
-            );
-        } else {
-            $pendingDiscountOrderQuery->whereIn(
-                'id',
-                \App\Support\GuestOrders::ids() ?: [0]
-            );
+            if (Auth::guard('customer')->check()) {
+                $pendingDiscountOrderQuery->where(
+                    'user_id',
+                    Auth::guard('customer')->id()
+                );
+            } else {
+                $pendingDiscountOrderQuery->whereIn(
+                    'id',
+                    \App\Support\GuestOrders::ids() ?: [0]
+                );
+            }
+
+            $pendingDiscountOrder = $pendingDiscountOrderQuery->first();
+
+            $keepDiscountSession = $pendingDiscountOrder
+                && in_array(
+                    $pendingDiscountOrder->status,
+                    ['pending', 'preparing', 'serving'],
+                    true
+                )
+                && in_array(
+                    $pendingDiscountOrder->discount_status,
+                    ['pending', 'rejected'],
+                    true
+                );
+        } catch (\Throwable $e) {
+            report($e);
+            $keepDiscountSession = false;
         }
-
-        $pendingDiscountOrder = $pendingDiscountOrderQuery->first();
-
-        $keepDiscountSession = $pendingDiscountOrder
-            && in_array(
-                $pendingDiscountOrder->status,
-                ['pending', 'preparing', 'serving'],
-                true
-            )
-            && in_array(
-                $pendingDiscountOrder->discount_status,
-                ['pending', 'rejected'],
-                true
-            );
 
         if (!$keepDiscountSession) {
             session()->forget([
@@ -998,6 +1231,66 @@ public function selectBranch(Request $request)
 
         $cart = session()->get('cart', []);
         $newQty = (int) $request->input('quantity');
+
+        /*
+         * Stock guard for the +/- quantity control (Sept 2026).
+         *
+         * Every OTHER cart mutation (addToCart, placeOrder) already refuses a
+         * quantity current inventory cannot cover — this endpoint used to be
+         * the one gap: it wrote whatever quantity the client sent straight
+         * into the session with no check at all. The session ended up
+         * holding an over-stock line that placeOrder() would still catch and
+         * refuse, but only at the very end, after the customer had already
+         * gone through the motions of confirming the order — with nothing on
+         * the cart page itself telling them why.
+         *
+         * Refused the same way addToCart() refuses: don't apply the change,
+         * report the reason and the true max (from
+         * MenuItem::remainingServings()) so the client can revert its
+         * optimistic UI to a value the server will actually accept.
+         */
+        $blockedReason = null;
+        $maxQuantity = null;
+
+        if ($newQty >= 1 && isset($cart[$itemId])) {
+            $menuItemId = $cart[$itemId]['menu_item_id'] ?? $itemId;
+            $menuItem = \App\Models\MenuItem::find($menuItemId);
+
+            if ($menuItem && $menuItem->isMissingRecipe()) {
+                $blockedReason = $menuItem->orderBlockedReason($newQty);
+                $maxQuantity = 0;
+            } elseif ($menuItem) {
+                /*
+                 * Same "genuinely promisable" figure addToCart() and checkout
+                 * use — inventory minus what open orders have committed — so
+                 * the +/- control cannot walk the line up to a quantity
+                 * checkout is about to refuse.
+                 */
+                $deduction = app(\App\Services\InventoryDeductionService::class);
+                $available = $deduction->unitsAvailableFor(
+                    $menuItem,
+                    (int) (session('branch_id') ?? $menuItem->branch_id),
+                    collect($cart[$itemId]['options'] ?? [])->pluck('id')->filter()->all()
+                );
+
+                if ($available !== null && $newQty > $available) {
+                    $blockedReason = $deduction->shortfallMessage($menuItem->name, $available, $newQty);
+                    $maxQuantity = $available;
+                }
+            }
+        }
+
+        if ($blockedReason !== null) {
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'success'      => false,
+                    'message'      => $blockedReason,
+                    'max_quantity' => $maxQuantity,
+                ], 422);
+            }
+
+            return redirect()->route('customer.cart')->with('error', $blockedReason);
+        }
 
         if ($newQty < 1) {
             unset($cart[$itemId]);
@@ -1158,6 +1451,8 @@ public function selectBranch(Request $request)
         session()->forget('table_number');
     }
 
+    $this->flashWelcomePopup($user);
+
     return redirect()->route('customer.menu')
         ->with('success', 'Account created successfully! Welcome, ' . $user->name . '!'
             . ($adopted > 0
@@ -1228,6 +1523,8 @@ public function selectBranch(Request $request)
                     session()->forget('table_number');
                 }
 
+                $this->flashWelcomePopup($user);
+
                 return redirect()->route('customer.menu')
                     ->with('success', 'Welcome back, ' . $user->name . '!'
                         . ($adopted > 0
@@ -1241,6 +1538,21 @@ public function selectBranch(Request $request)
             ])->withInput($request->only('email'));
         }
 
+        /**
+         * Flash the one-shot welcome popup payload the menu page reads on the
+         * very next request. "Returning" vs "new" is decided purely by order
+         * history — a registered account that has never actually ordered gets
+         * the same first-time welcome as a guest, since nothing about their
+         * account reflects a past visit yet.
+         */
+        private function flashWelcomePopup(\App\Models\User $user): void
+        {
+            session()->flash('welcome_customer', [
+                'type' => $user->orders()->exists() ? 'returning' : 'new',
+                'name' => $user->name,
+            ]);
+        }
+
     public function logout(Request $request)
     {
         // Logout only the customer guard
@@ -1251,6 +1563,36 @@ public function selectBranch(Request $request)
 
         return redirect()->route('home')
             ->with('success', 'You have been logged out.');
+    }
+
+    /**
+     * Server-side half of the "are you still there?" idle prompt: called by
+     * partials.idle-timeout once a warning has gone unanswered for the grace
+     * period, for ANY active customer session — logged-in Pickup, logged-in
+     * Dine-In, or a guest holding only a table_session_token.
+     *
+     * Deliberately NOT a client-side-only redirect. Logging out the guard (when
+     * one is signed in) and then invalidating the whole session — not just
+     * forgetting order_type/table_number — is what makes this a real session
+     * end rather than a cookie the browser could still replay: the old session
+     * id is discarded, a guest's table_session_token goes with it (so it cannot
+     * be used to keep pinging table-activity after the prompt fired), and the
+     * CSRF token is regenerated for whatever loads next.
+     *
+     * No branching on order_type/guard here on purpose — "am I logged in" is
+     * the only fact that changes what has to happen, and that already reads
+     * straight off the guard rather than off anything the client asserts.
+     */
+    public function idleLogout(Request $request)
+    {
+        if (Auth::guard('customer')->check()) {
+            Auth::guard('customer')->logout();
+        }
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+
+        return response()->json(['redirect' => route('home')]);
     }
 
     // ══════════ VOUCHER ══════════
@@ -1666,7 +2008,16 @@ public function selectBranch(Request $request)
 
     public function showGame()
     {
-        $vouchers = \App\Models\Voucher::where('is_active', true)
+        // Branch-aware Voucher/Ad listing (Phase 3 audit, Finding #5).
+        // NULL branch_id = global (valid/shown at every branch), the same
+        // convention menu_items/inventory already use and the one
+        // Voucher::branchErrorFor() already enforces at redemption time —
+        // see $this->scopeToCustomerBranch() for the read-side of that same
+        // rule. Before this fix neither query looked at branch_id at all, so
+        // a branch-3-only voucher's prize showed on the wheel legend (and
+        // could be WON, see winnableVoucherFor() below) for a customer at
+        // branch 1, and a branch-3-only ad played in every branch's carousel.
+        $vouchers = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('expires_at')
                     ->orWhere('expires_at', '>=', now()->endOfDay());
@@ -1675,15 +2026,15 @@ public function selectBranch(Request $request)
                 'used_count',
                 '<',
                 \Illuminate\Support\Facades\DB::raw('max_uses')
-            )
+            ))
             ->get();
 
-        $gameAds = \App\Models\Ad::where('placement', 'game')
+        $gameAds = $this->scopeToCustomerBranch(\App\Models\Ad::where('placement', 'game')
             ->where('is_active', true)
             ->where(function ($q) {
                 $q->whereNull('ends_at')
                     ->orWhere('ends_at', '>=', now());
-            })
+            }))
             ->get();
 
         // Rendered into the page so the counter is already correct on first
@@ -1818,7 +2169,14 @@ public function selectBranch(Request $request)
      */
     private function winnableVoucherFor(int $totalPoints, array $excludeVoucherIds): ?\App\Models\Voucher
     {
-        return \App\Models\Voucher::where('is_active', true)
+        // Branch-aware (Phase 3 audit, Finding #5): only a GLOBAL voucher or
+        // one scoped to THIS customer's own branch can be won — see
+        // showGame()'s comment and scopeToCustomerBranch() below. Before this
+        // fix a branch-3-only voucher could be spun and awarded to a
+        // customer at branch 1, live, with a valid claim code for a
+        // redemption Voucher::branchErrorFor() would then refuse at checkout
+        // — a prize that could be WON but never SPENT.
+        return $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
             ->where('points_required', '>', 0)
             ->where('points_required', '<=', $totalPoints)
             ->where(function ($q) {
@@ -1832,9 +2190,41 @@ public function selectBranch(Request $request)
                 $q->where('max_uses', '<=', 0)
                     ->orWhereColumn('used_count', '<', 'max_uses');
             })
-            ->whereNotIn('id', $excludeVoucherIds ?: [0])
+            ->whereNotIn('id', $excludeVoucherIds ?: [0]))
             ->inRandomOrder()
             ->first();
+    }
+
+    /**
+     * Scope a Voucher/Ad query to what THIS customer's current branch may be
+     * shown or awarded: their own branch's rows, plus every GLOBAL (NULL
+     * branch_id) row. NULL = global is the established convention for both
+     * models — see Voucher::$fillable's own comment and
+     * Voucher::branchErrorFor(), which already enforces the identical rule
+     * at redemption time. This is the read side of that same rule for the
+     * Spin & Win prize picker (winnableVoucherFor()) and the game page's
+     * prize/ad listing (showGame()).
+     *
+     * A customer with no branch selected yet (session('branch_id') is null)
+     * sees only global rows — mirrors branchErrorFor()'s own "no branch
+     * known" handling, which refuses a branch-scoped voucher rather than
+     * guessing which branch it should be treated as.
+     *
+     * @template TModel of \Illuminate\Database\Eloquent\Model
+     * @param  \Illuminate\Database\Eloquent\Builder<TModel>  $query
+     * @return \Illuminate\Database\Eloquent\Builder<TModel>
+     */
+    private function scopeToCustomerBranch($query)
+    {
+        $branchId = session('branch_id') ? (int) session('branch_id') : null;
+
+        return $query->where(function ($q) use ($branchId) {
+            $q->whereNull('branch_id');
+
+            if ($branchId !== null) {
+                $q->orWhere('branch_id', $branchId);
+            }
+        });
     }
 
     /** "10% off" / "₱50.00 off", for the win panel. */
@@ -2018,8 +2408,9 @@ public function selectBranch(Request $request)
          * POINTS-THRESHOLD REWARD (2026-09-02).
          *
          * Every PointsRewards::THRESHOLD lifetime points earns one voucher
-         * reward that staff hand over at the counter. Tell the customer the
-         * moment they cross a new multiple.
+         * reward, minted straight onto the signed-in winner's account as a
+         * UserVoucher claim — self-service, no staff needed. Tell the
+         * customer the moment they cross a new multiple.
          *
          * Measured against LIFETIME points from the games_played ledger, not
          * $totalPoints above. $user->points is a spendable balance — the

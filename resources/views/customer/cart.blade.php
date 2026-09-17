@@ -10,19 +10,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    @vite(['resources/css/app.css'])
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -40,13 +31,6 @@
             select, input, button, a { font-family: inherit; }
             [hidden] { display: none !important; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
         }
     </style>
     <style>
@@ -410,15 +394,29 @@
     </header>
 
     {{-- ================= FLASH MESSAGES (floating toast) ================= --}}
-    <div class="pointer-events-none fixed inset-x-0 top-3 z-[100] flex flex-col items-center gap-2 px-4 sm:top-4">
+    <div id="cartToastContainer" class="pointer-events-none fixed inset-x-0 top-3 z-[100] flex flex-col items-center gap-2 px-4 sm:top-4">
         @if(session('success'))
         <div data-toast class="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-green-200/80 bg-green-50/95 px-3.5 py-2 text-xs font-medium text-green-700 shadow-sm backdrop-blur-sm">
             <i class="bi bi-check-circle text-sm text-green-600"></i><span class="min-w-0 flex-1">{{ session('success') }}</span>
         </div>
         @endif
-        @if($errors->any())
+        @if(session('error'))
         <div data-toast class="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm">
-            <i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1">{{ $errors->first() }}</span>
+            <i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1">{{ session('error') }}</span>
+        </div>
+        @endif
+        {{-- Every message, not just the first: a checkout refused for stock
+             returns one line per short item, and a customer fixing a
+             multi-item order needs to see all of them at once. --}}
+        @foreach($errors->all() as $errorMessage)
+        <div data-toast class="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm">
+            <i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1">{{ $errorMessage }}</span>
+        </div>
+        @endforeach
+        {{-- Branch switch cleared the cart (AuthController::switchBranch) --}}
+        @if(session('branch_changed_warning'))
+        <div data-toast class="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-amber-200 bg-amber-50/95 px-3.5 py-2 text-xs font-medium text-amber-800 shadow-sm backdrop-blur-sm">
+            <i class="bi bi-exclamation-triangle-fill text-sm text-amber-600"></i><span class="min-w-0 flex-1">{{ session('branch_changed_message') }}</span>
         </div>
         @endif
     </div>
@@ -501,7 +499,7 @@
                     <div class="flex items-start gap-3.5 sm:gap-4">
                         <div class="grid h-20 w-20 shrink-0 place-items-center overflow-hidden rounded-xl bg-peach-soft/60 sm:h-24 sm:w-24">
                             @if(!empty($item['image']))
-                            <img src="{{ asset($item['image']) }}" alt="{{ $item['name'] }}" class="h-full w-full object-cover {{ $lineBlocked ? 'opacity-60 grayscale' : '' }}">
+                            <img src="{{ asset($item['image']) }}" alt="{{ $item['name'] }}" loading="lazy" class="h-full w-full object-cover {{ $lineBlocked ? 'opacity-60 grayscale' : '' }}">
                             @else
                             <i class="bi bi-image text-2xl text-peach/60"></i>
                             @endif
@@ -544,7 +542,7 @@
                             <div class="mt-3 flex flex-wrap items-center gap-2">
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
                                     <button type="button" onclick="cartChangeQty('{{ $itemId }}', -1)"
-                                        class="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                                        class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
                                     <input type="number" inputmode="numeric" min="1" max="999"
                                         value="{{ $item['quantity'] }}"
                                         data-cart-qty="{{ $itemId }}"
@@ -553,7 +551,7 @@
                                         oninput="cartTypeQty('{{ $itemId }}', this)"
                                         onchange="cartCommitQty('{{ $itemId }}', this)">
                                     <button type="button" onclick="cartChangeQty('{{ $itemId }}', 1)"
-                                        class="grid h-8 w-8 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
+                                        class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                                 </div>
 
                                 {{-- Remove this item outright.
@@ -749,13 +747,52 @@
                                 <label class="mb-1 block text-xs font-bold text-peach-deep/65">
                                     Expiration Date *
                                 </label>
-                                <input
-                                    type="date"
-                                    name="discount_beneficiary_expiration"
-                                    id="discountBeneficiaryExpiration"
-                                    min="{{ now()->format('Y-m-d') }}"
-                                    class="w-full rounded-xl border border-peach-soft bg-white px-4 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                >
+                                {{--
+                                    Day/Month/Year dropdowns instead of a native
+                                    calendar picker — a calendar grid is a real
+                                    barrier for the elderly/PWD customers this
+                                    field is for. The three selects only build
+                                    the hidden discount_beneficiary_expiration
+                                    input (Y-m-d); the backend's expected field
+                                    name and format are unchanged.
+                                --}}
+                                <div class="grid grid-cols-3 gap-1.5">
+                                    <select
+                                        id="discountExpirationDay"
+                                        aria-label="Expiration day"
+                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                    >
+                                        <option value="">Day</option>
+                                        @for ($day = 1; $day <= 31; $day++)
+                                            <option value="{{ $day }}">{{ $day }}</option>
+                                        @endfor
+                                    </select>
+                                    <select
+                                        id="discountExpirationMonth"
+                                        aria-label="Expiration month"
+                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                    >
+                                        <option value="">Month</option>
+                                        @foreach ([
+                                            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
+                                            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
+                                            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
+                                        ] as $monthNum => $monthName)
+                                            <option value="{{ $monthNum }}">{{ $monthName }}</option>
+                                        @endforeach
+                                    </select>
+                                    <select
+                                        id="discountExpirationYear"
+                                        aria-label="Expiration year"
+                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                    >
+                                        <option value="">Year</option>
+                                        @for ($year = now()->year; $year <= now()->year + 20; $year++)
+                                            <option value="{{ $year }}">{{ $year }}</option>
+                                        @endfor
+                                    </select>
+                                </div>
+                                <input type="hidden" name="discount_beneficiary_expiration" id="discountBeneficiaryExpiration" value="">
                             </div>
 
                             <div>
@@ -924,7 +961,7 @@
                                      as price) — no new image field or lookup needed. --}}
                                 <div class="order-review-img">
                                     @if(!empty($item['image']))
-                                        <img src="{{ asset($item['image']) }}" alt="{{ $item['name'] }}">
+                                        <img src="{{ asset($item['image']) }}" alt="{{ $item['name'] }}" loading="lazy">
                                     @else
                                         <i class="bi bi-image" aria-hidden="true"></i>
                                     @endif
@@ -1201,6 +1238,28 @@
             }
         }
 
+        // Injects a dismissible toast matching the server-rendered flash
+        // markup above, for client-side-only messages (the quantity-rejected
+        // case below has no page reload to render one through).
+        function showCartToast(message) {
+            var container = document.getElementById('cartToastContainer');
+            if (!container) { alert(message); return; }
+
+            var el = document.createElement('div');
+            el.setAttribute('data-toast', '');
+            el.className = 'pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm';
+            el.innerHTML = '<i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1"></span>';
+            el.querySelector('span').textContent = message;
+            container.appendChild(el);
+
+            setTimeout(function () {
+                el.style.transition = 'opacity .4s ease, transform .4s ease';
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(-6px)';
+                setTimeout(function () { el.remove(); }, 400);
+            }, 4000);
+        }
+
         function cartScheduleSync(key) {
             cartDirtyKeys[key] = true;
             if (cartSyncTimer) clearTimeout(cartSyncTimer);
@@ -1229,12 +1288,29 @@
                     },
                     body: JSON.stringify({ quantity: line.quantity })
                 }).then(function (res) {
-                    return res.ok ? res.json() : null;
+                    // Parse the body either way — a 422 rejection carries its
+                    // own JSON (message + max_quantity), not an empty response.
+                    return res.json().catch(function () { return null; });
                 }).then(function (data) {
-                    // Reconcile against the server's authoritative figure.
                     if (data && data.success && data.lines && data.lines[key]) {
+                        // Reconcile against the server's authoritative figure.
                         cartLines[key].unitPrice = data.lines[key].unit_price;
                         cartRenderLine(key);
+                    } else if (data && data.success === false) {
+                        // Stock can no longer cover the quantity just tapped in —
+                        // revert to the true max (or drop back to 1) and say why,
+                        // rather than leaving an over-stock number on screen that
+                        // Place Order would only reject later.
+                        var fallback = (typeof data.max_quantity === 'number' && data.max_quantity >= 1)
+                            ? data.max_quantity
+                            : 1;
+                        cartLines[key].quantity = fallback;
+                        cartRenderLine(key);
+                        if (typeof showCartToast === 'function') {
+                            showCartToast(data.message || 'Not enough stock for that quantity.');
+                        } else {
+                            alert(data.message || 'Not enough stock for that quantity.');
+                        }
                     }
                 }).catch(function () {
                     /* offline / transient — the next tap reschedules */
@@ -1327,16 +1403,65 @@
                 return DISCOUNT_CARD_MESSAGES.missing;
             }
 
-            var entered = new Date(value + 'T00:00:00');
+            var parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
 
-            if (isNaN(entered.getTime())) {
+            if (!parts) {
                 return DISCOUNT_CARD_MESSAGES.invalid;
             }
+
+            var year = parseInt(parts[1], 10);
+            var month = parseInt(parts[2], 10);
+            var day = parseInt(parts[3], 10);
+            var entered = new Date(year, month - 1, day);
+
+            // new Date() rolls Feb 30 over into Mar 2 instead of rejecting it,
+            // so a mismatch here is the only way to catch a day/month
+            // combination that isn't a real calendar date.
+            if (
+                isNaN(entered.getTime())
+                || entered.getFullYear() !== year
+                || entered.getMonth() !== month - 1
+                || entered.getDate() !== day
+            ) {
+                return DISCOUNT_CARD_MESSAGES.invalid;
+            }
+
+            entered.setHours(0, 0, 0, 0);
 
             var today = new Date();
             today.setHours(0, 0, 0, 0);
 
             return entered < today ? DISCOUNT_CARD_MESSAGES.expired : null;
+        }
+
+        /**
+         * Builds the hidden discount_beneficiary_expiration value (Y-m-d) from
+         * the Day/Month/Year selects, then replays the change so every existing
+         * listener on the hidden field (preview refresh, confirm-modal guard)
+         * keeps working unmodified.
+         */
+        function syncDiscountExpirationHidden() {
+            var dayField = document.getElementById('discountExpirationDay');
+            var monthField = document.getElementById('discountExpirationMonth');
+            var yearField = document.getElementById('discountExpirationYear');
+            var hidden = document.getElementById('discountBeneficiaryExpiration');
+
+            if (!dayField || !monthField || !yearField || !hidden) return;
+
+            var day = dayField.value;
+            var month = monthField.value;
+            var year = yearField.value;
+
+            hidden.value = (day && month && year)
+                ? (year + '-' + pad2(month) + '-' + pad2(day))
+                : '';
+
+            hidden.dispatchEvent(new Event('change'));
+        }
+
+        function pad2(value) {
+            value = String(value);
+            return value.length < 2 ? '0' + value : value;
         }
 
         window.addEventListener('load', function() {
@@ -1798,6 +1923,11 @@
                     }
                 });
             });
+
+            ['discountExpirationDay', 'discountExpirationMonth', 'discountExpirationYear'].forEach(function (id) {
+                var field = document.getElementById(id);
+                if (field) field.addEventListener('change', syncDiscountExpirationHidden);
+            });
         });
 
         function toggleDiscountCardFields() {
@@ -1826,6 +1956,10 @@
             document.getElementById('discountBeneficiaryName').value = '';
             document.getElementById('discountBeneficiaryId').value = '';
             document.getElementById('discountBeneficiaryExpiration').value = '';
+            ['discountExpirationDay', 'discountExpirationMonth', 'discountExpirationYear'].forEach(function (id) {
+                var field = document.getElementById(id);
+                if (field) field.value = '';
+            });
 
             var image = document.getElementById('discountBeneficiaryImage');
             if (image) image.value = '';
@@ -2298,7 +2432,7 @@ document.addEventListener('DOMContentLoaded', function () {
         // A stale flash/session value must not reopen the discount modal.
         // Verify that the referenced order is still an active order first.
         (async function () {
-            const pendingOrderId = {{ session('pending_order_id') }};
+            const pendingOrderId = @json((int) session('pending_order_id'));
 
             try {
                 const response = await fetch(
@@ -2425,6 +2559,14 @@ async function confirmOrderNow() {
     }
 }
     </script>
+
+    @include('customer.partials.idle-timeout')
+
+    {{-- Check-only (no $pingsActivity): this page reports whether the table is
+         still this party's, and never extends the fifteen-minute window doing
+         it — which is exactly what this page did before the guard existed. See
+         the partial. --}}
+    @include('customer.partials.dine-in-session-guard')
 </body>
 
 </html>

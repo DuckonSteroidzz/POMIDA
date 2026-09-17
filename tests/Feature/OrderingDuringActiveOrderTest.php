@@ -242,7 +242,13 @@ class OrderingDuringActiveOrderTest extends TestCase
     {
         $order = $this->makeOrder(['type' => 'pick_up', 'table_number' => null, 'status' => 'preparing']);
         GuestOrders::remember($order->id);
-        session(['cart' => []]);
+        // A pick-up customer with an order already in flight has necessarily
+        // already chosen a branch — the same one their existing order is at
+        // (makeOrder()'s default, branch 1). addToCart() now requires that
+        // branch context unconditionally (Phase 3 audit, Door B), matching
+        // the real app rather than a shortcut this fixture used to get away
+        // with.
+        session(['cart' => [], 'branch_id' => $order->branch_id]);
 
         $this->addToCart();
 

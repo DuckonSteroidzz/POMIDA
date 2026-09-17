@@ -3,6 +3,7 @@
 namespace Tests\Feature;
 
 use App\Models\Branch;
+use App\Models\Order;
 use App\Models\TableSession;
 use App\Models\User;
 use App\Services\TableEntry;
@@ -470,12 +471,45 @@ class DineInGuestInactivityTest extends TestCase
      * A released occupancy — the ordinary end of a meal — is NOT an expiry.
      * Bouncing a customer to the code-entry page the moment their order
      * completes would be a rule nobody asked for.
+     *
+     * DRIVEN BY A COMPLETING ORDER, NOT BY releaseTable().
+     * ---------------------------------------------------
+     * This case used to release the table with releaseTable(), which reads like
+     * a neutral "free this row" helper but is in fact the STAFF CLEAR path —
+     * describeRelease() stamps release_reason 'staff_cleared' on everything it
+     * frees. So the guarantee written in the docblock above ("a customer whose
+     * order completed keeps their page") was being asserted through the one
+     * release reason that is now, deliberately, the exception to it: staff
+     * ending a visit by hand DOES bounce the customer, which is the whole of
+     * Tests\Feature\StaffClearEndsCustomerSessionTest.
+     *
+     * The guarantee itself is untouched and is what this still pins — it is
+     * simply exercised through the path it was always describing. A completing
+     * order releases the table via Order::booted() with reason
+     * 'order_completed', the customer keeps their page, and nothing is flashed
+     * at them.
      */
     public function test_a_released_occupancy_is_not_reported_as_expired(): void
     {
         $this->seat('IDLE');
 
-        TableOccupancy::releaseTable(1, 'IDLE', null);
+        $order = Order::create([
+            'order_number' => 'IDL-' . substr(uniqid(), -8),
+            'user_id'      => null,
+            'branch_id'    => 1,
+            'type'         => 'dine_in',
+            'table_number' => 'IDLE',
+            'status'       => 'pending',
+            'subtotal'     => 100,
+            'total'        => 100,
+        ]);
+
+        TableOccupancy::attachOrder($order);
+
+        $order->status = 'completed';
+        $order->save();
+
+        $this->assertNull(TableOccupancy::activeFor(1, 'IDLE'), 'the order did not release the table');
 
         $this->check()->assertOk()->assertJson(['valid' => true]);
         $this->assertNull(session('error'));
@@ -554,10 +588,22 @@ class DineInGuestInactivityTest extends TestCase
             ->assertDontSee('table-activity', false);
     }
 
-    /** The client throttle is the 60-second one that was agreed. */
+    /**
+     * The client throttle is the 60-second one that was agreed.
+     *
+     * Reads the PARTIAL, not menu.blade.php. This client half used to be
+     * written out inline on the menu; it moved to
+     * customer/partials/dine-in-session-guard.blade.php so the cart and
+     * item-details pages could carry the identical behaviour instead of a
+     * second hand-rolled copy. The menu still gets it — with $pingsActivity
+     * true, which is what keeps the ping half menu-only — and the numbers this
+     * asserts are unchanged; only the file they live in moved.
+     */
     public function test_the_client_throttles_the_ping_to_once_a_minute(): void
     {
-        $source = file_get_contents(base_path('resources/views/customer/menu.blade.php'));
+        $source = file_get_contents(
+            base_path('resources/views/customer/partials/dine-in-session-guard.blade.php')
+        );
 
         $this->assertStringContainsString('PING_EVERY_MS = 60000', $source);
 
@@ -566,5 +612,12 @@ class DineInGuestInactivityTest extends TestCase
         }
 
         $this->assertStringContainsString('visibilitychange', $source);
+
+        // The menu is still where the ping is switched on — moving the code out
+        // must not quietly have moved the behaviour out with it.
+        $this->assertStringContainsString(
+            "'pingsActivity' => true",
+            file_get_contents(base_path('resources/views/customer/menu.blade.php'))
+        );
     }
 }

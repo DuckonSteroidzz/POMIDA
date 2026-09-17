@@ -55,11 +55,19 @@
     >
         <div class="flex items-center justify-between border-b border-peach-soft px-4 py-3">
             <span class="text-sm font-black text-peach-deep">Notifications</span>
-            <button
-                type="button"
-                data-notif-markread
-                class="rounded-full px-2 py-1 text-[0.7rem] font-bold text-peach-red transition hover:bg-peach-soft"
-            >Mark all read</button>
+            <span class="flex items-center gap-1">
+                <button
+                    type="button"
+                    data-notif-markread
+                    class="rounded-full px-2 py-1 text-[0.7rem] font-bold text-peach-red transition hover:bg-peach-soft"
+                >Mark all read</button>
+                <button
+                    type="button"
+                    data-notif-close
+                    aria-label="Close"
+                    class="toast-x"
+                ><i class="bi bi-x-lg" style="font-size:0.75rem;"></i></button>
+            </span>
         </div>
 
         <div data-notif-list class="max-h-[55vh] overflow-y-auto overscroll-contain">
@@ -191,10 +199,13 @@
     var badge    = root.querySelector('[data-notif-badge]');
     var list     = root.querySelector('[data-notif-list]');
     var markBtn  = root.querySelector('[data-notif-markread]');
+    var closeBtn = root.querySelector('[data-notif-close]');
 
     var URL_COUNT = @json(route('customer.notifications.unread-count'));
     var URL_LIST  = @json(route('customer.notifications.index'));
     var URL_READ  = @json(route('customer.notifications.read'));
+    // {notification} placeholder swapped per click — one X per card.
+    var URL_DISMISS = @json(route('customer.notifications.dismiss', ['notification' => '__ID__']));
     var CSRF      = @json(csrf_token());
 
     function setBadge(n) {
@@ -222,7 +233,7 @@
         list.innerHTML = items.map(function (n) {
             // Unread rows get a tinted background and a dot; read rows stay plain.
             return '' +
-              '<div class="flex gap-2.5 border-b border-peach-soft/60 px-4 py-3 ' +
+              '<div data-notif-item data-id="' + esc(n.id) + '" class="flex gap-2.5 border-b border-peach-soft/60 px-4 py-3 ' +
                    (n.is_read ? '' : 'bg-peach-soft/40') + '">' +
                 '<span class="mt-1.5 h-2 w-2 shrink-0 rounded-full ' +
                    (n.is_read ? 'bg-transparent' : 'bg-peach-red') + '"></span>' +
@@ -235,6 +246,14 @@
                   '<p class="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-peach-deep/40">' +
                      esc(n.ago) + '</p>' +
                 '</div>' +
+                // Per-card dismiss (X). Reuses .toast-x, already defined below
+                // for the toast's own close button — same borderless/transparent
+                // treatment and the same bi-x-lg icon, just placed in the list
+                // instead of a toast. self-start keeps it pinned to the top of
+                // the card rather than stretching over a multi-line message.
+                '<button type="button" class="toast-x self-start" data-notif-dismiss ' +
+                   'data-id="' + esc(n.id) + '" aria-label="Dismiss">' +
+                   '<i class="bi bi-x-lg" style="font-size:0.65rem;"></i></button>' +
               '</div>';
         }).join('');
     }
@@ -436,6 +455,40 @@
     markBtn.addEventListener('click', function (e) {
         e.stopPropagation();
         markAllRead();
+    });
+
+    closeBtn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        closePanel();
+    });
+
+    // Per-card dismiss (X). Delegated so it survives every list re-render.
+    list.addEventListener('click', function (e) {
+        var btn = e.target.closest('[data-notif-dismiss]');
+        if (!btn) return;
+        e.stopPropagation();
+
+        var id = btn.getAttribute('data-id');
+        if (!id || btn.disabled) return;
+        btn.disabled = true;
+
+        fetch(URL_DISMISS.replace('__ID__', encodeURIComponent(id)), {
+            method: 'POST',
+            headers: { 'X-CSRF-TOKEN': CSRF, 'Accept': 'application/json' }
+        })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .then(function (d) {
+                if (!d) { btn.disabled = false; return; }
+                // Drop the row immediately; keep the badge honest.
+                var item = btn.closest('[data-notif-item]');
+                if (item && item.parentNode) item.parentNode.removeChild(item);
+                if (typeof d.unread === 'number') setBadge(d.unread);
+                if (!list.querySelector('[data-notif-item]')) {
+                    list.innerHTML = '<p class="px-4 py-6 text-center text-xs text-peach-deep/50">' +
+                                     'No notifications yet.</p>';
+                }
+            })
+            .catch(function () { btn.disabled = false; });
     });
 
     // Tapping anywhere else closes the sheet — important on a phone where the

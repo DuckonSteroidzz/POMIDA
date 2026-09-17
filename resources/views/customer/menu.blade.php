@@ -10,19 +10,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    @vite(['resources/css/app.css'])
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -40,19 +31,6 @@
             select, input, button, a { font-family: inherit; }
             [hidden] { display: none !important; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility no-scrollbar {
-            scrollbar-width: none;
-            -ms-overflow-style: none;
-            &::-webkit-scrollbar { display: none; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
         }
     </style>
     @include('partials.session-guard')
@@ -125,13 +103,24 @@
     </div>
     @endif
 
-    @if($errors->any())
+    {{-- addToCart() and the branch guard refuse with ->with('error', …); this
+         page rendered only the $errors bag, so those refusals were set in the
+         session and never shown to anyone. --}}
+    @if(session('error'))
     <div data-toast
          class="toast-bar pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm">
         <i class="bi bi-exclamation-circle text-sm text-peach-red"></i>
-        <span class="min-w-0 flex-1">{{ $errors->first() }}</span>
+        <span class="min-w-0 flex-1">{{ session('error') }}</span>
     </div>
     @endif
+
+    @foreach($errors->all() as $errorMessage)
+    <div data-toast
+         class="toast-bar pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm">
+        <i class="bi bi-exclamation-circle text-sm text-peach-red"></i>
+        <span class="min-w-0 flex-1">{{ $errorMessage }}</span>
+    </div>
+    @endforeach
 
     {{-- Active order warning --}}
     @if(session('active_order_warning'))
@@ -141,6 +130,30 @@
         <span class="min-w-0 flex-1">
             {{ session('active_order_message') }}
         </span>
+    </div>
+    @endif
+
+    {{-- Branch switch cleared the cart (AuthController::switchBranch) --}}
+    @if(session('branch_changed_warning'))
+    <div data-toast
+         class="toast-bar pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-amber-200 bg-amber-50/95 px-3.5 py-2 text-xs font-medium text-amber-800 shadow-sm backdrop-blur-sm">
+        <i class="bi bi-exclamation-triangle-fill text-sm text-amber-600"></i>
+        <span class="min-w-0 flex-1">
+            {{ session('branch_changed_message') }}
+        </span>
+    </div>
+    @endif
+
+    {{-- Shared-table visibility: this device joined a session someone else at
+         this table already opened (App\Services\TableOccupancy::claim()).
+         Never a refusal — everyone at a table shares one session by design —
+         this only makes that fact visible instead of looking identical to
+         "there is no lock at all". Same styling as the success toast above. --}}
+    @if(session('table_session_joined_table'))
+    <div data-toast
+         class="toast-bar pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-green-200/80 bg-green-50/95 px-3.5 py-2 text-xs font-medium text-green-700 shadow-sm backdrop-blur-sm">
+        <i class="bi bi-check-circle text-sm text-green-600"></i>
+        <span class="min-w-0 flex-1">You've joined Table {{ session('table_session_joined_table') }}'s session.</span>
     </div>
     @endif
 
@@ -226,10 +239,17 @@
             <div id="itemsGrid" class="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
                 @foreach($items as $item)
                 @php
+                    // $reserved = stock open orders have already committed but
+                    // that has not been deducted yet, so these badges show what
+                    // is genuinely still orderable. See the controller.
                     $itemMissingRecipe = $item->isMissingRecipe();
-                    $itemOutOfStock = ! $itemMissingRecipe && ! $item->hasIngredientStock();
+                    $itemOutOfStock = ! $itemMissingRecipe && ! $item->hasIngredientStock(1, $reserved ?? null);
                     $itemUnavailable = $itemMissingRecipe || $itemOutOfStock;
                     $itemUnavailableLabel = $itemMissingRecipe ? 'No Recipe Set' : 'Out of Stock';
+                    // Threshold is config('inventory.low_stock_threshold') — see
+                    // MenuItem::isLowOnIngredientStock().
+                    $itemLowStock = ! $itemUnavailable && $item->isLowOnIngredientStock($reserved ?? null);
+                    $itemRemainingServings = $itemLowStock ? $item->remainingServings($reserved ?? null) : null;
                 @endphp
                 <a href="{{ route('customer.item', $item->id) }}"
                     class="item-grid-card card-surface group relative flex flex-col overflow-hidden no-underline transition duration-200 hover:-translate-y-0.5 hover:border-peach"
@@ -247,6 +267,10 @@
                         <span class="absolute left-2 top-2 rounded-full bg-peach-deep/90 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
                             {{ $itemUnavailableLabel }}
                         </span>
+                        @elseif($itemLowStock)
+                        <span class="absolute left-2 top-2 rounded-full bg-amber-500/95 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
+                            @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left @else Low Stock @endif
+                        </span>
                         @endif
                     </div>
                     <div class="flex flex-1 flex-col gap-1 p-3">
@@ -256,6 +280,10 @@
                         <p class="text-[0.66rem] font-bold text-peach-red">Unavailable — no recipe set</p>
                         @elseif($itemOutOfStock)
                         <p class="text-[0.66rem] font-bold text-peach-red">Currently unavailable — ingredients out of stock</p>
+                        @elseif($itemLowStock)
+                        <p class="text-[0.66rem] font-bold text-amber-600">
+                            @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left! @else Low stock! @endif
+                        </p>
                         @endif
                     </div>
                 </a>
@@ -371,9 +399,11 @@
 
                                 @php
                                     $itemMissingRecipe = $item->isMissingRecipe();
-                                    $itemOutOfStock = ! $itemMissingRecipe && ! $item->hasIngredientStock();
+                                    $itemOutOfStock = ! $itemMissingRecipe && ! $item->hasIngredientStock(1, $reserved ?? null);
                                     $itemUnavailable = $itemMissingRecipe || $itemOutOfStock;
                                     $itemUnavailableLabel = $itemMissingRecipe ? 'No Recipe Set' : 'Out of Stock';
+                                    $itemLowStock = ! $itemUnavailable && $item->isLowOnIngredientStock($reserved ?? null);
+                                    $itemRemainingServings = $itemLowStock ? $item->remainingServings($reserved ?? null) : null;
                                 @endphp
                                 <a href="{{ route('customer.item', $item->id) }}"
                                     class="menu-search-card card-surface group relative flex flex-col overflow-hidden no-underline transition duration-200 hover:-translate-y-0.5 hover:border-peach"
@@ -392,6 +422,10 @@
                                         <span class="pointer-events-none absolute inset-0 bg-white/45"></span>
                                         <span class="absolute left-2 top-2 rounded-full bg-peach-deep/90 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
                                             {{ $itemUnavailableLabel }}
+                                        </span>
+                                        @elseif($itemLowStock)
+                                        <span class="absolute left-2 top-2 rounded-full bg-amber-500/95 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
+                                            @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left @else Low Stock @endif
                                         </span>
                                         @endif
                                     </div>
@@ -418,6 +452,10 @@
                                         <p class="text-[0.66rem] font-bold text-peach-red">Unavailable — no recipe set</p>
                                         @elseif($itemOutOfStock)
                                         <p class="text-[0.66rem] font-bold text-peach-red">Currently unavailable — ingredients out of stock</p>
+                                        @elseif($itemLowStock)
+                                        <p class="text-[0.66rem] font-bold text-amber-600">
+                                            @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left! @else Low stock! @endif
+                                        </p>
                                         @endif
                                     </div>
                                 </a>
@@ -666,6 +704,9 @@
     });
 </script>
 
+@include('customer.partials.welcome-popup')
+@include('customer.partials.idle-timeout')
+
 {{-- ================= ORDER STATUS NOTIFICATION ================= --}}
 <div id="orderStatusNotice"
      style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
@@ -742,8 +783,11 @@
             icon.innerHTML = '<i class="bi bi-x-circle"></i>';
             title.style.color = '#C0392B';
             title.textContent = 'Order Cancelled';
+            // Neutral wording — this fires for a staff cancellation AND for
+            // the customer's own Cancel Order tap on the Orders page. See the
+            // matching note in orders.blade.php's showOrderStatusNotice().
             message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
-                'has been cancelled by staff.';
+                'has been cancelled.';
         } else {
             return;
         }
@@ -807,103 +851,20 @@
 })();
 </script>
 
-@if(session('order_type') === 'dine_in')
 {{--
-    Dine-in inactivity: the guest half of the fifteen-minute clock.
+    The dine-in guest's session guard — the fifteen-minute inactivity clock AND
+    the staff-cancellation check, which now share one implementation in
+    partials/dine-in-session-guard.blade.php. It used to be written out inline
+    here; the cart and item-details pages need the identical behaviour, so it
+    moved rather than being copied.
 
-    Only rendered for a dine-in session — a pick-up customer's menu is
-    byte-identical to what it was, and there is nothing here for admin, staff or
-    kitchen pages to pick up.
-
-    Two listeners, doing deliberately different jobs:
-
-      PING   scroll / click / touchstart / keydown, throttled to at most one
-             request per sixty seconds of continuous activity no matter how
-             many events fire. This is the only thing that extends the window.
-
-      CHECK  on load, and whenever the tab becomes visible or regains focus.
-             Read-only on the server. A phone left face-up on a table fires
-             neither, which is exactly the case the window is for.
-
-    Nothing here draws anything. On expiry the server has already flashed the
-    message, so the page simply goes to the code-entry page and the existing
-    alert renders it.
+    $pingsActivity is true HERE AND NOWHERE ELSE. The menu is the page a party
+    genuinely reads for minutes at a time, and its scroll/tap events are what
+    keep the fifteen-minute window open; the other pages that include this
+    partial check their session without extending it, exactly as they did
+    before. See the partial for the full reasoning.
 --}}
-<script>
-(function () {
-    'use strict';
-
-    var PING_URL  = '{{ route('customer.table-activity') }}';
-    var CHECK_URL = '{{ route('customer.table-session-status') }}';
-    var ENTRY_URL = '{{ route('customer.dineinqr') }}';
-
-    // One ping per sixty seconds of activity. A customer reading a long menu
-    // generates thousands of scroll events; the server needs one of them.
-    var PING_EVERY_MS = 60000;
-
-    var lastPingAt = 0;
-    var pingInFlight = false;
-    var checkInFlight = false;
-    var leaving = false;
-
-    // X-CSRF-TOKEN is put on by partials/session-guard's fetch wrapper, which
-    // reads it live from the meta tag rather than from a literal baked in here.
-    function ping() {
-        var now = Date.now();
-
-        if (now - lastPingAt < PING_EVERY_MS || pingInFlight) { return; }
-
-        lastPingAt = now;
-        pingInFlight = true;
-
-        fetch(PING_URL, {
-            method: 'POST',
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            cache: 'no-store'
-        })
-        .catch(function () { /* Next interaction tries again. */ })
-        .then(function () { pingInFlight = false; });
-    }
-
-    ['scroll', 'click', 'touchstart', 'keydown'].forEach(function (type) {
-        window.addEventListener(type, ping, { passive: true });
-    });
-
-    function check() {
-        if (checkInFlight || leaving) { return; }
-
-        checkInFlight = true;
-
-        fetch(CHECK_URL, {
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            cache: 'no-store'
-        })
-        .then(function (response) {
-            if (!response.ok) { return null; }
-            return response.json();
-        })
-        .then(function (data) {
-            if (data && data.valid === false) {
-                // Latched: a burst of focus events must not fire a burst of
-                // navigations.
-                leaving = true;
-                window.location.href = data.redirect || ENTRY_URL;
-            }
-        })
-        .catch(function () { /* Offline or mid-navigation. Ask again next time. */ })
-        .then(function () { checkInFlight = false; });
-    }
-
-    check();
-
-    document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { check(); }
-    });
-
-    window.addEventListener('focus', check);
-})();
-</script>
-@endif
+@include('customer.partials.dine-in-session-guard', ['pingsActivity' => true])
 
     @include('customer.partials.navbar')
 </body>

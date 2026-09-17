@@ -13,7 +13,8 @@
     {{-- Google Fonts --}}
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
- 
+    @include('customer.partials.click-sound')
+
     <style>
         * {
             font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;

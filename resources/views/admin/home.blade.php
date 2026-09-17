@@ -1830,11 +1830,18 @@
 <script>
 let manualCart = {};
 let manualOptionTarget = null;
+let manualCurrentBranch = null;
 
 function openManualOrder()
 {
     document.getElementById('manualOrderModal').style.display = 'block';
     document.body.style.overflow = 'hidden';
+
+    // Track the branch the cart was built against so a genuine switch (not
+    // just this initial read) can be told apart from opening the modal.
+    manualCurrentBranch = document.getElementById('manualBranch').value;
+    document.getElementById('manualBranchChangedNotice').style.display = 'none';
+
     filterManualItems();
 
     // Belt and braces: whatever state the modal was left in, the discount
@@ -1876,6 +1883,25 @@ function toggleManualTable()
         input.required = false;
         input.value = '';
     }
+}
+
+function onManualBranchChange()
+{
+    const branch = document.getElementById('manualBranch').value;
+
+    // Menu items, prices and stock are branch-specific (same reasoning as
+    // the customer-side switchBranch() cart clear) — a cart built against
+    // the old branch must not silently ride along to the new one.
+    if (manualCurrentBranch !== null && branch !== manualCurrentBranch && Object.keys(manualCart).length > 0) {
+        manualCart = {};
+        renderManualCart();
+        document.getElementById('manualBranchChangedNotice').style.display = 'flex';
+    } else {
+        document.getElementById('manualBranchChangedNotice').style.display = 'none';
+    }
+
+    manualCurrentBranch = branch;
+    filterManualItems();
 }
 
 function filterManualItems()
@@ -2974,7 +3000,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             id="manualBranch"
                             class="form-control-custom"
                             required
-                            onchange="filterManualItems()"
+                            onchange="onManualBranchChange()"
                         >
                             <option value="">
                                 -- Select Branch --
@@ -3033,6 +3059,26 @@ document.addEventListener('DOMContentLoaded', function() {
                 </div>
 
 
+                <div
+                    id="manualBranchChangedNotice"
+                    style="
+                        display:none;
+                        align-items:center;
+                        gap:0.5rem;
+                        background:#fff3cd;
+                        color:#7a5c00;
+                        padding:0.6rem 0.75rem;
+                        border-radius:8px;
+                        margin-bottom:1rem;
+                        font-size:0.78rem;
+                        font-weight:600;
+                    "
+                >
+                    <i class="bi bi-exclamation-triangle-fill"></i>
+                    <span>Cart was cleared because the branch changed — menu items and prices are branch-specific.</span>
+                </div>
+
+
                 <div style="margin-bottom:1rem;">
 
                     <label class="form-label-custom">
@@ -3064,6 +3110,14 @@ document.addEventListener('DOMContentLoaded', function() {
                 >
 
                     @foreach($menuItems as $item)
+                        @php
+                            // Same "No Recipe Set" guard as the customer menu
+                            // (MenuItem::isMissingRecipe()) — an item with no
+                            // bill of materials is refused server-side by
+                            // storeManualOrder() too, so staff never get a
+                            // mid-order surprise.
+                            $itemMissingRecipe = $item->isMissingRecipe();
+                        @endphp
 
                         <button
                             type="button"
@@ -3075,7 +3129,12 @@ document.addEventListener('DOMContentLoaded', function() {
                             data-branch="{{ $item->branch_id ?? 'all' }}"
                             data-price="{{ $item->price }}"
                             data-options="{{ $item->options->toJson() }}"
-                            onclick="addManualItem({{ $item->id }})"
+                            @if($itemMissingRecipe)
+                                disabled
+                                title="No recipe set — this item cannot be added to an order yet."
+                            @else
+                                onclick="addManualItem({{ $item->id }})"
+                            @endif
                             style="
                                 display:flex;
                                 align-items:center;
@@ -3086,6 +3145,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 border-radius:10px;
                                 padding:0.55rem;
                                 cursor:pointer;
+                                {{ $itemMissingRecipe ? 'opacity:0.5;cursor:not-allowed;' : '' }}
                             "
                         >
 
@@ -3170,6 +3230,20 @@ document.addEventListener('DOMContentLoaded', function() {
                                     @endif
                                 </div>
 
+                                @if($itemMissingRecipe)
+                                    <div
+                                        style="
+                                            color:#C0392B;
+                                            font-weight:800;
+                                            font-size:0.62rem;
+                                            text-transform:uppercase;
+                                            margin-top:0.15rem;
+                                        "
+                                    >
+                                        No Recipe Set
+                                    </div>
+                                @endif
+
                             </div>
 
                         </button>
@@ -3245,6 +3319,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             class="form-control-custom"
                             autocomplete="off"
                             maxlength="64"
+                            placeholder="Enter discount code here"
                             style="flex:1 1 220px;max-width:260px;text-transform:uppercase;"
                             oninput="clearManualVoucher()"
                         >

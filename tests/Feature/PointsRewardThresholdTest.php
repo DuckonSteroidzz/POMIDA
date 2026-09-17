@@ -16,8 +16,9 @@ use Tests\TestCase;
  * Points-threshold voucher rewards (2026-09-02).
  *
  * Every PointsRewards::THRESHOLD lifetime points a customer earns entitles
- * them to one voucher reward, which staff hand over at the counter using the
- * same claim-code minting the walk-in flow already uses.
+ * them to one voucher reward. It lands directly on the signed-in winner's
+ * account as a UserVoucher claim — self-service from checkout, no staff
+ * involved — using the same claim-code minting the walk-in flow also uses.
  *
  * THE TWO THINGS THAT WERE EASY TO GET WRONG
  * ------------------------------------------
@@ -197,7 +198,7 @@ class PointsRewardThresholdTest extends TestCase
         // Delivered through the same bell as order updates, to the customer.
         $this->assertSame(Notification::AUDIENCE_CUSTOMER, $notification->audience);
         $this->assertStringContainsString('30 points', $notification->message);
-        $this->assertStringContainsString('staff', $notification->message);
+        $this->assertStringContainsString('My Vouchers', $notification->message);
 
         // Not an order notification — this is the first non-order row in the
         // table, which is what order_id being nullable was left for.

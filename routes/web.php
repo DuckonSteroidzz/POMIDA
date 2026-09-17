@@ -312,6 +312,14 @@ Route::prefix('customer')->name('customer.')->group(function () {
         ->middleware('throttle:customer-notifications')
         ->name('notifications.read');
 
+    // The X on a single tray card — soft dismiss, scoped to the caller's own
+    // notifications (see CustomerNotificationController::dismiss()). Same
+    // ceiling as the rest of the bell traffic.
+    Route::post('/notifications/{notification}/dismiss', [CustomerNotificationController::class, 'dismiss'])
+        ->whereNumber('notification')
+        ->middleware('throttle:customer-notifications')
+        ->name('notifications.dismiss');
+
 
     // ══════════ ACCOUNT ══════════
 
@@ -329,6 +337,18 @@ Route::prefix('customer')->name('customer.')->group(function () {
 
     Route::post('/logout', [AuthController::class, 'logout'])
         ->name('logout');
+
+    // The "are you still there?" idle prompt's auto-exit, fired by the client
+    // once a warning has gone unanswered. One endpoint for every session shape
+    // — logged-in Pickup, logged-in Dine-In, guest Dine-In — because "end the
+    // session for real" is the same server-side action in all three: log the
+    // customer guard out if one is signed in, then destroy the session outright
+    // (not just its order_type/table keys) so a guest's table_session_token
+    // cannot be replayed and a logged-in customer's cookie cannot be reused.
+    // See AuthController::idleLogout().
+    Route::post('/idle-logout', [AuthController::class, 'idleLogout'])
+        ->middleware('throttle:customer-idle-logout')
+        ->name('idle-logout');
 
 
     // ══════════ VOUCHERS / GAME ══════════
@@ -397,6 +417,13 @@ Route::prefix('admin')->name('admin.')->group(function () {
 
     Route::get('/login', [AdminAuthController::class, 'showLogin'])
         ->name('login');
+
+    // The live CSRF token, so a long-open admin/staff login tab can refresh
+    // its own token before submitting and never dead-end on the branded 419
+    // page. Mirrors customer.session-token — unthrottled on purpose, the same
+    // reasoning as that route: it only reads csrf_token(), nothing to guard.
+    Route::get('/session-token', [AdminAuthController::class, 'sessionToken'])
+        ->name('session-token');
 
     // ══════════ FIRST-RUN BOOTSTRAP ══════════
     //
@@ -584,6 +611,12 @@ Route::prefix('admin')
             Route::get('/completed-orders', [AdminController::class, 'showCompletedOrders'])
                 ->name('completed-orders');
 
+            // "Print Filtered" — see the note on printCompletedOrders(). Same
+            // role group as the list above: anyone who can see the page can
+            // print it, unchanged from before this was paginated.
+            Route::get('/completed-orders/print', [AdminController::class, 'printCompletedOrders'])
+                ->name('completed-orders.print');
+
 
             // ══════════ SUMMARY — the matrix's one LIMITED report ══════════
             //
@@ -668,55 +701,97 @@ Route::prefix('admin')
                 ->name('tables.clear');
 
 
-            // ══════════ INVENTORY — VIEW ONLY ══════════
+            // ══════════ INVENTORY — view + stock movement (In/Out) ══════════
             //
-            // "View Inventory" is Y | Y | VIEW-ONLY, and this GET is the whole
-            // of what VIEW-ONLY means: staff still see the stock list for
-            // their branch (they need to know what has run out) but move
-            // nothing.
+            // "View Inventory" is Y | Y | Y: staff see the stock list for their
+            // branch, because they need to know what has run out.
             //
-            // stock-in and stock-out used to sit here, giving staff the
-            // ability to change recorded quantities directly. "Update Stock"
-            // and "Stock Adjustments" are both Y | Y | N in the matrix, so
-            // they moved to the manager group below. This is a real reduction
-            // in what a staff account can do, and it is the intended one:
-            // a stock movement is an inventory correction, not a shift action,
-            // and stock_movements rows are what the cost figures are built on.
+            // stock-in and stock-out are HERE, not in the manager group, and
+            // this is a deliberate reversal of the earlier Sept 2026 placement
+            // that had moved them out. Recording that four bottles of syrup
+            // arrived, or that a tray was dropped, is counter shift work — it
+            // is the person holding the stock who knows the number, and
+            // routing every correction through a supervisor meant the recorded
+            // quantity drifted from the shelf until one was free. An inventory
+            // count that is wrong all day is worse than one a staff member
+            // corrected.
+            //
+            // What staff get is the MOVEMENT, never the DEFINITION. Adding an
+            // item, and editing its name, unit cost or low-stock threshold,
+            // stay Y | Y | N in the manager group below; deleting one stays
+            // owner-only. So a staff account can say HOW MUCH is on the shelf
+            // and can never change what the thing is, what it is worth, or
+            // when the shop is warned it is running out.
+            //
+            // Two things already make this safe rather than a hole, and both
+            // predate this change:
+            //   - every movement is attributed. StockMovement rows carry
+            //     user_id, movement_type, quantity_after and the note, and the
+            //     page renders the last 20, so a staff correction is auditable
+            //     in exactly the way a manager's always was.
+            //   - both endpoints resolve the item through
+            //     AdminOrderAccess::resolveRecordInScope(), so a branch-locked
+            //     account reaching for another branch's item id gets the same
+            //     404 a nonexistent id gets. The role gate says WHO may move
+            //     stock; that call says WHOSE stock they may move.
 
             Route::get('/inventory', [AdminController::class, 'showInventory'])
                 ->name('inventory');
+
+            // Staff can already see every value in this file on screen, so
+            // exporting it as CSV discloses nothing the table does not.
+            Route::get('/inventory/export', [AdminController::class, 'exportInventory'])
+                ->name('inventory.export');
+
+            // whereNumber('id') so a non-numeric id is a clean 404 from the
+            // router rather than a TypeError 500 inside stockIn(int $id).
+            Route::post('/inventory/stock-in/{id}', [AdminController::class, 'stockIn'])
+                ->whereNumber('id')
+                ->name('inventory.stock-in');
+
+            Route::post('/inventory/stock-out/{id}', [AdminController::class, 'stockOut'])
+                ->whereNumber('id')
+                ->name('inventory.stock-out');
 
 
             // ══════════ ORDERS MANAGEMENT ══════════
 
             Route::put('/orders/{id}/prepare', [AdminController::class, 'prepareOrder'])
+                ->whereNumber('id')
                 ->name('orders.prepare');
 
             Route::put('/orders/{id}/serve', [AdminController::class, 'serveOrder'])
+                ->whereNumber('id')
                 ->name('orders.serve');
 
             Route::put('/orders/{id}/complete', [AdminController::class, 'completeOrder'])
+                ->whereNumber('id')
                 ->name('orders.complete');
 
             Route::put('/orders/{id}/cancel', [AdminController::class, 'cancelOrder'])
+                ->whereNumber('id')
                 ->name('orders.cancel');
 
 
             // ══════════ DISCOUNT APPROVAL ══════════
 
             Route::put('/orders/{id}/discount/approve', [AdminController::class, 'approveDiscount'])
+                ->whereNumber('id')
                 ->name('orders.discount.approve');
 
             Route::put('/orders/{id}/discount/reject', [AdminController::class, 'rejectDiscount'])
+                ->whereNumber('id')
                 ->name('orders.discount.reject');
 
 
             // ══════════ GCASH PAYMENT ══════════
 
             Route::put('/orders/{id}/payment/approve', [AdminController::class, 'approveGcashPayment'])
+                ->whereNumber('id')
                 ->name('orders.payment.approve');
 
             Route::put('/orders/{id}/payment/reject', [AdminController::class, 'rejectGcashPayment'])
+                ->whereNumber('id')
                 ->name('orders.payment.reject');
 
             // Staff confirm they have manually sent back the money for an order
@@ -724,6 +799,7 @@ Route::prefix('admin')
             // scope as approve/reject above: it is a counter action during a
             // shift, not an owner-only one.
             Route::put('/orders/{id}/payment/refunded', [AdminController::class, 'markOrderRefunded'])
+                ->whereNumber('id')
                 ->name('orders.payment.refunded');
 
 
@@ -845,6 +921,15 @@ Route::prefix('admin')
 
             Route::get('/analytics', [AdminController::class, 'showAnalytics'])
                 ->name('analytics');
+
+            // "Print" — same printInFrame() shape as
+            // admin.completed-orders.print: re-runs the current filters
+            // (branch scope + date range) with nothing paginated, in a
+            // dedicated print-only view, so the printed page matches what the
+            // viewer was looking at rather than whatever the DOM happened to
+            // hold on screen.
+            Route::get('/analytics/print', [AdminController::class, 'printAnalytics'])
+                ->name('analytics.print');
 
             Route::get('/export/orders', [AdminController::class, 'exportOrders'])
                 ->name('export.orders');
@@ -1016,19 +1101,26 @@ Route::prefix('admin')
                 ->name('menu-options.ingredients.delete');
 
 
-            // ══════════ INVENTORY — definitions + stock movement ══════════
+            // ══════════ INVENTORY — the DEFINITION of a stock item ══════════
             //
-            // "Add Inventory", "Update Stock" and "Stock Adjustments" are all
-            // Y | Y | N. "Delete Inventory Records" is Y | N | N and stays in
-            // the owner-only group below — deleting a stock item cascades
-            // through menu_item_ingredients and silently stops menu items
-            // deducting anything, which is why it is the one inventory action
-            // a manager does not get.
+            // "Add Inventory" is Y | Y | N, and so is editing an existing
+            // item's definition — its name, unit, unit cost and low-stock
+            // alert level. Those are the numbers every other figure is derived
+            // FROM: unit_cost feeds the costing snapshots and the stock-value
+            // tile, low_stock_alert decides what the shop is told it is about
+            // to run out of. Changing them is a management act.
             //
-            // stock-in and stock-out moved here FROM the all-three group: they
-            // write stock_movements rows, which the cost and profit figures are
-            // built on, so they are an inventory correction rather than a
-            // counter action.
+            // "Delete Inventory Records" is Y | N | N and stays in the
+            // owner-only group below — deleting a stock item cascades through
+            // menu_item_ingredients and silently stops menu items deducting
+            // anything, which is why it is the one inventory action a manager
+            // does not get.
+            //
+            // What is NO LONGER here is stock-in / stock-out. They moved to
+            // the all-three group above (see the INVENTORY block there for the
+            // reasoning). The split this group now draws is DEFINITION vs
+            // MOVEMENT: a manager decides what an item IS and what it costs; a
+            // counter shift records how much of it is on the shelf.
 
             Route::post('/inventory', [AdminController::class, 'storeInventory'])
                 ->name('inventory.store');
@@ -1038,12 +1130,6 @@ Route::prefix('admin')
 
             Route::put('/inventory/{id}', [AdminController::class, 'updateInventory'])
                 ->name('inventory.update');
-
-            Route::post('/inventory/stock-in/{id}', [AdminController::class, 'stockIn'])
-                ->name('inventory.stock-in');
-
-            Route::post('/inventory/stock-out/{id}', [AdminController::class, 'stockOut'])
-                ->name('inventory.stock-out');
 
 
             // ══════════ VOUCHERS — author / edit / activate ══════════
@@ -1196,6 +1282,24 @@ Route::prefix('admin')
 
             Route::delete('/inventory/{id}', [AdminController::class, 'deleteInventory'])
                 ->name('inventory.delete');
+
+            // ══════════ DELETED INVENTORY — two-stage delete, owner only ══════════
+            //
+            // inventory.delete above is now stage one: recoverable, off the
+            // normal list. These three routes are the second stage — viewing
+            // what is there, putting an item back, and the actual irreversible
+            // removal — and stay in this same owner-only group because
+            // "Delete Inventory Records" (Y | N | N) already covers the whole
+            // lifecycle, not just the first click.
+
+            Route::get('/inventory/deleted', [AdminController::class, 'showDeletedInventory'])
+                ->name('inventory.deleted');
+
+            Route::put('/inventory/{id}/restore', [AdminController::class, 'restoreInventory'])
+                ->name('inventory.restore');
+
+            Route::delete('/inventory/{id}/force', [AdminController::class, 'forceDeleteInventory'])
+                ->name('inventory.force-delete');
 
 
             // ══════════ VOUCHERS — the owner-only half ══════════

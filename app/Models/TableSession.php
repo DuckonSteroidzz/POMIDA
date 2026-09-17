@@ -4,6 +4,7 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 /**
  * One dine-in occupancy of a physical table.
@@ -62,6 +63,18 @@ class TableSession extends Model
     public function isStaffOpened(): bool
     {
         return $this->opened_by !== null;
+    }
+
+    /**
+     * Every device that has joined this occupancy. Purely a visibility record —
+     * see App\Services\TableOccupancy for how "currently active" is judged from
+     * these rows (last_activity_at against GUEST_IDLE_MINUTES), and the
+     * migration that creates table_session_devices for why this is a child
+     * table rather than a counter column.
+     */
+    public function devices(): HasMany
+    {
+        return $this->hasMany(TableSessionDevice::class);
     }
 
     public function isActive(): bool

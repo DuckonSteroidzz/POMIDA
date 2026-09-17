@@ -232,6 +232,15 @@ class RateLimitServiceProvider extends ServiceProvider
      */
     public const CUSTOMER_DISCOUNT_LOOKUP_PER_IP = 60;
 
+    /**
+     * POST /customer/idle-logout — the "are you still there?" prompt's
+     * auto-exit, fired once per idle episode by a real client. A generous
+     * per-IP ceiling well above that, purely as an anti-automation backstop
+     * (it only ever invalidates the caller's own session, so there is no
+     * money or enumeration value in hammering it).
+     */
+    public const CUSTOMER_IDLE_LOGOUT_PER_IP = 20;
+
     public function boot(): void
     {
         /*
@@ -266,6 +275,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-table-clock', self::CUSTOMER_TABLE_CLOCK_PER_IP);
         $this->perIp('customer-add-points', self::CUSTOMER_ADD_POINTS_PER_IP);
         $this->perIp('customer-discount-lookup', self::CUSTOMER_DISCOUNT_LOOKUP_PER_IP);
+        $this->perIp('customer-idle-logout', self::CUSTOMER_IDLE_LOGOUT_PER_IP);
 
         $this->pair('place-order', self::PLACE_ORDER_PER_SESSION, self::PLACE_ORDER_PER_IP);
         $this->pair('gcash-paid', self::GCASH_PAID_PER_SESSION, self::GCASH_PAID_PER_IP);

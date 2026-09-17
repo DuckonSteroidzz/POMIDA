@@ -575,10 +575,19 @@ class MenuItemAddWithIngredientsTest extends TestCase
         $this->assertNotFalse($start);
         $option = substr($section, max(0, $start - 400), 600);
 
-        $this->assertStringContainsString('data-stock="12.50"', $option);
+        // THREE decimals on the two stock figures, two on the cost.
+        //
+        // inventory.quantity and low_stock_alert were widened to decimal(12,3)
+        // in Sept 2026 so they can hold what recipes actually deduct — recipe
+        // lines have always been decimal(10,3), and while the shelf was only
+        // decimal(10,2) a fractional deduction was rounded away on write and
+        // the stock never moved. These attributes render the column straight,
+        // so they follow it: "12.500" is the figure the row genuinely holds.
+        // unit_cost is money and stays decimal:2.
+        $this->assertStringContainsString('data-stock="12.500"', $option);
         $this->assertStringContainsString('data-cost="3.75"', $option);
         $this->assertStringContainsString('data-unit="kg"', $option);
-        $this->assertStringContainsString('data-low="2.00"', $option);
+        $this->assertStringContainsString('data-low="2.000"', $option);
 
         // ORIGINALLY this also asserted the visible line "12.5 kg on hand".
         //

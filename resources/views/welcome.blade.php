@@ -403,42 +403,6 @@
         }
 
         /* =========================
-           OPEN DAILY
-        ========================= */
-
-        .hours {
-            margin-top: 2rem;
-
-            padding-top: 1.25rem;
-
-            border-top: 1px solid rgba(139, 26, 26, 0.12);
-        }
-
-        .hours-label {
-            font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-
-            font-size: 0.65rem;
-
-            font-weight: 700;
-
-            letter-spacing: 0.25em;
-
-            text-transform: uppercase;
-
-            color: var(--muted);
-        }
-
-        .hours-value {
-            margin-top: 0.3rem;
-
-            font-family: "Fraunces", Georgia, serif;
-
-            font-size: 1.2rem;
-
-            color: var(--deep-red);
-        }
-
-        /* =========================
            MOBILE
         ========================= */
 
@@ -612,19 +576,6 @@
                 @else
                     <p id="welcomeCodeError" class="welcome-code-error" role="alert" hidden></p>
                 @endif
-            </div>
-
-            {{-- Opening Hours --}}
-            <div class="hours">
-
-                <p class="hours-label">
-                    Open daily
-                </p>
-
-                <p class="hours-value">
-                    7am – 9pm
-                </p>
-
             </div>
 
         </section>

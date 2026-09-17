@@ -88,6 +88,14 @@
     .pchy-ing-form{display:grid;grid-template-columns:minmax(0,1fr) 90px auto;gap:.4rem;align-items:center}
     .pchy-ing-select,.pchy-ing-qty-in{font-size:.78rem;padding:.45rem .55rem;margin:0}
     .pchy-ing-add{padding:.5rem .7rem;font-size:.78rem}
+
+    /* ── Per-branch ingredient-mapping status (Phase 3 audit, Finding #3) ──
+       Same ok/off colour language as branches.blade.php's .bl-badge, scoped
+       to this page's own .pchy- naming. */
+    .pchy-branch-status{display:flex;flex-wrap:wrap;gap:.35rem;margin:.6rem 0 0}
+    .pchy-branch-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;font-weight:700;border-radius:999px;padding:.22rem .55rem}
+    .pchy-branch-ok{background:#E6F4EC;color:#2E7D5B;border:1px solid #C6E6D5}
+    .pchy-branch-off{background:#FBE7E4;color:#C0392B;border:1px solid #F6C9C1}
     @media(max-width:640px){
         .pchy-ing-form{grid-template-columns:1fr}
     }
@@ -331,6 +339,36 @@
                                 </div>
 
                             </div>
+
+                            {{--
+                                PER-BRANCH INGREDIENT-MAPPING STATUS (Phase 3 audit,
+                                Finding #3). Listed for every branch this option is
+                                actually ASSIGNED to (via menu_item_options), not
+                                every branch that exists — a branch that doesn't
+                                offer this option at all has nothing to flag.
+                                "Mapped" = at least one ingredient link
+                                (MenuOptionIngredient) whose inventory belongs to
+                                that branch; see MenuOption::isMappedForBranch().
+                                An "Unmapped" branch is exactly the one this fix
+                                hides the option from on that branch's customer
+                                menu, so this is where the admin sees the gap
+                                before a customer would have hit it.
+                            --}}
+                            @php
+                                $optionBranchIds = $option->menuItems->pluck('branch_id')->filter()->unique()->sort()->values();
+                            @endphp
+                            @if($optionBranchIds->isNotEmpty())
+                            <div class="pchy-branch-status">
+                                @foreach($optionBranchIds as $bid)
+                                    @php $mapped = $option->isMappedForBranch((int) $bid); @endphp
+                                    <span class="pchy-branch-badge {{ $mapped ? 'pchy-branch-ok' : 'pchy-branch-off' }}"
+                                          title="{{ $mapped ? 'Has an ingredient link for this branch.' : 'No ingredient link for this branch yet — hidden from this branch\'s customer menu.' }}">
+                                        <i class="bi {{ $mapped ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' }}"></i>
+                                        {{ $branches[$bid]->name ?? ('Branch #' . $bid) }}: {{ $mapped ? 'Mapped' : 'Unmapped' }}
+                                    </span>
+                                @endforeach
+                            </div>
+                            @endif
 
                             {{--
                                 EDIT NAME/PRICE ONLY.

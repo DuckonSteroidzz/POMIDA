@@ -10,6 +10,7 @@
 
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
     {{-- Bootstrap Icons — used for the real-time field-validation checkmark
          (same vendored stylesheet as customer/login.blade.php). --}}

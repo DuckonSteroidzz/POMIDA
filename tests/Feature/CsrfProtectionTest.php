@@ -211,6 +211,19 @@ class CsrfProtectionTest extends TestCase
 
         $response = $this->call($method, $uri, $payload);
 
+        // The two login routes are the one deliberate exception (idle-login
+        // fix, bootstrap/app.php): a missing/stale token there redirects back
+        // to the same login form with a flash message instead of the raw 419
+        // card — see CsrfExpiryIdleLoginTest. Still refused, just not with a
+        // 419 status: assert it did NOT authenticate instead.
+        if (in_array($uri, ['/admin/login', '/customer/login'], true)) {
+            $this->assertSame(302, $response->getStatusCode(), "{$method} {$uri} with no CSRF token neither 419'd nor redirected — got HTTP " . $response->getStatusCode());
+            $guard = $uri === '/admin/login' ? 'admin' : 'customer';
+            $this->assertGuest($guard);
+
+            return;
+        }
+
         $this->assertSame(
             419,
             $response->getStatusCode(),
@@ -313,8 +326,13 @@ class CsrfProtectionTest extends TestCase
     {
         $this->enforceCsrf();
 
+        // Not /customer/login: since the idle-login fix (bootstrap/app.php),
+        // a mismatched token on THAT route is redirected back with a flash
+        // message instead of a raw 419 — still refused, just a friendlier
+        // shape. Use a route outside that special case so this test keeps
+        // proving the general property: refused, not silently accepted.
         $response = $this->withSession(['_token' => 'the-real-session-token'])
-            ->post('/customer/login', [
+            ->post('/customer/register', [
                 '_token'   => 'a-token-the-attacker-made-up',
                 'email'    => 'nobody@invalid.local',
                 'password' => 'whatever',

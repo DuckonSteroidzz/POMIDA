@@ -7,6 +7,7 @@
 
     <title>Admin Login | Peachy Cakes & Deli Cafe</title>
 
+    @include('partials.session-guard')
 
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
@@ -598,10 +599,41 @@
                 transform: none;
             }
         }
+
+        /* Navigation loading indicator — see the matching comment in
+           admin/layout.blade.php. Same idea, this page's own palette. */
+        #pc-nav-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--peach) 0%, var(--terracotta) 100%);
+            z-index: 2000;
+            opacity: 0;
+            transition: width 1.4s cubic-bezier(0.1, 0.7, 0.3, 1), opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        #pc-nav-progress.pc-nav-progress-active {
+            opacity: 1;
+            width: 80%;
+        }
     </style>
 </head>
 
 <body>
+
+    <div id="pc-nav-progress"></div>
+    <script>
+        (function () {
+            var bar = document.getElementById('pc-nav-progress');
+            if (!bar) { return; }
+            window.addEventListener('beforeunload', function () {
+                bar.classList.add('pc-nav-progress-active');
+            });
+        })();
+    </script>
 
     {{-- =====================================================
          SAME BACKGROUND AS WELCOME.BLADE.PHP
@@ -675,6 +707,7 @@
             {{-- IMPORTANT:
                  This keeps the existing admin login route. --}}
             <form
+                id="loginForm"
                 action="{{ route('admin.login.post') }}"
                 method="POST"
             >
@@ -860,6 +893,46 @@
                 field.focus();
             });
         });
+    </script>
+
+    {{--
+        Keep the login form's CSRF token alive.
+
+        Mirrors customer/login.blade.php's keep-alive — see that file's
+        comment for the full reasoning. A staff/admin login page left open
+        past SESSION_LIFETIME and then submitted used to throw
+        TokenMismatchException; bootstrap/app.php now redirects that case back
+        here with a message instead of the raw 419 card, but this keeps the
+        token fresh so it rarely fires at all.
+
+        Silent by design: a fetch() to a read-only JSON endpoint, writing only
+        into the CSRF meta tag and the hidden _token field. No reload, no
+        re-render, nothing visible changes.
+    --}}
+    <script>
+        (function () {
+            var REFRESH_MS = 15 * 60 * 1000; // SESSION_LIFETIME is 480 min.
+
+            function refreshCsrfToken() {
+                fetch('{{ route('admin.session-token') }}', {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin'
+                })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (!data || !data.token) { return; }
+
+                        var meta = document.querySelector('meta[name="csrf-token"]');
+                        if (meta) { meta.setAttribute('content', data.token); }
+
+                        var field = document.querySelector('#loginForm input[name="_token"]');
+                        if (field) { field.value = data.token; }
+                    })
+                    .catch(function () { /* transient/offline — the next tick retries */ });
+            }
+
+            setInterval(refreshCsrfToken, REFRESH_MS);
+        })();
     </script>
 
 </body>

@@ -24,6 +24,9 @@ class SettingsSeeder extends Seeder
             ['key' => 'contact_phone', 'value' => '', 'group' => 'business', 'label' => 'Phone Number', 'type' => 'text'],
             ['key' => 'contact_email', 'value' => '', 'group' => 'business', 'label' => 'Email', 'type' => 'text'],
             ['key' => 'contact_address', 'value' => '', 'group' => 'business', 'label' => 'Address', 'type' => 'text'],
+
+            // Spin & Win
+            ['key' => 'game_enabled', 'value' => '0', 'group' => 'business', 'label' => 'Spin & Win Enabled', 'type' => 'text'],
         ];
 
         foreach ($settings as $s) {

@@ -10,19 +10,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    @vite(['resources/css/app.css'])
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -39,13 +30,6 @@
             h1, h2, h3, .font-display { font-family: var(--font-display); }
             select, input, button, a { font-family: inherit; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
         }
     </style>
     <style>
@@ -333,7 +317,13 @@
 
                     {{-- Order Number + Type + Progress --}}
                     <section class="card-surface p-4 sm:p-6">
-                        <div class="order-number-bar grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                        {{-- Stacked below sm, side-by-side from sm up: a dine-in
+                             badge ("Dine-in • Table 12") is long enough that
+                             sharing a row with the order number on a narrow
+                             phone truncated the number itself (e.g. down to
+                             "ORD-20260916-O…"). Stacking removes the width
+                             fight instead of shrinking text to fit. --}}
+                        <div class="order-number-bar grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3">
                             <span class="order-number min-w-0 truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">{{ $currentOrder->order_number }}</span>
                             <span class="order-type-badge inline-flex shrink-0 items-center gap-1.5 rounded-full bg-peach-soft px-3 py-1.5 text-[0.7rem] font-bold text-peach-red sm:text-xs">
                                 <i class="bi {{ $currentOrder->type === 'dine_in' ? 'bi-shop' : 'bi-bag' }}"></i>
@@ -440,6 +430,41 @@
                         </div>
 
                         {{--
+                            Return-to-GCash-payment entry point.
+
+                            Once a GCash order leaves this page (the customer taps
+                            Orders in the nav, or a notification lands them here
+                            instead), there was no way back to
+                            customer.gcash-payment — the page that shows the QR
+                            (payment_status 'pending') or the "waiting on staff to
+                            verify" state (payment_status 'awaiting_verification').
+                            The route itself already accepts both statuses (see
+                            OrderController::showGcashPayment()); this was purely a
+                            missing link on this page, reported live as "no option
+                            to go back to GCash payment from the Orders view".
+
+                            `relative z-[45]`: the mobile bottom nav below is
+                            `position: fixed` at z-40, which paints above
+                            ordinary in-flow content regardless of DOM order. On
+                            a short page (few order items) this button's normal
+                            position can coincide with the nav's fixed screen
+                            band, and a fixed-positioned element always wins a
+                            tap there over a non-positioned one — verified live
+                            with a real click landing on the nav's "Spin & Win"
+                            tab instead of this button. Raising this control's
+                            own stacking order above the nav's is what actually
+                            fixes that, not extra padding — padding after an
+                            element cannot move the element itself.
+                        --}}
+                        @if($currentOrder->payment_method === 'gcash' && in_array($currentOrder->payment_status, ['pending', 'awaiting_verification'], true))
+                            <a href="{{ route('customer.gcash-payment', $currentOrder->id) }}"
+                               class="relative z-[45] mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                                <i class="bi bi-qr-code" aria-hidden="true"></i>
+                                {{ $currentOrder->payment_status === 'pending' ? 'Pay via GCash' : 'View GCash Payment Status' }}
+                            </a>
+                        @endif
+
+                        {{--
                             Self-service cancellation, added 2026-09-02.
 
                             Shown ONLY while this order is still 'pending'. Once
@@ -524,14 +549,26 @@
                                  order id. data-cancel-pickup tells it whether a
                                  non-pending transition should disable the control
                                  (pick-up) or remove it outright (every other
-                                 type, unchanged from before). --}}
+                                 type, unchanged from before).
+
+                                 relative z-[45]: same fix as the GCash button
+                                 above, and for the same reason this control was
+                                 reported not to work — on a short page this
+                                 button's position can coincide with the fixed
+                                 mobile nav's screen band, and a real tap there
+                                 lands on the nav (which is `position: fixed`,
+                                 always painted above ordinary content) instead
+                                 of this button. Raising this form's own
+                                 stacking order above the nav's z-40 is what
+                                 makes the tap land here reliably regardless of
+                                 how tall the order above it happens to be. --}}
                             <form action="{{ route('customer.orders.cancel', $currentOrder->id) }}"
                                   method="POST"
                                   data-cancel-form="{{ $currentOrder->id }}"
                                   data-cancel-pickup="{{ $cancelIsPickup ? '1' : '0' }}"
                                   data-cancel-disabled="{{ $cancelShowDisabled ? '1' : '0' }}"
                                   data-cancel-status="{{ $currentOrder->status }}"
-                                  class="mt-4 border-t border-peach-soft pt-4"
+                                  class="relative z-[45] mt-4 border-t border-peach-soft pt-4"
                                   @if(!$cancelShowDisabled)
                                   onsubmit="return confirm('{{ addslashes($cancelPrompt) }}')"
                                   @endif>
@@ -1506,8 +1543,14 @@
             icon.innerHTML = '<i class="bi bi-x-circle"></i>';
             title.style.color = '#C0392B';
             title.textContent = 'Order Cancelled';
+            // Not "...cancelled by staff" — this popup fires for BOTH a
+            // staff cancellation and the customer's own Cancel Order tap
+            // (reported live: a customer who had just cancelled their own
+            // order read this and thought staff had done it instead, since
+            // nothing here said otherwise). Neutral wording is accurate
+            // either way.
             message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
-                'has been cancelled by staff.';
+                'has been cancelled.';
             if (cancelledActions) cancelledActions.style.display = 'block';
 
             /*
@@ -2022,6 +2065,7 @@
 </script>
 
     @include('customer.partials.navbar')
+    @include('customer.partials.idle-timeout')
 </body>
 
 </html>

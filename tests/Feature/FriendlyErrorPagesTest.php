@@ -136,8 +136,13 @@ class FriendlyErrorPagesTest extends TestCase
 
         // A real POST, no CSRF token at all — the exact shape of a form left
         // open past its session lifetime, not a fetch() (session-guard.blade.php
-        // already covers that half; this is the other one).
-        $response = $this->post('/customer/login', ['email' => 'a@a.com', 'password' => 'x']);
+        // already covers that half; this is the other one). Not
+        // /customer/login: since the idle-login fix (bootstrap/app.php), that
+        // route redirects back to the login form with a flash message instead
+        // of rendering this branded card — see CsrfExpiryIdleLoginTest. Use a
+        // route outside that special case to keep proving the general
+        // branded-419 property.
+        $response = $this->post('/customer/register', ['email' => 'a@a.com', 'password' => 'x']);
 
         $response->assertStatus(419);
         $html = $response->getContent();

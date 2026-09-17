@@ -292,6 +292,58 @@ class CartTotalsMatchCheckoutTest extends TestCase
     }
 
     /**
+     * The Day/Month/Year dropdowns on the cart page can construct a
+     * day/month combination that never existed on any calendar (day 30 is a
+     * valid <option>, February is a valid <option>, but "2027-02-30" is not
+     * a real date). PHP's date parser rolls that forward into March instead
+     * of rejecting it, so this has to be caught explicitly rather than left
+     * to Carbon::parse().
+     */
+    public function test_an_impossible_calendar_date_is_refused(): void
+    {
+        $this->assertSame(DiscountCard::ERROR_EXPIRATION_INVALID, DiscountCard::expirationErrorFor('2027-02-30'));
+        $this->assertSame(DiscountCard::ERROR_EXPIRATION_INVALID, DiscountCard::expirationErrorFor('2027-04-31'));
+        $this->assertSame(DiscountCard::ERROR_EXPIRATION_INVALID, DiscountCard::expirationErrorFor('2027-13-01'));
+        $this->assertNull(DiscountCard::expirationErrorFor('2027-02-28'), 'a real, non-leap-year Feb 28 must still be accepted');
+    }
+
+    /**
+     * End-to-end: a real, still-valid date assembled the way the Day/Month/
+     * Year dropdowns assemble it (zero-padded Y-m-d) is accepted and an order
+     * is placed; an impossible one built the same way is refused before any
+     * order is created.
+     */
+    public function test_a_dropdown_built_expiration_date_is_accepted_when_real_and_refused_when_not(): void
+    {
+        $item = $this->item();
+
+        $before = Order::max('id');
+
+        $accepted = $this->placeOrder(
+            $this->cart($item, 1, (float) $item->price),
+            $this->customer(),
+            $this->pwdFields(now()->addYear()->format('Y-m-d'))
+        );
+
+        $accepted->assertSessionDoesntHaveErrors('discount_beneficiary_expiration');
+        $this->assertGreaterThan($before, Order::max('id'), 'a real, unexpired dropdown-built date must place the order');
+        $afterAccepted = Order::max('id');
+
+        $refused = $this->placeOrder(
+            $this->cart($item, 1, (float) $item->price),
+            $this->customer(),
+            $this->pwdFields(now()->addYear()->format('Y') . '-02-30')
+        );
+
+        // Laravel's own 'date' rule (app/Http/Controllers/Customer/OrderController.php
+        // validation) already rejects this before DiscountCard::expirationErrorFor()
+        // is ever reached, so the message here is the framework's, not the shared
+        // ERROR_EXPIRATION_INVALID constant. Either way, the field is refused.
+        $refused->assertSessionHasErrors('discount_beneficiary_expiration');
+        $this->assertSame($afterAccepted, Order::max('id'), 'an impossible calendar date must not place an order');
+    }
+
+    /**
      * The cart page must not be able to preview a discount the server would
      * refuse: it renders the SAME rate and the SAME messages the server uses,
      * and gates the preview on the same expiry check.

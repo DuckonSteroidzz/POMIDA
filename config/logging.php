@@ -65,6 +65,20 @@ return [
             'replace_placeholders' => true,
         ],
 
+        /*
+         * Every 4xx/5xx response, written here instead of laravel.log so it
+         * can be tailed on its own while chasing "mobile gets more errors
+         * than laptop" reports. Purely observational — see
+         * App\Http\Middleware\LogHttpErrors, which writes to this channel and
+         * changes nothing about the response itself.
+         */
+        'http_errors' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/http-errors.log'),
+            'level' => 'debug',
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

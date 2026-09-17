@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\Branch;
 use App\Models\Order;
 use App\Models\TableSession;
+use App\Models\TableSessionDevice;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -140,6 +141,22 @@ class TableOccupancy
 
     public const SESSION_KEY = 'table_session_token';
 
+    /**
+     * Where THIS BROWSER's own device identifier lives, distinct from
+     * SESSION_KEY. Every device sharing a table carries the identical
+     * SESSION_KEY value (that is the whole point of sharing — see the class
+     * docblock), so it cannot tell two devices at the same table apart. This
+     * can: it is generated once per browser, independent of which table's
+     * session it is currently attached to.
+     *
+     * Purely a visibility identifier for App\Models\TableSessionDevice. It
+     * grants nothing and is never checked by claim() or validate() — losing it
+     * (a cleared cookie, a different browser) only means the staff panel's
+     * device count treats the visitor as a new device on their next scan, the
+     * same way a lost SESSION_KEY only means rejoining the table normally.
+     */
+    public const DEVICE_KEY = 'table_session_device_token';
+
     /** Statuses that mean the order is over and the table is free. */
     public const FINISHED_STATUSES = ['completed', 'cancelled'];
 
@@ -165,6 +182,44 @@ class TableOccupancy
      * stopped for a while.
      */
     public const ERR_SESSION_IDLE = 'Session expired due to inactivity. Please scan table QR code again.';
+
+    /**
+     * WHY A RELEASE CARRIES A NAMED REASON, AND WHY ONLY ONE OF THEM BOUNCES
+     * THE CUSTOMER OFF THEIR PAGE.
+     *
+     * releaseRow() stamps release_reason on every occupancy it frees, and there
+     * are exactly four values it can write:
+     *
+     *   staff_cleared     a staff member pressed Clear on the Occupied Tables
+     *                     panel. Somebody deliberately ended this party's
+     *                     visit, and the phones still sitting at that table
+     *                     have to be told so.
+     *   order_completed   the party's order finished normally.
+     *   order_cancelled   the party's order was cancelled.
+     *   abandoned         sweepIdle() reclaimed a table nobody had touched for
+     *                     INACTIVITY_MINUTES.
+     *
+     * Only the first is a reason to interrupt somebody mid-page.
+     * order_completed in particular must NEVER bounce anyone: it fires on the
+     * perfectly ordinary "the food came and the bill is settled" path, and
+     * inspectGuestSession()'s docblock has always promised that a customer
+     * whose order completed keeps their page. This constant exists so that
+     * promise is kept by a value comparison rather than by remembering it.
+     */
+    public const RELEASE_STAFF_CLEARED = 'staff_cleared';
+
+    /**
+     * Shown on the code-entry page when staff ended this table's session from
+     * the Occupied Tables panel while the customer still had the menu open.
+     *
+     * Delivered through the identical session('error') flash that
+     * ERR_SESSION_IDLE and TableEntry::ERR_QR_STALE already use, so it renders
+     * in the same alert, with the same markup, in the same place. It is a
+     * separate sentence only because it describes a separate situation:
+     * nothing expired and nothing is broken, a person made a decision, and
+     * saying so is what stops the customer re-scanning in confusion.
+     */
+    public const ERR_SESSION_ENDED_BY_STAFF = 'This session has been ended by staff.';
 
     /**
      * Seat this visitor at a table: open its session, or JOIN the one already
@@ -213,10 +268,19 @@ class TableOccupancy
                 ])->save();
                 session()->put(self::SESSION_KEY, $existing->session_token);
 
+                // Visibility only — see DEVICE_KEY's docblock. Recorded AFTER
+                // the decision above, never influencing it: this is the second,
+                // third or fourth device at the table, and it is let in exactly
+                // as it always was.
+                self::recordDevice($existing);
+
                 return ['ok' => true, 'session' => $existing, 'continued' => true];
             }
 
-            return ['ok' => true, 'session' => self::open($branch, $tableNumber, $lock, $ip), 'continued' => false];
+            $session = self::open($branch, $tableNumber, $lock, $ip);
+            self::recordDevice($session);
+
+            return ['ok' => true, 'session' => $session, 'continued' => false];
         });
     }
 
@@ -509,7 +573,13 @@ class TableOccupancy
 
         $order = $session->order;
 
-        self::releaseRow($session, 'staff_cleared', $releasedBy);
+        /*
+         * RELEASE_STAFF_CLEARED rather than the bare string: this exact value
+         * is what staffClearedSession() matches on to decide whether the
+         * customer's phone gets bounced off the menu, so the two must be the
+         * same token in the same place. See that constant's docblock.
+         */
+        self::releaseRow($session, self::RELEASE_STAFF_CLEARED, $releasedBy);
 
         return [
             'released'     => 1,
@@ -523,6 +593,32 @@ class TableOccupancy
     public static function activeFor(int $branchId, string $tableNumber): ?TableSession
     {
         return TableSession::where('active_lock', self::lockKey($branchId, $tableNumber))->first();
+    }
+
+    /**
+     * How many devices are CURRENTLY attached to this occupancy, for the staff
+     * panel. Visibility only — see App\Models\TableSessionDevice's migration
+     * for why this is a read-time count rather than a maintained counter.
+     *
+     * A released session (active_lock already NULL) always answers 0 — a
+     * device row's own last_activity_at can still look recent for a moment
+     * right after release, and a caller asking about a freed table must never
+     * be told it still looks occupied.
+     *
+     * "Currently" uses the exact same staleness rule as a single guest's own
+     * clock (inspectGuestSession(), GUEST_IDLE_MINUTES) — one device that has
+     * gone quiet drops out of the count on its own, with nothing anywhere
+     * having to notice and decrement it.
+     */
+    public static function activeDeviceCount(TableSession $session): int
+    {
+        if ($session->active_lock === null) {
+            return 0;
+        }
+
+        return $session->devices()
+            ->where('last_activity_at', '>=', now()->subMinutes(self::GUEST_IDLE_MINUTES))
+            ->count();
     }
 
     /** Every live occupancy, optionally narrowed to one branch. Staff view. */
@@ -610,6 +706,12 @@ class TableOccupancy
             ->whereNotNull('active_lock')
             ->update(['last_activity_at' => now()]);
 
+        // Same interaction, recorded against THIS device too — see
+        // DEVICE_KEY's docblock. recordDevice() is an upsert, so a session that
+        // was already live before this feature shipped (no device row yet)
+        // backfills one here rather than being left uncounted.
+        self::recordDevice($session);
+
         return true;
     }
 
@@ -634,20 +736,43 @@ class TableOccupancy
      *      cannot drift from what the doors enforce, and it reports validate()'s
      *      own sentence rather than inventing a second wording.
      *
-     * NO LIVE SESSION IS NOT A FAILURE. A visitor with no token, or one whose
-     * occupancy was released because their order completed, gets `valid`. This
-     * is an idleness check on a live occupancy, not an admission gate — bouncing
-     * a customer to the code-entry page the moment their meal finishes would be
-     * a rule nobody asked for, and admission is already decided by validate()
-     * at the three doors.
+     * NO LIVE SESSION IS NOT A FAILURE — WITH ONE NAMED EXCEPTION. A visitor
+     * with no token, or one whose occupancy was released because their order
+     * completed, gets `valid`. This is an idleness check on a live occupancy,
+     * not an admission gate — bouncing a customer to the code-entry page the
+     * moment their meal finishes would be a rule nobody asked for, and
+     * admission is already decided by validate() at the three doors.
      *
-     * @return array{valid: bool, error?: string}
+     * The exception is a table a staff member CLEARED by hand. That case used
+     * to fall through this very first line and answer `valid`: the Clear button
+     * nulls active_lock, currentGuestSession() only ever looks at rows where
+     * active_lock is still set, so the moment staff ended the visit the
+     * customer's own poll started reporting that everything was fine and their
+     * phone carried on ordering against a table the panel had already handed to
+     * somebody else. staffClearedSession() is the lookup that first line was
+     * missing; RELEASE_STAFF_CLEARED explains why it is the only release reason
+     * that answers this way.
+     *
+     * `reason` rides along on every failure so the caller can tell a
+     * deliberate, staff-initiated end (which has a session to tear down and a
+     * cart to empty) from an ordinary expiry, without re-deciding it from the
+     * message text.
+     *
+     * @return array{valid: bool, error?: string, reason?: string}
      */
     public static function inspectGuestSession(): array
     {
         $session = self::currentGuestSession();
 
         if (!$session) {
+            if (self::staffClearedSession()) {
+                return [
+                    'valid'  => false,
+                    'error'  => self::ERR_SESSION_ENDED_BY_STAFF,
+                    'reason' => self::RELEASE_STAFF_CLEARED,
+                ];
+            }
+
             return ['valid' => true];
         }
 
@@ -661,7 +786,7 @@ class TableOccupancy
         $since = $session->last_activity_at ?? $session->last_seen_at ?? $session->created_at;
 
         if ($since === null || $since->lt(now()->subMinutes(self::GUEST_IDLE_MINUTES))) {
-            return ['valid' => false, 'error' => self::ERR_SESSION_IDLE];
+            return ['valid' => false, 'error' => self::ERR_SESSION_IDLE, 'reason' => 'idle'];
         }
 
         $table = TableEntry::find((int) $session->branch_id, (string) $session->table_number);
@@ -673,10 +798,49 @@ class TableOccupancy
         );
 
         if (!$check['ok']) {
-            return ['valid' => false, 'error' => $check['error']];
+            return ['valid' => false, 'error' => $check['error'], 'reason' => 'table_unusable'];
         }
 
         return ['valid' => true];
+    }
+
+    /**
+     * The occupancy this browser's token points at, IF a staff member cleared
+     * it by hand. Null in every other case. STRICTLY READ-ONLY, like
+     * inspectGuestSession() around it.
+     *
+     * Deliberately NOT written as "any released row": the whole point is to
+     * separate the one release reason that should interrupt a customer from the
+     * three that should not, so the reason is matched exactly rather than
+     * inferred from released_at being set. A row freed by a completed order, a
+     * cancelled order or the ninety-minute sweep is invisible to this lookup,
+     * which is what keeps requirement "normal status changes must not bounce
+     * anyone" true by construction. See RELEASE_STAFF_CLEARED.
+     *
+     * Token-only, matching currentGuestSession(): the question is "was the
+     * table THIS DEVICE is sitting at ended", and session_token is exactly the
+     * thing every device sharing that table holds. Every phone at a cleared
+     * table therefore finds the same row and is told the same thing, each on
+     * its own next poll.
+     *
+     * whereNull('active_lock') is not a second filter so much as a statement:
+     * if the table has since been re-opened (a new party scanned in, which
+     * writes a NEW session_token), this browser's stale token no longer matches
+     * any live row and the cleared row it does match stays cleared. A token can
+     * never resolve to somebody else's live occupancy here.
+     */
+    public static function staffClearedSession(): ?TableSession
+    {
+        $token = session(self::SESSION_KEY);
+
+        if (!$token) {
+            return null;
+        }
+
+        return TableSession::where('session_token', $token)
+            ->whereNull('active_lock')
+            ->where('release_reason', self::RELEASE_STAFF_CLEARED)
+            ->first();
     }
 
     // ══════════ internals ══════════
@@ -742,6 +906,41 @@ class TableOccupancy
             'released_by'    => $releasedBy,
             'release_reason' => $reason,
         ])->save();
+    }
+
+    /**
+     * THIS browser's own device identifier, creating one on first use.
+     *
+     * Independent of SESSION_KEY on purpose — see DEVICE_KEY's docblock. A
+     * fresh value here means only that the staff panel has never seen this
+     * browser before; it grants no access and is checked by nothing.
+     */
+    private static function deviceToken(): string
+    {
+        $token = session(self::DEVICE_KEY);
+
+        if (!is_string($token) || $token === '') {
+            $token = (string) Str::uuid() . Str::random(24);
+            session()->put(self::DEVICE_KEY, $token);
+        }
+
+        return $token;
+    }
+
+    /**
+     * Record that THIS device is present on this occupancy right now.
+     *
+     * An upsert keyed on (table_session_id, device_token): the same device
+     * re-scanning, re-joining, or simply pinging activity updates its one row
+     * rather than accumulating duplicates. Visibility only — never called from
+     * anywhere that decides whether a scan is allowed.
+     */
+    private static function recordDevice(TableSession $session): void
+    {
+        TableSessionDevice::updateOrCreate(
+            ['table_session_id' => $session->id, 'device_token' => self::deviceToken()],
+            ['last_activity_at' => now()]
+        );
     }
 
     /**

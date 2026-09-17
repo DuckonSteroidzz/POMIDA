@@ -1,0 +1,95 @@
+@import "tailwindcss";
+
+/* Explicit source so the content scanner covers every Blade view, not just
+   files Vite's default heuristic happens to touch. */
+@source "../views";
+
+/*
+ * Shared design tokens, consolidated from the per-page inline
+ * `<style type="text/tailwindcss">` @theme blocks in resources/views/customer/*.
+ * This is the UNION of every token any customer page currently declares —
+ * pages that don't use a given token (e.g. peach-blush/rose/sand) simply
+ * never reference the classes it backs, so including it here is harmless.
+ */
+@theme {
+    --color-peach-deep: #8B1A1A;
+    --color-peach-red: #C0392B;
+    --color-peach: #F4845F;
+    --color-peach-blush: #EF8585;
+    --color-peach-rose: #F6B49B;
+    --color-peach-sand: #F8D7B0;
+    --color-peach-soft: #FDE8DE;
+    --color-peach-cream: #FFFDF9;
+    --font-display: "Fraunces", ui-serif, Georgia, serif;
+    --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
+}
+
+/*
+ * Shared utilities consolidated from the per-page inline @utility blocks.
+ * Each of these is byte-identical across every customer page that defined
+ * it — the two pages that used a *different* card-surface radius (receipt,
+ * gcash-payment: 1.25rem vs 1rem everywhere else) get their own
+ * card-surface-lg utility instead of silently overriding the shared one.
+ * Per-page @layer base rules (body/html/font-family, and the few pages
+ * that vary there) intentionally stay in each view's own small inline
+ * <style> block rather than being merged here.
+ */
+@utility no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    &::-webkit-scrollbar { display: none; }
+}
+
+@utility card-surface {
+    background-color: #fff;
+    border: 1px solid var(--color-peach-soft);
+    border-radius: 1rem;
+    box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
+}
+
+@utility card-surface-lg {
+    background-color: #fff;
+    border: 1px solid var(--color-peach-soft);
+    border-radius: 1.25rem;
+    box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
+}
+
+/* item-details only */
+@utility option-chip {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    border: 1px solid var(--color-peach-soft);
+    border-radius: 0.875rem;
+    background-color: #fff;
+    padding: 0.7rem 0.85rem;
+    cursor: pointer;
+    transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+@utility option-chip-hover {
+    &:hover { border-color: var(--color-peach); }
+}
+
+/* account-settings only */
+@utility field-input {
+    width: 100%;
+    border-radius: 0.75rem;
+    border: 1px solid var(--color-peach-soft);
+    background-color: var(--color-peach-cream);
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    color: #3b2320;
+    outline: none;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+}
+@utility field-input-focus {
+    border-color: var(--color-peach);
+    background-color: #fff;
+    box-shadow: 0 0 0 4px rgb(244 132 95 / 0.2);
+}
+.field-input::placeholder { color: rgb(139 26 26 / 0.35); }
+.field-input:focus {
+    border-color: var(--color-peach);
+    background-color: #fff;
+    box-shadow: 0 0 0 4px rgb(244 132 95 / 0.2);
+}

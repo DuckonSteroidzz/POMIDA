@@ -30,6 +30,15 @@ return Application::configure(basePath: dirname(__DIR__))
             \Illuminate\Routing\Middleware\ThrottleRequests::class,
             \App\Http\Middleware\FriendlyThrottleResponse::class
         );
+
+        /*
+         * Global, not route-scoped, so it also sees a 404 from an unmatched
+         * route — no route-group middleware ever attaches to those. Purely
+         * observational: see App\Http\Middleware\LogHttpErrors's own
+         * docblock for why a response-inspecting middleware, not an
+         * exception listener.
+         */
+        $middleware->append(\App\Http\Middleware\LogHttpErrors::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         /*
@@ -111,6 +120,37 @@ return Application::configure(basePath: dirname(__DIR__))
                 return redirect()->route('customer.dineinqr')
                     ->with('error', 'Your session was refreshed while this page was open. Please enter your table code again.')
                     ->withInput();
+            }
+
+            /*
+             * A login page left open past SESSION_LIFETIME and then submitted
+             * is the other dead end this same 419 status covers: the customer
+             * and admin/staff login forms both now poll a read-only
+             * session-token endpoint to keep their token fresh (see
+             * customer/login.blade.php and admin/login.blade.php), but a
+             * stale token that still slips through — a backgrounded tab, JS
+             * disabled — must not dead-end on the branded 419 card either.
+             *
+             * Same JSON-vs-redirect split as FriendlyThrottleResponse: an
+             * XHR/fetch caller gets a JSON answer it can act on instead of a
+             * broken redirect response to what it expected to be an
+             * XMLHttpRequest; a normal form submit gets sent back to the same
+             * login form with the message in the SAME $errors alert box that
+             * form already renders for a bad password — no new UI.
+             */
+            if ($request->routeIs('customer.login.post') || $request->routeIs('admin.login.post')) {
+                $loginRoute = $request->routeIs('admin.login.post') ? 'admin.login' : 'customer.login';
+
+                if ($request->expectsJson()) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => 'Your session expired while this page was open. Please refresh and log in again.',
+                    ], 419);
+                }
+
+                return redirect()->route($loginRoute)
+                    ->withErrors(['email' => 'Your session expired while this page was open. Please log in again.'])
+                    ->withInput($request->except('password'));
             }
 
             return null;

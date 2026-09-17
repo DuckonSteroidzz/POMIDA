@@ -13,24 +13,11 @@
 
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
+    @vite(['resources/css/app.css'])
 
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-blush: #EF8585;
-            --color-peach-rose: #F6B49B;
-            --color-peach-sand: #F8D7B0;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    <style>
         @layer base {
             html {
                 -webkit-text-size-adjust: 100%;
@@ -57,15 +44,6 @@
             }
 
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1.25rem;
-            box-shadow:
-                0 1px 2px rgb(139 26 26 / 0.04),
-                0 8px 24px -18px rgb(139 26 26 / 0.35);
         }
     </style>
 
@@ -244,7 +222,7 @@
         <div class="mx-auto grid max-w-4xl gap-5 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
 
             {{-- ================= QR SECTION ================= --}}
-            <section class="rise rise-2 card-surface overflow-hidden">
+            <section class="rise rise-2 card-surface-lg overflow-hidden">
 
                 <div class="bg-gradient-to-br from-peach-sand/60 via-peach-soft to-white px-5 py-5 text-center sm:px-7">
 
@@ -327,7 +305,7 @@
             <aside class="rise rise-3 space-y-5">
 
                 {{-- Amount --}}
-                <section class="card-surface overflow-hidden">
+                <section class="card-surface-lg overflow-hidden">
 
                     <div class="border-b border-peach-soft bg-peach-cream px-5 py-4 sm:px-6">
 
@@ -402,7 +380,7 @@
 
 
                 {{-- Instructions --}}
-                <section class="card-surface p-5 sm:p-6">
+                <section class="card-surface-lg p-5 sm:p-6">
 
                     <h2 class="font-display text-lg font-black tracking-tight text-peach-deep">
                         How to Pay
@@ -467,7 +445,7 @@
 
 
                 {{-- Payment Status / Action --}}
-                <section class="card-surface p-5 sm:p-6">
+                <section class="card-surface-lg p-5 sm:p-6">
 
                     <div
                         id="gcashPaymentResult"

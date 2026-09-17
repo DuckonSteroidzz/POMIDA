@@ -24,32 +24,36 @@
         : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red';
 @endphp
 
-<div class="flex items-center justify-end gap-3 md:gap-4">
+<div class="flex items-center justify-end gap-3 md:gap-1 lg:gap-4">
 
+    {{-- Tighter padding/gap/text between md and lg only: at exactly 768px the
+         logo column (minmax(0,1fr), free to shrink to 0) was losing a width
+         fight against this nav's fixed footprint and truncating "Peachy" to
+         "Pea…". Full size returns at lg where there's room for both. --}}
     <nav class="hidden items-center gap-1 md:flex">
         <a href="{{ route('customer.menu') }}"
-           class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ $navLink('customer.menu') }}">
+           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.menu') }}">
             <i class="bi bi-grid"></i> Menu
         </a>
 
         <a href="{{ route('customer.orders') }}"
-           class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ $navLink('customer.orders') }}">
+           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.orders') }}">
             <i class="bi bi-receipt"></i> Orders
         </a>
 
         <a href="{{ route('customer.game') }}"
-           class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ $navLink('customer.game') }}">
+           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.game') }}">
             <i class="bi bi-dice-5"></i> Spin &amp; Win
         </a>
 
         <a href="{{ route('customer.more') }}"
-           class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ $navLink('customer.more') }}">
+           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.more') }}">
             <i class="bi bi-three-dots"></i> More
         </a>
 
         {{-- Cart: an action button, visually separated from the links above. --}}
         <a href="{{ route('customer.cart') }}"
-           class="relative ml-2 inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2 text-[0.95rem] font-bold text-white no-underline transition hover:bg-peach-deep">
+           class="relative ml-1 inline-flex items-center gap-2 rounded-full bg-peach-red px-3 py-2 text-[0.85rem] font-bold text-white no-underline transition hover:bg-peach-deep lg:ml-2 lg:px-4 lg:text-[0.95rem]">
             <i class="bi bi-cart"></i> Cart
             @if($desktopCartCount > 0)
                 <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.65rem] font-black text-peach-red">

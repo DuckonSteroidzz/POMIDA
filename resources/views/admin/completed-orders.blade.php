@@ -41,6 +41,11 @@
         @endif
     </p>
     <p style="margin:0;font-size:0.8rem;color:#555;">Generated: {{ now()->format('M d, Y g:i A') }}</p>
+    {{-- "Print Filtered" no longer prints this page at all (see printFiltered()
+         below) — it opens admin.completed-orders.print instead, which is the
+         only unbounded query now that this list is paginated. This note is
+         left for "Print Selected", the one action that still prints THIS
+         page's own @media print block. --}}
     <p id="printScopeNote" style="margin:0;font-size:0.8rem;color:#555;"></p>
     <hr>
 </div>
@@ -48,6 +53,10 @@
 {{-- ── Filter ── --}}
 <div class="co-card co-filter-card no-print">
     <form method="GET" action="{{ route('admin.completed-orders') }}" class="co-filter">
+        {{-- Preserves the chosen rows-per-page across a filter change; a
+             fresh filter submission still lands on page 1 since "page"
+             is not carried here. --}}
+        <input type="hidden" name="per_page" value="{{ $orders->perPage() }}">
         <div class="co-field">
             <label class="co-label" for="co-date-from">Date From</label>
             <input id="co-date-from" type="date" name="date_from" class="co-input" value="{{ request('date_from') }}">
@@ -207,30 +216,63 @@
         </tbody>
     </table>
 
-    {{-- ── Client-side pagination (display only; all rows stay printable) ── --}}
-    <div class="co-pager no-print" id="coPager" hidden>
+    {{-- ── Real server-side pagination (2026-09-14) ──
+         Replaces the old client-side version, which fetched and rendered
+         EVERY matching order on every load and only hid the rest with CSS —
+         fine on desktop, but a growing order history meant a growing page
+         weight on every mobile visit. Only the current page is ever
+         queried or sent to the browser now. Rows off the current page are
+         no longer in the DOM at all, so "Print Filtered" below is its own
+         unbounded query rather than "whatever's currently on screen". --}}
+    @if($orders->total() > 0 && ($orders->total() > 15 || $orders->lastPage() > 1))
+    <div class="co-pager no-print">
         <div class="co-pager-info">
-            <span id="coPagerRange"></span>
+            <span>Showing {{ $orders->firstItem() }}–{{ $orders->lastItem() }} of {{ $orders->total() }} orders</span>
             <label class="co-pager-size">
                 Rows
-                <select id="coPageSize" class="co-input co-input-sm">
-                    <option value="15">15</option>
-                    <option value="25" selected>25</option>
-                    <option value="50">50</option>
-                    <option value="100">100</option>
+                <select class="co-input co-input-sm" onchange="coChangePerPage(this.value)">
+                    @foreach([15, 25, 50, 100] as $size)
+                        <option value="{{ $size }}" {{ $orders->perPage() == $size ? 'selected' : '' }}>{{ $size }}</option>
+                    @endforeach
                 </select>
             </label>
         </div>
         <div class="co-pager-nav">
-            <button type="button" class="co-page-btn" id="coPrev" onclick="coGo(coPage - 1)">
+            <a href="{{ $orders->onFirstPage() ? '#' : $orders->previousPageUrl() }}"
+                class="co-page-btn {{ $orders->onFirstPage() ? 'is-disabled' : '' }}"
+                @if($orders->onFirstPage()) aria-disabled="true" onclick="return false;" @endif>
                 <i class="bi bi-chevron-left"></i>
-            </button>
-            <span class="co-page-list" id="coPageList"></span>
-            <button type="button" class="co-page-btn" id="coNext" onclick="coGo(coPage + 1)">
+            </a>
+            <span class="co-page-list">
+                @php
+                    $coCurrent = $orders->currentPage();
+                    $coLast = $orders->lastPage();
+                    $coPageNumbers = collect();
+                    for ($i = 1; $i <= $coLast; $i++) {
+                        if ($i === 1 || $i === $coLast || abs($i - $coCurrent) <= 1) {
+                            $coPageNumbers->push($i);
+                        } elseif ($coPageNumbers->last() !== '…') {
+                            $coPageNumbers->push('…');
+                        }
+                    }
+                @endphp
+                @foreach($coPageNumbers as $coPageNumber)
+                    @if($coPageNumber === '…')
+                        <span class="co-page-gap">…</span>
+                    @else
+                        <a href="{{ $orders->url($coPageNumber) }}"
+                            class="co-page-btn {{ $coPageNumber === $coCurrent ? 'is-active' : '' }}">{{ $coPageNumber }}</a>
+                    @endif
+                @endforeach
+            </span>
+            <a href="{{ $orders->hasMorePages() ? $orders->nextPageUrl() : '#' }}"
+                class="co-page-btn {{ $orders->hasMorePages() ? '' : 'is-disabled' }}"
+                @if(!$orders->hasMorePages()) aria-disabled="true" onclick="return false;" @endif>
                 <i class="bi bi-chevron-right"></i>
-            </button>
+            </a>
         </div>
     </div>
+    @endif
 </div>
 
 @endsection
@@ -394,17 +436,18 @@
         background: #fff; border: 1px solid #F0E2D5; border-radius: 9px;
         font-family: 'Karla', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 0.76rem; font-weight: 700; color: #5B4740;
         cursor: pointer;
+        text-decoration: none;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
     }
-    .co-page-btn:hover:not(:disabled) { border-color: #F4845F; color: #C0392B; }
-    .co-page-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .co-page-btn:hover:not(.is-disabled) { border-color: #F4845F; color: #C0392B; }
+    .co-page-btn.is-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
     .co-page-btn.is-active {
         background: linear-gradient(135deg, #F4845F, #EF8585);
         color: #fff; border-color: transparent;
     }
     .co-page-gap { color: #C4B6AE; padding: 0 0.15rem; }
-
-    /* Rows outside the current page: hidden on screen, still printable */
-    .co-page-hidden { display: none; }
 
     /* ── Desktop ── */
     @media (min-width: 768px) {
@@ -415,6 +458,28 @@
         .co-actions { justify-content: flex-end; }
         .co-pager { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
         .co-pager-nav { justify-content: flex-end; }
+
+        /* The table is wider than its card on everything up to a large
+           desktop (11 columns incl. Date/Order#/Items/Payment/Status/Rating),
+           so .co-table-card's own overflow-x:auto is doing real work here —
+           not just a safety net. Without a cue, a reader landing on this page
+           at a laptop width has no way to tell the row keeps going past the
+           right edge. Classic scrolling-shadows technique: two opaque "fade"
+           layers scroll WITH the content (background-attachment: local) and
+           two tinted "edge" layers stay fixed to the viewport (attachment:
+           scroll); where the fades overlap the edges they hide them, so a
+           shadow only shows on the side that still has more to scroll to. */
+        .co-table-card {
+            background-image:
+                linear-gradient(to right, #fff 30%, rgba(255,255,255,0)),
+                linear-gradient(to left, #fff 30%, rgba(255,255,255,0)),
+                linear-gradient(to right, rgba(59,42,36,.16), rgba(59,42,36,0) 6px),
+                linear-gradient(to left, rgba(59,42,36,.16), rgba(59,42,36,0) 6px);
+            background-position: left, right, left, right;
+            background-repeat: no-repeat;
+            background-size: 40px 100%, 40px 100%, 6px 100%, 6px 100%;
+            background-attachment: local, local, scroll, scroll;
+        }
     }
 
     /* ── Mobile: table rows become cards ── */
@@ -490,9 +555,6 @@
         .print-only { display: block !important; }
         .print-header h2 { font-size: 1.3rem; font-weight: 700; }
 
-        /* Paginated-away rows must still print */
-        .co-page-hidden { display: table-row !important; }
-
         /* Rows excluded from a "Print Selected" run */
         .print-hide-row { display: none !important; }
 
@@ -545,12 +607,9 @@
 @push('scripts')
 <script>
 function printReceipt(orderId) {
-    var printWindow = window.open('/admin/receipt/' + orderId, '_blank');
-    printWindow.addEventListener('load', function() {
-        setTimeout(function() {
-            printWindow.print();
-        }, 500);
-    });
+    // In-page via the shared printInFrame() helper (admin.layout) — no new
+    // tab, reuses the same receipt route/template as before.
+    printInFrame('/admin/receipt/' + encodeURIComponent(orderId));
 }
 
 function toggleAll(master) {
@@ -571,12 +630,12 @@ function updateCount() {
 }
 
 function printFiltered() {
-    // Print every order currently listed (already filtered server-side).
-    document.querySelectorAll('tr.print-hide-row').forEach(function(r) {
-        r.classList.remove('print-hide-row');
-    });
-    document.getElementById('printScopeNote').innerText = 'Scope: All filtered results currently listed';
-    window.print();
+    // Every order matching the current filters, not just the current page —
+    // this list is paginated now, so the on-screen DOM only ever holds one
+    // page. A dedicated route re-runs the same filters with no pagination;
+    // printInFrame() (admin.layout) prints that result in-page via a hidden
+    // iframe instead of a new tab.
+    printInFrame('{{ route('admin.completed-orders.print') }}' + window.location.search);
 }
 
 function printSelected() {
@@ -603,7 +662,12 @@ function printSelected() {
     }
 
     document.getElementById('printScopeNote').innerText = 'Scope: Selected orders only';
-    window.print();
+
+    // The row show/hide classes above must actually repaint before print()
+    // runs, or the preview opens blank until the dialog is cancelled.
+    setTimeout(function () {
+        window.print();
+    }, 250);
 }
 
 // Restore the table to its normal state after the print dialog closes.
@@ -613,91 +677,19 @@ window.addEventListener('afterprint', function() {
     });
 });
 
-/* ── Display-only pagination: hides rows visually, printing still covers all ── */
-var coPage = 1;
-var coPageSize = 25;
-
-function coRows() {
-    return Array.prototype.slice.call(document.querySelectorAll('#coBody tr.co-row'));
-}
-
-function coRender() {
-    var rows = coRows();
-    var pager = document.getElementById('coPager');
-    if (!pager) return;
-
-    if (rows.length === 0) {
-        pager.hidden = true;
-        return;
-    }
-
-    var pages = Math.max(1, Math.ceil(rows.length / coPageSize));
-    if (coPage > pages) coPage = pages;
-    if (coPage < 1) coPage = 1;
-
-    var start = (coPage - 1) * coPageSize;
-    var end = Math.min(start + coPageSize, rows.length);
-
-    rows.forEach(function(row, i) {
-        row.classList.toggle('co-page-hidden', i < start || i >= end);
-    });
-
-    pager.hidden = rows.length <= 15 && pages === 1;
-    document.getElementById('coPagerRange').innerText =
-        'Showing ' + (start + 1) + '–' + end + ' of ' + rows.length + ' orders';
-
-    document.getElementById('coPrev').disabled = (coPage === 1);
-    document.getElementById('coNext').disabled = (coPage === pages);
-
-    var list = document.getElementById('coPageList');
-    list.innerHTML = '';
-    coPageNumbers(coPage, pages).forEach(function(p) {
-        if (p === '…') {
-            var gap = document.createElement('span');
-            gap.className = 'co-page-gap';
-            gap.innerText = '…';
-            list.appendChild(gap);
-            return;
-        }
-        var btn = document.createElement('button');
-        btn.type = 'button';
-        btn.className = 'co-page-btn' + (p === coPage ? ' is-active' : '');
-        btn.innerText = p;
-        btn.onclick = function() { coGo(p); };
-        list.appendChild(btn);
-    });
-}
-
-function coPageNumbers(current, pages) {
-    var out = [];
-    for (var i = 1; i <= pages; i++) {
-        if (i === 1 || i === pages || Math.abs(i - current) <= 1) {
-            out.push(i);
-        } else if (out[out.length - 1] !== '…') {
-            out.push('…');
-        }
-    }
-    return out;
-}
-
-function coGo(page) {
-    coPage = page;
-    coRender();
-    var card = document.querySelector('.co-table-card');
-    if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+/* ── Rows-per-page selector: a real navigation now, not a client-side
+     re-render — the server only ever holds one page of orders in memory,
+     so changing the page size has to ask it for a different page. Resets
+     to page 1 (a page number valid for 25/page may not exist at 100/page)
+     while keeping every filter already in the URL. ── */
+function coChangePerPage(size) {
+    var params = new URLSearchParams(window.location.search);
+    params.set('per_page', size);
+    params.delete('page');
+    window.location.href = window.location.pathname + '?' + params.toString();
 }
 
 document.addEventListener('DOMContentLoaded', function() {
-    var sizeSelect = document.getElementById('coPageSize');
-    if (sizeSelect) {
-        coPageSize = parseInt(sizeSelect.value, 10) || 25;
-        sizeSelect.addEventListener('change', function() {
-            coPageSize = parseInt(this.value, 10) || 25;
-            coPage = 1;
-            coRender();
-        });
-    }
-    coRender();
     updateCount();
 });
 </script>

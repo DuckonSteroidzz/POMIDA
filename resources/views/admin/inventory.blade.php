@@ -8,34 +8,50 @@
     $adminUser = Auth::guard('admin')->user();
 
     /*
-     * Three tiers on this page, not two.
+     * Three tiers on this page, and the middle one is now split in two.
      *
-     *  $canManageStock (owner + supervisor) — "Add Inventory", "Update Stock"
-     *      and "Stock Adjustments" are Y | Y | N. This covers Add Item, Edit,
-     *      and the Stock In / Stock Out buttons. Stock In/Out USED to be shown
-     *      to everyone, matching a route group that admitted staff; both moved
-     *      together, because a stock movement writes the rows the cost figures
-     *      are built from.
+     *  $canMoveStock (all three portal roles) — "Update Stock" and "Stock
+     *      Adjustments" are Y | Y | Y. This covers the Stock In / Stock Out
+     *      buttons and their modal, and nothing else. Recording how much is on
+     *      the shelf is counter shift work: the person holding the stock is
+     *      the one who knows the number, and making them wait for a supervisor
+     *      is how the recorded quantity drifts away from reality for a whole
+     *      shift. Every movement is attributed to its author through
+     *      StockMovement.user_id and shown in the Recent Movements table
+     *      below, and the two endpoints are branch-scoped server-side by
+     *      AdminOrderAccess — the button being visible is never the boundary.
+     *
+     *  $canManageStock (owner + supervisor) — "Add Inventory" is Y | Y | N,
+     *      and so is Edit. Edit is the inventory DEFINITION: name, unit, unit
+     *      cost and the low-stock alert level — the numbers the costing
+     *      snapshots and the low-stock warnings are derived from. Staff move
+     *      quantities; they never change what an item IS or what it is worth.
      *
      *  $isAdmin (owner alone) — "Delete Inventory Records" is Y | N | N.
      *      Deleting a stock item cascades through menu_item_ingredients and
      *      silently stops menu items deducting anything, which is why it is
      *      the one inventory action a manager does not get.
-     *
-     *  staff — "View Inventory" is VIEW-ONLY: the table, the totals and the
-     *      status badges, and none of the buttons.
      */
     $isAdmin = $adminUser && $adminUser->isAdmin();
     $canManageStock = $adminUser && $adminUser->isManager();
 
     /*
+     * Staff may move stock, so this is "is a portal user at all" rather than a
+     * role test — the route group (role:admin,staff,supervisor) is the real
+     * gate, and this flag only decides whether to draw the control for it.
+     * Written as a null check on $adminUser so a logged-out render (which the
+     * layout can still reach on a session blip) draws no write controls.
+     */
+    $canMoveStock = (bool) $adminUser;
+
+    /*
      * How wide the table actually is for THIS viewer, so the "no items" and
      * "no matching items" rows still span it. Seven always-present columns,
-     * plus Stock In / Stock Out / Edit for a manager and Delete for the owner.
-     * Hard-coded at 11 before the roles split, which for staff left the empty
-     * state spanning four columns that are no longer rendered.
+     * plus Stock In / Stock Out for anyone who may move stock, Edit for a
+     * manager, and Delete for the owner. Counted from the SAME flags the
+     * columns are drawn from, so the two cannot drift apart.
      */
-    $ivColumnCount = 7 + ($canManageStock ? 3 : 0) + ($isAdmin ? 1 : 0);
+    $ivColumnCount = 7 + ($canMoveStock ? 2 : 0) + ($canManageStock ? 1 : 0) + ($isAdmin ? 1 : 0);
     $invItems = isset($inventory) ? $inventory : collect();
     $countTotal = count($invItems);
     $countOut = 0; $countLow = 0; $countOk = 0;
@@ -70,6 +86,20 @@
     </div>
     <div class="iv-actions">
         <span class="iv-chip">Total Items: {{ $countTotal }}</span>
+        {{-- Export is VIEW-ONLY like the page itself — every value in the
+             file is already on screen for staff, so all three tiers get it. --}}
+        <a href="{{ route('admin.inventory.export') }}" class="iv-btn iv-btn-ghost">
+            <i class="bi bi-download"></i> Export CSV
+        </a>
+        {{-- Deleted Items is the second half of the two-stage delete: an item
+             "Delete" moves here first, recoverable, rather than being gone
+             outright. Owner-only, matching "Delete Inventory Records"
+             (Y | N | N) — same gate as the Delete column itself. --}}
+        @if($isAdmin)
+        <a href="{{ route('admin.inventory.deleted') }}" class="iv-btn iv-btn-ghost">
+            <i class="bi bi-trash3"></i> Deleted Items ({{ $deletedInventoryCount ?? 0 }})
+        </a>
+        @endif
         {{-- "Add Inventory" is Y | Y | N — a manager gets this, staff do not. --}}
         @if($canManageStock)
         <button type="button" class="iv-btn iv-btn-solid" onclick="openAddModal()">
@@ -160,18 +190,19 @@
                 <th class="iv-ta-right">Stock Value</th>
                 <th class="iv-ta-center">Status</th>
                 {{-- Stock In / Stock Out are "Update Stock" and "Stock
-                     Adjustments", both Y | Y | N. For staff the whole pair of
-                     columns disappears rather than showing two dead buttons —
-                     VIEW-ONLY means the stock list, not a list with controls
-                     that bounce. --}}
-                @if($canManageStock)
+                     Adjustments", both Y | Y | Y — staff record shelf
+                     quantities on their own shift. Branch-scoped server-side,
+                     so a staff member only ever sees (and can only ever move)
+                     their own branch's rows. --}}
+                @if($canMoveStock)
                 <th class="iv-ta-center">Stock In</th>
                 <th class="iv-ta-center">Stock Out</th>
                 @endif
                 {{-- Edit is the inventory DEFINITION (name, unit cost, alert
-                     level) — part of "Add Inventory", so manager tier. Delete
-                     is the one Y | N | N inventory row and stays with the
-                     owner. --}}
+                     level) — part of "Add Inventory", so manager tier. Staff
+                     move quantities but never change what an item is or what
+                     it costs. Delete is the one Y | N | N inventory row and
+                     stays with the owner. --}}
                 @if($canManageStock)
                 <th class="iv-ta-center">Edit</th>
                 @endif
@@ -192,7 +223,13 @@
                     <td data-label="No." class="iv-muted">{{ $index + 1 }}</td>
                     <td data-label="Item" class="iv-name">{{ $item->item_name }}</td>
                     <td data-label="Quantity" class="iv-ta-right iv-num iv-qty-{{ $statusKey }}">
-                        {{ rtrim(rtrim(number_format($item->quantity, 2), '0'), '.') }}
+                        {{-- 3 decimals, not 2: quantity is decimal(12,3) and recipes deduct at
+                             that precision, so formatting to 2 here rounded a real fractional
+                             deduction back to the number the shelf showed before the sale. The
+                             rtrim pair keeps whole numbers reading as "4970", exactly as before,
+                             and matches how recipe lines are already printed
+                             (partials/recipe-ingredients.blade.php). --}}
+                        {{ rtrim(rtrim(number_format($item->quantity, 3), '0'), '.') }}
                     </td>
                     <td data-label="Unit" class="iv-muted">{{ $item->unit }}</td>
                     <td data-label="Low Alert" class="iv-ta-right iv-num iv-muted">{{ rtrim(rtrim(number_format($item->low_stock_alert, 2), '0'), '.') }}</td>
@@ -212,7 +249,7 @@
                             <span class="iv-badge iv-badge-ok">In Stock</span>
                         @endif
                     </td>
-                    @if($canManageStock)
+                    @if($canMoveStock)
                     <td data-label="Stock In" class="iv-ta-center">
                         <button class="iv-mini iv-mini-in"
                             data-id="{{ $item->id }}" data-name="{{ $item->item_name }}" data-unit="{{ $item->unit }}"
@@ -227,6 +264,8 @@
                             <i class="bi bi-dash"></i> Out
                         </button>
                     </td>
+                    @endif
+                    @if($canManageStock)
                     <td data-label="Edit" class="iv-ta-center">
                         <button class="iv-icon iv-icon-edit"
                             data-id="{{ $item->id }}"
@@ -342,7 +381,16 @@
                 @foreach($stockMovements as $mv)
                 <tr class="iv-row">
                     <td data-label="Date" class="iv-date">{{ $mv->created_at->format('M d, Y h:i A') }}</td>
-                    <td data-label="Item" class="iv-name">{{ $mv->inventory->item_name ?? 'N/A' }}</td>
+                    {{-- deleted_item_name is stamped by forceDeleteInventory() just before the
+                         inventory row it points at is permanently removed (inventory_id then
+                         goes NULL via ON DELETE SET NULL) — the log keeps saying what the
+                         movement was for instead of falling back to "N/A". --}}
+                    <td data-label="Item" class="iv-name">
+                        {{ $mv->inventory->item_name ?? $mv->deleted_item_name ?? 'N/A' }}
+                        @if(!$mv->inventory && $mv->deleted_item_name)
+                            <span class="iv-muted" style="font-size:.7rem;">(deleted)</span>
+                        @endif
+                    </td>
                     <td data-label="Type" class="iv-ta-center">
                         @if($mv->movement_type === 'in')
                             <span class="iv-badge iv-badge-ok"><i class="bi bi-arrow-down-circle"></i> IN</span>
@@ -355,7 +403,9 @@
                         <span class="iv-unit">{{ $mv->inventory->unit ?? '' }}</span>
                     </td>
                     <td data-label="Stock After" class="iv-ta-right iv-num">
-                        {{ rtrim(rtrim(number_format($mv->quantity_after, 2), '0'), '.') }}
+                        {{-- stock_movements.quantity_after is decimal(10,3); printing it to 2
+                             made the movement log contradict the quantity column above. --}}
+                        {{ rtrim(rtrim(number_format($mv->quantity_after, 3), '0'), '.') }}
                         <span class="iv-unit">{{ $mv->inventory->unit ?? '' }}</span>
                     </td>
                     <td data-label="Reason" class="iv-reason">{{ $mv->reason ?? '-' }}</td>
@@ -388,13 +438,15 @@
     </table>
 </div>
 
-{{-- The write modals. Gated on the same flags as the buttons that open them:
-     a staff member has no Add Item, no Edit and no Stock In/Out control, so
-     rendering their forms would leave a hidden POST target for a manager-only
-     route sitting in their page for no reason. The route gate is what refuses
-     a crafted request; this simply stops shipping the form. --}}
+{{-- The write modals. Each is gated on the same flag as the button that opens
+     it, so a role never carries the form for a route it cannot call. The route
+     gate is what refuses a crafted request; this simply stops shipping a form
+     that could only ever bounce.
+
+     Two separate blocks, not one: staff DO get the Stock In/Out modal below
+     and do NOT get this Add/Edit one. --}}
 @if($canManageStock)
-{{-- ADD/EDIT MODAL --}}
+{{-- ADD/EDIT MODAL — manager tier, the inventory DEFINITION. --}}
 <div id="itemModal" class="iv-modal">
     <div class="iv-modal-box iv-modal-lg">
         <div class="iv-modal-head">
@@ -480,7 +532,12 @@
     </div>
 </div>
 
-{{-- STOCK IN/OUT MODAL --}}
+@endif
+
+{{-- STOCK IN/OUT MODAL — all three portal roles, matching the In/Out buttons.
+     The form's action is set by openStockModal() to the stock-in or stock-out
+     URL for the clicked row; both are branch-scoped server-side. --}}
+@if($canMoveStock)
 <div id="stockModal" class="iv-modal">
     <div class="iv-modal-box">
         <div class="iv-modal-head">
@@ -516,6 +573,7 @@
     <div class="iv-modal-box iv-modal-sm">
         <div class="iv-confirm-ico"><i class="bi bi-trash3"></i></div>
         <p class="iv-confirm-text">Delete this inventory item?</p>
+        <p class="iv-modal-note" style="text-align:center;">It moves to Deleted Items — you can restore it or permanently delete it from there.</p>
         <div class="iv-confirm-actions">
             <form id="deleteForm" method="POST">
                 @csrf @method('DELETE')
@@ -701,12 +759,34 @@
         .iv-stats { grid-template-columns: repeat(5, minmax(0,1fr)); }
         .iv-pager { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
         .iv-pager-nav { justify-content: flex-end; }
+
+        /* Same scrolling-shadows technique as completed-orders.blade.php's
+           .co-table-card: the item table (up to 11 columns for an owner —
+           Stock In/Out plus Edit/Delete) and the movements log both use
+           overflow-x:auto and can still be wider than the viewport up to
+           roughly 1150px, with nothing on screen to say a row keeps going. */
+        .iv-table-card {
+            background-image:
+                linear-gradient(to right, #fff 30%, rgba(255,255,255,0)),
+                linear-gradient(to left, #fff 30%, rgba(255,255,255,0)),
+                linear-gradient(to right, rgba(59,42,36,.16), rgba(59,42,36,0) 6px),
+                linear-gradient(to left, rgba(59,42,36,.16), rgba(59,42,36,0) 6px);
+            background-position: left, right, left, right;
+            background-repeat: no-repeat;
+            background-size: 40px 100%, 40px 100%, 6px 100%, 6px 100%;
+            background-attachment: local, local, scroll, scroll;
+        }
     }
 
     /* ── Mobile: rows become cards ── */
     @media (max-width: 767px) {
         .iv-title { font-size: 1.4rem; }
         .iv-field-grow { grid-column: span 1; }
+        {{-- 5 tiles in a 2-column grid strands the last one (Total Stock
+             Value) alone with an empty half-row beside it; spanning both
+             columns makes it read as the strip's summary tile instead of a
+             misplaced fifth filter button. --}}
+        .iv-stats > :last-child { grid-column: 1 / -1; }
         .iv-table-card { border: none; background: transparent; box-shadow: none; overflow: visible; }
         .iv-card-head { background: #fff; border: 1px solid #F0E2D5; border-radius: 14px; margin-bottom: .7rem; }
         .iv-table thead { display: none; }
@@ -781,6 +861,13 @@
     function closeItemModal() {
         document.getElementById('itemModal').style.display = 'none';
     }
+    @endif
+
+    {{-- The stock-movement drivers are all three roles, matching the In/Out
+         buttons and the modal they operate. A separate gate rather than a
+         nested one: "Update Stock" and "Stock Adjustments" are Y | Y | Y, so a
+         staff member passes this block and not the manager one above. --}}
+    @if($canMoveStock)
 
     function openStockModal(btn, type) {
         const id = btn.dataset.id;

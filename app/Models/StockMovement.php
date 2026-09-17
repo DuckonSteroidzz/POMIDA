@@ -18,6 +18,7 @@ class StockMovement extends Model
         'source',
         'reference_id',
         'user_id',
+        'deleted_item_name',
     ];
 
     public function inventory()

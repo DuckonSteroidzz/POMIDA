@@ -10,22 +10,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-blush: #EF8585;
-            --color-peach-rose: #F6B49B;
-            --color-peach-sand: #F8D7B0;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    @vite(['resources/css/app.css'])
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -410,6 +398,8 @@
             }
         }
     </script>
+
+    @include('customer.partials.idle-timeout')
 </body>
 
 </html>

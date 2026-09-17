@@ -97,6 +97,15 @@ class AdminAuthController extends Controller
         ]);
     }
 
+    // The live CSRF token, so the admin/staff login form on a long-open tab
+    // can refresh its own token before it's submitted and never dead-end on
+    // the branded 419 page. Mirrors Customer\AuthController::sessionToken() —
+    // READ-ONLY, only reads csrf_token(), touches no session key.
+    public function sessionToken()
+    {
+        return response()->json(['token' => csrf_token()]);
+    }
+
     /*
     |--------------------------------------------------------------------------
     | FIRST-RUN ADMIN BOOTSTRAP

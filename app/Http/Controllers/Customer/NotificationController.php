@@ -5,14 +5,17 @@ namespace App\Http\Controllers\Customer;
 use App\Http\Controllers\Controller;
 use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
+use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 
 /**
  * Customer-facing notification feed.
  *
  * Every query goes through Notification::scopeVisibleToCurrentCustomer(), which
- * derives ownership from the session/guard on the server. No endpoint here
- * accepts an order id, user id, or notification id from the client, so there is
- * nothing for a caller to tamper with.
+ * derives ownership from the session/guard on the server. dismiss() is the one
+ * endpoint that takes an id from the client (which card's X was tapped), and
+ * it is resolved AGAINST that same ownership scope before anything is
+ * written — the id alone never grants access, so it cannot be used to reach
+ * another customer's row or a staff/admin one.
  */
 class NotificationController extends Controller
 {
@@ -24,7 +27,7 @@ class NotificationController extends Controller
      */
     public function unreadCount(): JsonResponse
     {
-        $scoped = fn () => Notification::visibleToCurrentCustomer();
+        $scoped = fn () => Notification::visibleToCurrentCustomer()->inTray();
 
         return response()->json([
             'unread' => $scoped()->whereNull('read_at')->count(),
@@ -52,6 +55,7 @@ class NotificationController extends Controller
          * WHICH order. Without the eager load this would be one query per row.
          */
         $notifications = Notification::visibleToCurrentCustomer()
+            ->inTray()
             ->with('order:id,order_number')
             ->latest('id')
             ->limit(self::FEED_LIMIT)
@@ -87,5 +91,38 @@ class NotificationController extends Controller
             ->update(['read_at' => now()]);
 
         return response()->json(['unread' => 0]);
+    }
+
+    /**
+     * Soft-dismiss ONE notification: the X on an individual tray card.
+     *
+     * Mirrors Admin\NotificationController::dismiss() exactly, scoped through
+     * visibleToCurrentCustomer() instead of visibleToStaff() — that scope
+     * already covers both a logged-in customer (matched by user_id) and a
+     * guest (matched by this session's own order ids via App\Support\
+     * GuestOrders), so a staff/admin row and another customer's row are
+     * equally unreachable here: the id is resolved against ownership, not
+     * trusted on its own, exactly like the admin endpoint and like
+     * OrderController::resolveOwnedOrder(). A missing/out-of-scope id is a
+     * 404, matching the rest of the customer area.
+     *
+     * Idempotent: dismissing an already-dismissed row just re-stamps it.
+     */
+    public function dismiss(int $notification): JsonResponse
+    {
+        $scope = fn () => Notification::visibleToCurrentCustomer();
+
+        $row = $scope()->whereKey($notification)->first();
+
+        if ($row === null) {
+            throw new NotFoundHttpException();
+        }
+
+        $row->forceFill(['dismissed_at' => now()])->save();
+
+        return response()->json([
+            'dismissed' => true,
+            'unread'    => $scope()->inTray()->whereNull('read_at')->count(),
+        ]);
     }
 }

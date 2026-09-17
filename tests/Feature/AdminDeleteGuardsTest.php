@@ -229,9 +229,15 @@ class AdminDeleteGuardsTest extends TestCase
             'is_active' => true,
         ]);
 
+        // Inventory delete is now two-stage (added alongside this test round):
+        // the DELETE route archives rather than removes the row outright, so
+        // it still "succeeds" but the row survives, off the normal list. The
+        // full lifecycle (archive / restore / permanent delete) is covered in
+        // InventoryTwoStageDeleteTest.
         $this->actingAs($admin, 'admin')->delete('/admin/inventory/' . $inventory->id)
             ->assertSessionHasNoErrors();
-        $this->assertNull(Inventory::find($inventory->id));
+        $this->assertNull(Inventory::notArchived()->find($inventory->id), 'it must leave the normal list');
+        $this->assertNotNull(Inventory::onlyArchived()->find($inventory->id), 'the row must survive, recoverable');
     }
 
     /** A delete of something that does not exist is a clean 404, not a 500. */

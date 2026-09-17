@@ -42,33 +42,70 @@ class ManualOrderCounterTest extends TestCase
      * said nothing about the real cause and had nothing to do with the code
      * under test. Picking any currently orderable pair keeps the test about
      * manual orders instead of about one row's lifecycle.
+     *
+     * BRANCH-AWARE OPTIONS (Phase 3 audit, Finding #3, Sept 2026): the same
+     * "pick whatever is real" approach hit this again. The live option this
+     * resolves to today ("extra cheese", #6) has never had an ingredient
+     * link at all, so it is now UNMAPPED for every branch by design — hidden
+     * from the customer menu and hard-refused at checkout/counter, exactly
+     * what this whole pass exists to do. This test is about manual orders,
+     * not about whether one option happens to be configured yet, so it gives
+     * the resolved option a throwaway branch-1 ingredient link of its own
+     * (a fresh Inventory row) whenever it doesn't already have one for
+     * branch 1. This runs on EVERY call, not just the first: $pair caches
+     * only the resolved ids/total (cheap, and they don't change), but each
+     * test method gets its own DatabaseTransactions transaction, so a row
+     * inserted while resolving the pair in an earlier test is already
+     * rolled back by the time a later test asks — only the mapping check
+     * itself may be safely skipped once cached.
      */
     private static ?array $pair = null;
 
     private function pair(): array
     {
-        if (self::$pair !== null) {
-            return self::$pair;
+        if (self::$pair === null) {
+            $item = \App\Models\MenuItem::with('options')
+                ->where('is_available', true)
+                ->where(fn ($q) => $q->where('branch_id', 1)->orWhereNull('branch_id'))
+                ->get()
+                ->first(fn ($i) => $i->options->isNotEmpty());
+
+            $this->assertNotNull(
+                $item,
+                'no available branch-1 menu item with an add-on option to order in this test'
+            );
+
+            $option = $item->options->first();
+
+            self::$pair = [
+                'item_id'   => (int) $item->id,
+                'option_id' => (int) $option->id,
+                'total'     => round((float) $item->price + (float) $option->additional_price, 2),
+            ];
         }
 
-        $item = \App\Models\MenuItem::with('options')
-            ->where('is_available', true)
-            ->where(fn ($q) => $q->where('branch_id', 1)->orWhereNull('branch_id'))
-            ->get()
-            ->first(fn ($i) => $i->options->isNotEmpty());
+        $option = \App\Models\MenuOption::with('ingredients.inventory')->find(self::$pair['option_id']);
 
-        $this->assertNotNull(
-            $item,
-            'no available branch-1 menu item with an add-on option to order in this test'
-        );
+        if ($option && ! $option->isMappedForBranch(1)) {
+            $inventory = \App\Models\Inventory::create([
+                'branch_id'       => 1,
+                'item_name'       => 'MOC Throwaway Mapping ' . uniqid(),
+                'item_code'       => 'MOC-' . strtoupper(substr(uniqid(), -10)),
+                'quantity'        => 1000,
+                'unit'            => 'pc',
+                'low_stock_alert' => 1,
+                'unit_cost'       => 1,
+                'is_active'       => true,
+            ]);
 
-        $option = $item->options->first();
+            \App\Models\MenuOptionIngredient::create([
+                'menu_option_id' => $option->id,
+                'inventory_id'   => $inventory->id,
+                'quantity_used'  => 1,
+            ]);
+        }
 
-        return self::$pair = [
-            'item_id'   => (int) $item->id,
-            'option_id' => (int) $option->id,
-            'total'     => round((float) $item->price + (float) $option->additional_price, 2),
-        ];
+        return self::$pair;
     }
 
     private function staff(): User

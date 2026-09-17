@@ -9,19 +9,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
+    @include('customer.partials.click-sound')
+    @vite(['resources/css/app.css'])
 
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -33,13 +24,6 @@
             h1, h2, h3, .font-display { font-family: var(--font-display); }
             a, button { font-family: inherit; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
         }
     </style>
     @include('partials.session-guard')
@@ -367,6 +351,8 @@
         }
     </script>
     @endif
+
+    @include('customer.partials.idle-timeout')
 
 </body>
 </html>

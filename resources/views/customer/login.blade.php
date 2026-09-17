@@ -7,9 +7,11 @@
 
     <title>Login | Peachy Cakes & Deli Cafe</title>
 
+    @include('partials.session-guard')
 
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
     {{-- Bootstrap Icons — used for the show/hide password toggle
          (same CDN as customer/layout.blade.php). --}}
@@ -632,6 +634,7 @@
 
             {{-- Login Form --}}
             <form
+                id="loginForm"
                 action="{{ route('customer.login.post') }}"
                 method="POST"
             >
@@ -795,6 +798,46 @@
                 field.focus();
             });
         });
+    </script>
+
+    {{--
+        Keep the login form's CSRF token alive.
+
+        A login page left open past SESSION_LIFETIME and then submitted used
+        to throw TokenMismatchException. bootstrap/app.php now catches that
+        case and redirects back here with a "session expired" message instead
+        of the raw 419 card, but the better outcome is the customer's login
+        just working on the first try. Same fetch-and-swap shape
+        dineinqr.blade.php already uses for its own form's token.
+
+        Silent by design: a fetch() to a read-only JSON endpoint, writing only
+        into the CSRF meta tag and the hidden _token field. No reload, no
+        re-render, nothing the customer can see.
+    --}}
+    <script>
+        (function () {
+            var REFRESH_MS = 15 * 60 * 1000; // SESSION_LIFETIME is 480 min.
+
+            function refreshCsrfToken() {
+                fetch('{{ route('customer.session-token') }}', {
+                    headers: { 'Accept': 'application/json' },
+                    credentials: 'same-origin'
+                })
+                    .then(function (r) { return r.ok ? r.json() : null; })
+                    .then(function (data) {
+                        if (!data || !data.token) { return; }
+
+                        var meta = document.querySelector('meta[name="csrf-token"]');
+                        if (meta) { meta.setAttribute('content', data.token); }
+
+                        var field = document.querySelector('#loginForm input[name="_token"]');
+                        if (field) { field.value = data.token; }
+                    })
+                    .catch(function () { /* transient/offline — the next tick retries */ });
+            }
+
+            setInterval(refreshCsrfToken, REFRESH_MS);
+        })();
     </script>
 
 </body>

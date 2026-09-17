@@ -10,23 +10,14 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
+    @vite(['resources/css/app.css'])
 
     @php
     $orderType = session('order_type', 'pick_up');
     @endphp
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -44,29 +35,6 @@
             select, input, button, a { font-family: inherit; }
             [hidden] { display: none !important; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
-        }
-
-        /* Custom checkbox chip for item options */
-        @utility option-chip {
-            display: flex;
-            align-items: center;
-            gap: 0.625rem;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 0.875rem;
-            background-color: #fff;
-            padding: 0.7rem 0.85rem;
-            cursor: pointer;
-            transition: border-color .18s ease, background-color .18s ease, box-shadow .18s ease;
-        }
-        @utility option-chip-hover {
-            &:hover { border-color: var(--color-peach); }
         }
     </style>
     <style>
@@ -127,11 +95,19 @@
             <i class="bi bi-check-circle text-sm text-green-600"></i><span class="min-w-0 flex-1">{{ session('success') }}</span>
         </div>
         @endif
-        @if($errors->any())
+        {{-- The Add-to-cart refusal arrives as ->with('error', …), which this
+             page never rendered — see the same fix on menu.blade.php. --}}
+        @if(session('error'))
         <div data-toast class="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm">
-            <i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1">{{ $errors->first() }}</span>
+            <i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1">{{ session('error') }}</span>
         </div>
         @endif
+
+        @foreach($errors->all() as $errorMessage)
+        <div data-toast class="pointer-events-auto flex w-full max-w-sm items-center gap-2 rounded-full border border-peach-soft/70 bg-white/95 px-3.5 py-2 text-xs font-medium text-peach-deep shadow-sm backdrop-blur-sm">
+            <i class="bi bi-exclamation-circle text-sm text-peach-red"></i><span class="min-w-0 flex-1">{{ $errorMessage }}</span>
+        </div>
+        @endforeach
     </div>
 
     <main class="mx-auto w-full max-w-6xl px-4 pb-36 pt-4 sm:px-6 sm:pt-6 md:pb-16">
@@ -150,10 +126,17 @@
             // Two reasons an item cannot be ordered: no recipe has been set for
             // it, or its recipe cannot be covered by current inventory.
             $itemMissingRecipe = isset($item) && $item->isMissingRecipe();
-            $itemIngredientOOS = isset($item) && ! $itemMissingRecipe && $item->isIngredientOutOfStock();
+            // $reserved = stock open orders have committed but that has not
+            // been deducted yet — see the controller.
+            $itemIngredientOOS = isset($item) && ! $itemMissingRecipe
+                && ! $item->hasIngredientStock(1, $reserved ?? null);
             // $itemOutOfStock stays the single "disable the add button" flag.
             $itemOutOfStock = $itemMissingRecipe || $itemIngredientOOS;
             $itemBlockedLabel = $itemMissingRecipe ? 'Unavailable' : 'Out of stock';
+            // Threshold is config('inventory.low_stock_threshold') — see
+            // MenuItem::isLowOnIngredientStock().
+            $itemLowStock = isset($item) && ! $itemOutOfStock && $item->isLowOnIngredientStock($reserved ?? null);
+            $itemRemainingServings = $itemLowStock ? $item->remainingServings($reserved ?? null) : null;
         @endphp
 
         <form action="{{ route('customer.cart.add') }}" method="POST" id="addToCartForm">
@@ -206,11 +189,32 @@
                                 @endif
                             </p>
                         </div>
+                        @elseif($itemLowStock)
+                        <div class="mt-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
+                            <i class="bi bi-exclamation-triangle-fill mt-0.5 shrink-0 text-amber-500"></i>
+                            <p class="text-xs font-semibold text-peach-deep">
+                                <span class="font-black uppercase tracking-wide text-amber-600">Low Stock</span><br>
+                                @if($itemRemainingServings !== null)
+                                {{ $itemRemainingServings }} stocks left — order soon!
+                                @else
+                                Running low on stock — order soon!
+                                @endif
+                            </p>
+                        </div>
                         @endif
                     </section>
 
                     {{-- Customize --}}
-                    @if(isset($item) && $item->options->count() > 0)
+                    {{--
+                        Renders from $availableOptions (AuthController::showItem()),
+                        NOT $item->options — an add-on with no ingredient link for
+                        this session's branch is left off this list entirely
+                        (Phase 3 audit, Finding #3: branches never share stock, so
+                        a global option needs its own per-branch ingredient link
+                        before it can be offered here). See
+                        MenuItem::optionsAvailableForBranch().
+                    --}}
+                    @if(isset($availableOptions) && $availableOptions->count() > 0)
                     <section class="card-surface p-4 sm:p-6">
                         <div class="mb-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
                             <div class="min-w-0">
@@ -221,7 +225,7 @@
                         </div>
 
                         <div class="grid gap-2.5 sm:grid-cols-2">
-                            @foreach($item->options as $option)
+                            @foreach($availableOptions as $option)
                             <div class="min-w-0">
                                 <input type="checkbox" name="options[]" value="{{ $option->id }}" id="option{{ $option->id }}"
                                     class="option-input sr-only" data-price="{{ $option->additional_price }}">
@@ -253,11 +257,11 @@
                             </div>
                             <div class="flex shrink-0 items-center gap-2.5">
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
-                                    <button type="button" onclick="changeQuantity(-1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                                    <button type="button" onclick="changeQuantity(-1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
                                     <input type="number" id="quantityDesktop" inputmode="numeric" min="1" max="99" value="1"
                                         aria-label="Quantity"
                                         class="qty-input w-10 rounded-full border-0 bg-transparent px-1 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
-                                    <button type="button" onclick="changeQuantity(1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
+                                    <button type="button" onclick="changeQuantity(1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                                 </div>
                                 <button type="submit" @disabled($itemOutOfStock)
                                     class="inline-flex items-center gap-2 rounded-full bg-peach-red px-6 py-3 text-sm font-bold text-white transition hover:bg-peach-deep disabled:cursor-not-allowed disabled:bg-peach-deep/30 disabled:hover:bg-peach-deep/30">
@@ -280,11 +284,11 @@
                         </p>
                     </div>
                     <div class="ml-auto flex shrink-0 items-center rounded-full border border-peach-soft bg-white p-1">
-                        <button type="button" onclick="changeQuantity(-1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                        <button type="button" onclick="changeQuantity(-1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
                         <input type="number" id="quantityMobile" inputmode="numeric" min="1" max="99" value="1"
                             aria-label="Quantity"
                             class="qty-input w-9 rounded-full border-0 bg-transparent px-0.5 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
-                        <button type="button" onclick="changeQuantity(1)" class="grid h-9 w-9 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
+                        <button type="button" onclick="changeQuantity(1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                     </div>
                     <button type="submit" @disabled($itemOutOfStock)
                         class="shrink-0 inline-flex items-center gap-2 rounded-full bg-peach-red px-5 py-3 text-sm font-bold text-white transition hover:bg-peach-deep disabled:cursor-not-allowed disabled:bg-peach-deep/30 disabled:hover:bg-peach-deep/30">
@@ -415,6 +419,14 @@
             }, 4000 + i * 600);
         });
     </script>
+
+    @include('customer.partials.idle-timeout')
+
+    {{-- Check-only (no $pingsActivity): this page reports whether the table is
+         still this party's, and never extends the fifteen-minute window doing
+         it — which is exactly what this page did before the guard existed. See
+         the partial. --}}
+    @include('customer.partials.dine-in-session-guard')
 </body>
 
 </html>

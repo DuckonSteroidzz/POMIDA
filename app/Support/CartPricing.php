@@ -42,10 +42,15 @@ final class CartPricing
     /**
      * Price a session cart from live menu data.
      *
-     * @param  array  $cart  The raw session('cart') array.
-     * @return array{lines: array<int, array<string, mixed>>, subtotal: float, repriced: bool, missing: bool}
+     * @param  array     $cart      The raw session('cart') array.
+     * @param  int|null  $branchId  The order's target branch, or null to skip
+     *                              the branch check entirely (the cart page's
+     *                              own display and the AJAX quantity sync do
+     *                              not pass one — see the 'branch_mismatch'
+     *                              note below for why this is opt-in).
+     * @return array{lines: array<int, array<string, mixed>>, subtotal: float, repriced: bool, missing: bool, branch_mismatch: bool}
      */
-    public static function price(array $cart): array
+    public static function price(array $cart, ?int $branchId = null): array
     {
         $menuItemIds = [];
         $optionIds = [];
@@ -72,6 +77,7 @@ final class CartPricing
         $subtotal = 0.0;
         $repriced = false;
         $missing = false;
+        $branchMismatch = false;
 
         foreach ($cart as $cartKey => $cartItem) {
             $menuItemId = (int) ($cartItem['menu_item_id'] ?? $cartKey);
@@ -95,6 +101,48 @@ final class CartPricing
                     'option_ids'        => [],
                     'repriced'          => false,
                     'missing'           => true,
+                    'branch_mismatch'   => false,
+                ];
+
+                continue;
+            }
+
+            /*
+             * Branch re-check (Phase 3 audit, Door C — defense in depth).
+             *
+             * Branches never share inventory or stock: completing an order
+             * deducts by each line's OWN menu_item.branch_id, not the
+             * order's, so a cart line from a different branch than the order
+             * silently decrements the wrong branch's stock (reproduced live
+             * — orders 115-121, May 2026). Doors A and B stop a mismatched
+             * line from ever reaching the cart; this is the hard backstop in
+             * case a future regression or an edge case neither of them
+             * caught still lets one through. A shared item (branch_id NULL)
+             * is exempt, same as everywhere else branch scoping applies.
+             *
+             * Opt-in via $branchId so callers that are not pricing towards a
+             * specific order (the cart page's own display, the AJAX quantity
+             * sync) are unaffected and keep showing whatever is actually in
+             * the cart.
+             */
+            if ($branchId !== null && $menuItem->branch_id !== null && (int) $menuItem->branch_id !== $branchId) {
+                $branchMismatch = true;
+
+                $lines[] = [
+                    'cart_key'          => $cartKey,
+                    'menu_item'         => null,
+                    'menu_item_id'      => $menuItemId,
+                    'name'              => $cartItem['name'] ?? $menuItem->name,
+                    'image'             => $cartItem['image'] ?? null,
+                    'quantity'          => $quantity,
+                    'unit_price'        => 0.0,
+                    'cached_unit_price' => (float) ($cartItem['price'] ?? 0),
+                    'subtotal'          => 0.0,
+                    'option_details'    => [],
+                    'option_ids'        => [],
+                    'repriced'          => false,
+                    'missing'           => false,
+                    'branch_mismatch'   => true,
                 ];
 
                 continue;
@@ -147,14 +195,16 @@ final class CartPricing
                 'option_ids'        => $lineOptionIds,
                 'repriced'          => $lineRepriced,
                 'missing'           => false,
+                'branch_mismatch'   => false,
             ];
         }
 
         return [
-            'lines'    => $lines,
-            'subtotal' => round($subtotal, 2),
-            'repriced' => $repriced,
-            'missing'  => $missing,
+            'lines'           => $lines,
+            'subtotal'        => round($subtotal, 2),
+            'repriced'        => $repriced,
+            'missing'         => $missing,
+            'branch_mismatch' => $branchMismatch,
         ];
     }
 

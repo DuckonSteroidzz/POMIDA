@@ -260,10 +260,12 @@ class CsrfExpiryDeadEndTest extends TestCase
     {
         $this->enforceCsrf();
 
-        // A plain POST outside the dine-in flow still gets the raw branded
-        // 419 card (bootstrap/app.php only redirects qr.process/dineinqr) —
-        // that is the page whose reload control this test is guarding.
-        $res = $this->post('/customer/login', ['email' => 'a@a.com', 'password' => 'x']);
+        // A plain POST outside the dine-in flow and outside the login forms
+        // still gets the raw branded 419 card (bootstrap/app.php redirects
+        // qr.process/dineinqr and, as of the idle-login fix, customer/admin
+        // login — see CsrfExpiryIdleLoginTest) — that is the page whose
+        // reload control this test is guarding.
+        $res = $this->post('/customer/register', ['email' => 'a@a.com', 'password' => 'x']);
         $res->assertStatus(419);
 
         $html = $res->getContent();

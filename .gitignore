@@ -1,6 +1,9 @@
 /.phpunit.cache
 /node_modules
-/public/build
+# public/build is committed on purpose: Hostinger deploys via a plain
+# `git pull` with no npm/node build step, so the compiled Vite+Tailwind
+# assets must ship in the repo itself. Run `npm run build` before every
+# commit that changes resources/css or resources/js.
 /public/hot
 /public/storage
 /storage/*.key

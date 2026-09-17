@@ -76,6 +76,23 @@ class MenuItem extends Model
         return $this->belongsToMany(MenuOption::class, 'menu_item_options');
     }
 
+    /**
+     * This item's assigned options, narrowed to the ones actually orderable
+     * for $branchId — see MenuOption::isMappedForBranch() (Phase 3 audit,
+     * Finding #3). This is what the customer-facing "Customize" list must
+     * render from, not the raw options() relation, so an add-on with no
+     * ingredient link for this branch is hidden rather than shown-but-inert.
+     *
+     * Eager-load 'options.ingredients.inventory' before calling this to
+     * avoid an N+1 per option.
+     */
+    public function optionsAvailableForBranch(?int $branchId): \Illuminate\Support\Collection
+    {
+        return $this->options->filter(
+            fn (MenuOption $option) => $option->isMappedForBranch($branchId)
+        )->values();
+    }
+
     // Has many order items (sales tracking)
     public function orderItems(): HasMany
     {
@@ -122,6 +139,23 @@ class MenuItem extends Model
     }
 
     /**
+     * How much of one inventory row is genuinely still promisable.
+     *
+     * $reserved is an optional [inventory_id => amount] map of stock that
+     * already-placed, not-yet-completed orders have committed but which is
+     * still sitting in inventory.quantity, because deduction only happens when
+     * staff completes an order — see
+     * InventoryDeductionService::committedQuantities(). Passing null keeps the
+     * older, raw reading of the pantry, which is what the admin-side callers
+     * (manual orders, costing) still want.
+     */
+    private function freeQuantity($inventoryRow, ?array $reserved): float
+    {
+        return (float) $inventoryRow->quantity
+            - (float) ($reserved[$inventoryRow->id] ?? 0);
+    }
+
+    /**
      * AUTOMATIC OUT-OF-STOCK — ingredient inventory check.
      *
      * Deliberately SEPARATE from is_available: that flag is the admin's
@@ -140,7 +174,7 @@ class MenuItem extends Model
      * (`recipeIngredients.inventory`, `inventoryItem`) so a menu grid can
      * call this once per card without an N+1.
      */
-    public function hasIngredientStock(int $servings = 1): bool
+    public function hasIngredientStock(int $servings = 1, ?array $reserved = null): bool
     {
         $servings = max(1, $servings);
 
@@ -157,7 +191,7 @@ class MenuItem extends Model
                     continue;
                 }
 
-                $have = (float) $inv->quantity;
+                $have = $this->freeQuantity($inv, $reserved);
                 $need = (float) $row->quantity_used * $servings;
 
                 if ($have <= 0 || $have < $need) {
@@ -178,7 +212,7 @@ class MenuItem extends Model
                 return true;
             }
 
-            $have = (float) $inv->quantity;
+            $have = $this->freeQuantity($inv, $reserved);
             $need = (float) ($this->inventory_amount_used ?: 1) * $servings;
 
             return $have > 0 && $have >= $need;
@@ -240,6 +274,74 @@ class MenuItem extends Model
     public function isOrderable(int $servings = 1): bool
     {
         return $this->hasRecipe() && $this->hasIngredientStock($servings);
+    }
+
+    /**
+     * How many servings of this item current inventory can still cover, or
+     * null when there is nothing to measure against (no recipe, no legacy
+     * link — same "unconstrained" case hasIngredientStock() already treats
+     * as in-stock). Drives the customer-facing "Only N left!" indicator and
+     * lets the cart quantity guard clamp a rejected update to the true max
+     * instead of just refusing with no number attached.
+     *
+     * Mirrors hasIngredientStock()'s two paths (recipe lines, then the
+     * legacy single-ingredient link) so the two can never disagree about
+     * what "in stock" means.
+     */
+    public function remainingServings(?array $reserved = null): ?int
+    {
+        $recipe = $this->relationLoaded('recipeIngredients')
+            ? $this->recipeIngredients
+            : $this->recipeIngredients()->with('inventory')->get();
+
+        if ($recipe->isNotEmpty()) {
+            $max = null;
+            foreach ($recipe as $row) {
+                $inv = $row->inventory;
+                if (!$inv || (float) $row->quantity_used <= 0) {
+                    continue;
+                }
+                $servingsFromRow = (int) floor($this->freeQuantity($inv, $reserved) / (float) $row->quantity_used);
+                $max = $max === null ? $servingsFromRow : min($max, $servingsFromRow);
+            }
+            return $max === null ? null : max(0, $max);
+        }
+
+        if ($this->inventory_item_id) {
+            $inv = $this->relationLoaded('inventoryItem')
+                ? $this->inventoryItem
+                : $this->inventoryItem()->first();
+
+            $amountUsed = (float) ($this->inventory_amount_used ?: 1);
+            if (!$inv || $amountUsed <= 0) {
+                return null;
+            }
+
+            return max(0, (int) floor($this->freeQuantity($inv, $reserved) / $amountUsed));
+        }
+
+        return null;
+    }
+
+    /**
+     * True when the item is still orderable but the servings its recipe can
+     * still cover (remainingServings()) have dropped to, or below, the
+     * config('inventory.low_stock_threshold') line (default 3) — and are
+     * still above 0, since 0 is "Out of Stock", handled elsewhere. Drives
+     * the "N stocks left" badge on the menu grid and item page;
+     * remainingServings() supplies the N.
+     */
+    public function isLowOnIngredientStock(?array $reserved = null): bool
+    {
+        if (!$this->hasRecipe() || !$this->hasIngredientStock(1, $reserved)) {
+            return false; // no recipe, or already out of stock — not "low", handled elsewhere
+        }
+
+        $remaining = $this->remainingServings($reserved);
+
+        return $remaining !== null
+            && $remaining > 0
+            && $remaining <= (int) config('inventory.low_stock_threshold', 3);
     }
 
     /**

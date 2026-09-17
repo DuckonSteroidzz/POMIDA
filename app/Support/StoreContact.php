@@ -25,11 +25,33 @@ use App\Models\Setting;
 class StoreContact
 {
     /**
+     * Per-request memoization only (no cross-request cache): each call site
+     * (e.g. OrderController) resolves the same branch's contact info multiple
+     * times in a single request. A settings edit always happens in its own,
+     * separate request, so there's nothing to invalidate — the next request
+     * starts with an empty cache and reads fresh rows.
+     *
+     * @var array<int|string, array<string, string>>
+     */
+    private static array $cache = [];
+
+    /** Reset the per-request memoization. Called after every request (see AppServiceProvider) and by tests. */
+    public static function clearCache(): void
+    {
+        self::$cache = [];
+    }
+
+    /**
      * @return array{business_name:string,address:string,contact_number:string,email:string,facebook_url:string,instagram_url:string,tiktok_url:string,other_social_url:string}
      */
     public static function forBranch(int|string|null $branchId): array
     {
         $branchId = is_numeric($branchId) ? (int) $branchId : null;
+        $cacheKey = $branchId ?? '__default__';
+
+        if (array_key_exists($cacheKey, self::$cache)) {
+            return self::$cache[$cacheKey];
+        }
 
         $branch = $branchId ? Branch::find($branchId) : null;
 
@@ -49,11 +71,11 @@ class StoreContact
             return Setting::get($key, $default, null);
         };
 
-        return [
+        return self::$cache[$cacheKey] = [
             'business_name'    => $branch?->name ?? $getSetting('business_name', 'Peachy Cakes & Deli Cafe'),
-            'address'          => $branch?->address ?? $getSetting('business_address', ''),
-            'contact_number'   => $branch?->contact_number ?? $getSetting('business_contact', '0917 120 3627'),
-            'email'            => $branch?->email ?? $getSetting('business_email', 'peachycakesdelicafe@gmail.com'),
+            'address'          => $branch?->address ?? $getSetting('contact_address', ''),
+            'contact_number'   => $branch?->contact_number ?? $getSetting('contact_phone', '0917 120 3627'),
+            'email'            => $branch?->email ?? $getSetting('contact_email', 'peachycakesdelicafe@gmail.com'),
             'facebook_url'     => $getSetting('facebook_url'),
             'instagram_url'    => $getSetting('instagram_url'),
             'tiktok_url'       => $getSetting('tiktok_url'),

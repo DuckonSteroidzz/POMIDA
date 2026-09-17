@@ -679,12 +679,59 @@
         @media (prefers-reduced-motion: reduce) {
             * { animation: none !important; transition: none !important; }
         }
+
+        /*
+           Navigation loading indicator, 2026-09-14.
+
+           This portal does real full-page navigations for every link, form
+           submit and the branch-select dropdown (see the sidebar comment
+           above), and until now none of them gave any visual sign that a
+           request was in flight — a slow page load on mobile data looked
+           identical to a hung one, reported as "unresponsive/frozen". This
+           is a thin top bar that fills in over ~1.5s (never claiming 100%,
+           since the real end is the next document replacing this one) and
+           is shown from `beforeunload`, which fires for every way this app
+           leaves a page: <a> clicks, <form> submits, and the branch
+           dropdown's `window.location.href =` navigation alike. There is
+           nothing to hide it on completion — the browser discards this
+           document and paints the next one, which starts with the bar
+           reset (0 width, transitions off) rather than carrying over.
+        */
+        #pc-nav-progress {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 0%;
+            height: 3px;
+            background: linear-gradient(90deg, var(--pc-peach) 0%, var(--pc-red) 100%);
+            z-index: 2000;
+            opacity: 0;
+            transition: width 1.4s cubic-bezier(0.1, 0.7, 0.3, 1), opacity 0.2s ease;
+            pointer-events: none;
+        }
+
+        #pc-nav-progress.pc-nav-progress-active {
+            opacity: 1;
+            width: 80%;
+        }
     </style>
 
     @stack('styles')
 </head>
 
 <body>
+
+    {{-- See the loading-indicator comment above the #pc-nav-progress rule. --}}
+    <div id="pc-nav-progress"></div>
+    <script>
+        (function () {
+            var bar = document.getElementById('pc-nav-progress');
+            if (!bar) { return; }
+            window.addEventListener('beforeunload', function () {
+                bar.classList.add('pc-nav-progress-active');
+            });
+        })();
+    </script>
 
     @php
         // Get the currently logged-in ADMIN/STAFF user
@@ -919,7 +966,8 @@
                 'admin.menu-items',
                 'admin.summary',
                 'admin.qr-generator',
-                'admin.ads'
+                'admin.ads',
+                'admin.analytics'
             );
 
             // This is the internal admin picker, not a customer-facing one —
@@ -955,12 +1003,33 @@
                     Viewing:
 
                     <span class="value">
-                        @php
-                            $viewingBranch = $selectedBranchId === 'all' ? null : $allBranches->find($selectedBranchId);
-                        @endphp
-                        {{ $viewingBranch
-                            ? $viewingBranch->name . (!$viewingBranch->is_active ? ' (Closed)' : '')
-                            : 'All Branches' }}
+                        @if($adminUser && $adminUser->role === 'admin')
+                            @php
+                                $viewingBranch = $selectedBranchId === 'all' ? null : $allBranches->find($selectedBranchId);
+                            @endphp
+                            {{ $viewingBranch
+                                ? $viewingBranch->name . (!$viewingBranch->is_active ? ' (Closed)' : '')
+                                : 'All Branches' }}
+                        @else
+                            {{--
+                                Staff and supervisor are locked sa sariling branch — this
+                                headline value used to be computed from
+                                session('selected_branch_id'), which the picker below sets
+                                but which a staff/supervisor session never populates (they
+                                have no picker), so it silently read the 'all' default and
+                                the row said "Viewing: All Branches" for someone who was
+                                actually locked to one branch the whole time — while the
+                                data on the page underneath was correctly scoped by
+                                getSelectedBranch()/AdminOrderAccess::lockedBranchId(). Same
+                                fallback rule as the (now-removed) second badge that used to
+                                sit here: 'Main Branch' for staff, whose missing branch
+                                resolves to branch 1; a branchless supervisor is denied
+                                everything instead (locked to 0), so 'No branch assigned' is
+                                told plainly rather than lying that they see Main Branch.
+                            --}}
+                            {{ $adminUser?->branch?->name
+                                ?? ($adminUser?->role === 'staff' ? 'Main Branch' : 'No branch assigned') }}
+                        @endif
                     </span>
                 </span>
 
@@ -992,29 +1061,6 @@
                         </select>
 
                     </div>
-
-                @else
-
-                    {{-- Staff and supervisor — locked sa sariling branch, no
-                         picker at all. Hiding it is NOT the control: GET
-                         admin/branches/select/{branch} lives in the
-                         `role:admin` route group, so typing the URL is refused
-                         server-side by RoleMiddleware. This is only the label
-                         shown in the picker's place.
-
-                         'Main Branch' as the fallback is kept for staff, whose
-                         missing branch AdminOrderAccess::lockedBranchId() does
-                         resolve to branch 1. A supervisor with no branch is
-                         denied everything instead (locked to 0), so telling
-                         them they are viewing Main Branch would be a plain
-                         lie about what they can see. --}}
-                    @if($adminUser)
-                        <span class="label">
-                            <i class="bi bi-building"></i>
-                            {{ $adminUser->branch?->name
-                                ?? ($adminUser->role === 'staff' ? 'Main Branch' : 'No branch assigned') }}
-                        </span>
-                    @endif
 
                 @endif
 
@@ -1061,6 +1107,61 @@
                 setTimeout(function () { toast.remove(); }, 400);
             }, 2500);
         });
+    </script>
+
+    <script>
+        // Shared in-page print helper for every admin print action (Analytics,
+        // Completed Orders, receipts): fetches the existing print route's HTML
+        // — same Blade view and @media print CSS as before, nothing duplicated
+        // — into a hidden iframe and prints THAT, so the admin never leaves the
+        // current page or sees a new tab. `credentials: 'same-origin'` carries
+        // the admin session cookie so the print route's own auth/branch-scope
+        // checks still run exactly as before.
+        function printInFrame(url) {
+            fetch(url, { credentials: 'same-origin' })
+                .then(function (response) {
+                    if (!response.ok) {
+                        throw new Error('Print request failed (' + response.status + ')');
+                    }
+                    return response.text();
+                })
+                .then(function (html) {
+                    var iframe = document.createElement('iframe');
+                    iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;';
+                    iframe.setAttribute('aria-hidden', 'true');
+
+                    var cleanup = function () {
+                        setTimeout(function () {
+                            if (iframe.parentNode) iframe.remove();
+                        }, 1000);
+                    };
+
+                    iframe.onload = function () {
+                        try {
+                            iframe.contentWindow.addEventListener('afterprint', cleanup, { once: true });
+                        } catch (e) { /* cross-origin content would throw; never expected here */ }
+
+                        // `load` fires once the srcdoc HTML/resources are parsed, but the
+                        // iframe's layout/paint isn't guaranteed to have run yet — calling
+                        // print() synchronously here shows a blank preview until the dialog
+                        // is cancelled. A short delay lets the browser finish rendering first.
+                        setTimeout(function () {
+                            iframe.contentWindow.focus();
+                            iframe.contentWindow.print();
+                        }, 250);
+                    };
+
+                    document.body.appendChild(iframe);
+                    iframe.srcdoc = html;
+
+                    // Fallback in case afterprint never fires (older browsers/dialog dismissed oddly).
+                    setTimeout(cleanup, 60000);
+                })
+                .catch(function (err) {
+                    console.error(err);
+                    alert('Could not open the print view. Please try again.');
+                });
+        }
     </script>
 
     @stack('scripts')

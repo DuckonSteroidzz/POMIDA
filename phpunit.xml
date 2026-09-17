@@ -22,8 +22,18 @@
         <env name="APP_MAINTENANCE_DRIVER" value="file"/>
         <env name="BCRYPT_ROUNDS" value="4"/>
         <env name="CACHE_STORE" value="array"/>
-        <!-- <env name="DB_CONNECTION" value="sqlite"/> -->
-        <!-- <env name="DB_DATABASE" value=":memory:"/> -->
+        <!--
+            Hard isolation from the dev database, added 2026-09-14 after
+            RefreshDatabase's migrate:fresh wiped pomida_db: this file had NO
+            override here (both lines below were commented out) and no
+            .env.testing existed, so every test run migrated the SAME
+            database `php artisan serve` uses. pomida_db_testing is a
+            dedicated, empty MySQL database (same server/credentials, just a
+            different name) that only the test suite ever touches — kept on
+            MySQL rather than switched to sqlite so tests that rely on
+            MySQL-specific SQL keep working unchanged.
+        -->
+        <env name="DB_DATABASE" value="pomida_db_testing"/>
         <env name="MAIL_MAILER" value="array"/>
         <env name="PULSE_ENABLED" value="false"/>
         <env name="QUEUE_CONNECTION" value="sync"/>

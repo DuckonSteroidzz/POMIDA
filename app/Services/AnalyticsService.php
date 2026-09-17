@@ -303,6 +303,98 @@ class AnalyticsService
         return $base->orderBy('item_name')->get();
     }
 
+    // ══════════ Date-range KPIs (Analytics page redesign, Sept 2026) ══════════
+
+    /**
+     * Total completed-order sales within [start, end], inclusive, scoped by
+     * branch exactly like every other aggregate in this class.
+     */
+    public function salesForRange(\Carbon\Carbon $start, \Carbon\Carbon $end): float
+    {
+        return (float) $this->applyOrderBranchScope(
+            Order::where('status', 'completed')
+                ->whereBetween('completed_at', [$start, $end])
+        )->sum('total');
+    }
+
+    public function ordersCountForRange(\Carbon\Carbon $start, \Carbon\Carbon $end): int
+    {
+        return (int) $this->applyOrderBranchScope(
+            Order::where('status', 'completed')
+                ->whereBetween('completed_at', [$start, $end])
+        )->count();
+    }
+
+    /** Null when there are no completed orders in the range — nothing to average. */
+    public function averageOrderValueForRange(\Carbon\Carbon $start, \Carbon\Carbon $end): ?float
+    {
+        $orders = $this->ordersCountForRange($start, $end);
+        if ($orders === 0) {
+            return null;
+        }
+        return round($this->salesForRange($start, $end) / $orders, 2);
+    }
+
+    public function averageRatingForRange(\Carbon\Carbon $start, \Carbon\Carbon $end): ?float
+    {
+        $q = DB::table('order_ratings')
+            ->join('orders', 'order_ratings.order_id', '=', 'orders.id')
+            ->whereBetween('order_ratings.created_at', [$start, $end]);
+
+        if ($this->branchScope !== 'all') {
+            $q->where('orders.branch_id', $this->branchScope);
+        }
+
+        $avg = $q->avg('order_ratings.rating');
+
+        return $avg !== null ? round((float) $avg, 2) : null;
+    }
+
+    /** One bar per calendar day spanned by [start, end], inclusive. */
+    public function dailySalesSeriesForRange(\Carbon\Carbon $start, \Carbon\Carbon $end): array
+    {
+        $labels = [];
+        $values = [];
+
+        $cursor = $start->copy()->startOfDay();
+        $last = $end->copy()->startOfDay();
+
+        while ($cursor->lte($last)) {
+            $labels[] = $cursor->format('M d');
+            $values[] = (float) $this->applyOrderBranchScope(
+                Order::where('status', 'completed')->whereDate('completed_at', $cursor->toDateString())
+            )->sum('total');
+            $cursor->addDay();
+        }
+
+        return ['labels' => $labels, 'values' => $values];
+    }
+
+    /** Best-selling items by quantity, within [start, end] instead of a fixed 30-day window. */
+    public function topProductsForRange(\Carbon\Carbon $start, \Carbon\Carbon $end, int $limit = 5)
+    {
+        $branchScope = $this->branchScope;
+        return OrderItem::query()
+            ->select(
+                'menu_item_id',
+                DB::raw('SUM(quantity) as total_qty'),
+                DB::raw('SUM(subtotal) as total_revenue')
+            )
+            ->whereNotNull('menu_item_id')
+            ->whereHas('order', function ($q) use ($branchScope, $start, $end) {
+                $q->where('status', 'completed')
+                    ->whereBetween('completed_at', [$start, $end]);
+                if ($branchScope !== 'all') {
+                    $q->where('branch_id', $branchScope);
+                }
+            })
+            ->groupBy('menu_item_id')
+            ->orderByDesc('total_qty')
+            ->limit($limit)
+            ->with('menuItem')
+            ->get();
+    }
+
     // ══════════ Trend chart (last N days) ══════════
 
     public function dailyTrend(int $days = 14): array

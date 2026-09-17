@@ -14,34 +14,82 @@ use RuntimeException;
 /**
  * Single source of truth for inventory math triggered by orders.
  *
- * Two phases:
- *   1. validateStock()    — read-only check. Returns [] when okay, otherwise
- *                           a list of human-readable messages.
+ * Two phases, and only these two are order guards:
+ *   1. cartShortfalls()   — THE stock gate. Counts what open orders have
+ *                           already committed, and with $lock = true takes
+ *                           SELECT … FOR UPDATE so two simultaneous orders
+ *                           queue up instead of both passing. BOTH doors into
+ *                           the pantry call it as the first statement of their
+ *                           order transaction — the customer checkout
+ *                           (OrderController::placeOrder) and the walk-in
+ *                           counter (AdminController::storeManualOrder).
  *   2. deductWithLock()   — inside a DB::transaction(), locks every inventory
  *                           row it will touch, subtracts stock and writes a
  *                           stock_movements row per inventory item touched.
+ *                           Called from exactly one place,
+ *                           AdminController::completeOrder(), because
+ *                           completion is the only moment stock actually
+ *                           leaves the shelf.
  *
- * Both methods aggregate quantities per inventory_id so that an ingredient
- * shared between the base recipe and a selected option is only checked /
- * deducted once. Only SELECTED menu options affect anything.
+ * validateCartLines() below is NOT one of them — see the warning on it.
+ *
+ * Every method here aggregates quantities per inventory_id so that an
+ * ingredient shared between the base recipe and a selected option is only
+ * checked / deducted once. Only SELECTED menu options affect anything.
+ *
+ * PRECISION. Recipes are decimal(10,3) and inventory.quantity is
+ * decimal(12,3) — they have to match. It used to be decimal(10,2), so a
+ * recipe line finer than a hundredth was rounded away on write: the
+ * stock_movements row was correct, the shelf never moved, and nothing threw.
+ * See the 2026_09_16_000002 migration and the Inventory model's $casts.
+ *
+ * BRANCH-AWARE OPTION DEDUCTION (Phase 3 audit, Finding #3, Sept 2026).
+ * menu_options/menu_item_options/order_item_options stay global tables on
+ * purpose — see App\Models\MenuOption::isMappedForBranch() for why. What
+ * changed is requirementsForLine(): an option's ingredient links
+ * (MenuOptionIngredient) can each point at a DIFFERENT branch's inventory
+ * row, and only the one matching the order/cart's own branch is ever
+ * deducted. Reproduced live before this fix (rolled-back transaction,
+ * pomida_db_testing): a Branch B order selecting an option whose only
+ * ingredient link pointed at Branch A's inventory silently deducted
+ * Branch A's stock, and a Branch A shortage blocked the Branch B order with
+ * an indistinguishable "Not enough <ingredient>" message.
  */
 class InventoryDeductionService
 {
     /**
      * Compute the total required quantity per inventory_id for one cart line.
      *
-     * @param  MenuItem  $menuItem
-     * @param  int       $quantity              How many of this menu item.
-     * @param  int[]     $selectedOptionIds     Option ids the customer picked.
+     * @param  MenuItem   $menuItem
+     * @param  int        $quantity              How many of this menu item.
+     * @param  int[]      $selectedOptionIds     Option ids the customer picked.
+     * @param  int|null   $branchId              The order/cart's OWN branch (Phase 3
+     *                                            audit, Finding #3). menu_options is a
+     *                                            global table, but each ingredient link
+     *                                            an option carries (MenuOptionIngredient)
+     *                                            points at ONE branch's inventory row —
+     *                                            branches never share stock, no
+     *                                            exceptions. Only the link matching this
+     *                                            branch is deducted; every other branch's
+     *                                            link for the same option is ignored.
+     *                                            Base-recipe rows are unaffected — a menu
+     *                                            item's own recipe already points at its
+     *                                            own branch's inventory (enforced at
+     *                                            write time by
+     *                                            inventoryIsSelectableForBranch()).
      * @return array<int,float>                 [inventory_id => amount]
      */
-    public function requirementsForLine(MenuItem $menuItem, int $quantity, array $selectedOptionIds): array
+    public function requirementsForLine(MenuItem $menuItem, int $quantity, array $selectedOptionIds, ?int $branchId = null): array
     {
         $needs = [];
 
-        // Base recipe. Query the relation directly so we always get a Collection,
-        // never null, regardless of eager-loading state.
-        $recipe = $menuItem->recipeIngredients()->get();
+        // Base recipe. Always ends up a Collection, never null, regardless of
+        // eager-loading state — but an eager-loaded relation is reused rather
+        // than re-queried, which is what keeps committedQuantities() below to a
+        // handful of queries instead of one per open order line.
+        $recipe = $menuItem->relationLoaded('recipeIngredients')
+            ? $menuItem->recipeIngredients
+            : $menuItem->recipeIngredients()->get();
 
         if ($recipe->isEmpty()) {
             // Legacy single-ingredient fallback for items that pre-date the recipe table.
@@ -58,9 +106,18 @@ class InventoryDeductionService
 
         // Selected options only.
         if (!empty($selectedOptionIds)) {
-            $options = MenuOption::with('ingredients')->whereIn('id', $selectedOptionIds)->get();
+            $options = MenuOption::with('ingredients.inventory')->whereIn('id', $selectedOptionIds)->get();
             foreach ($options as $option) {
                 foreach ($option->ingredients as $row) {
+                    // Branch filter. $branchId === null means the caller has no
+                    // branch to resolve (should never happen on a real order/cart
+                    // path — every call site below supplies one) — deduct nothing
+                    // rather than guess, which is the failure mode that used to
+                    // silently drain another branch's stock. Same for a row whose
+                    // inventory doesn't match this branch, or is missing entirely.
+                    if ($branchId === null || !$row->inventory || (int) $row->inventory->branch_id !== $branchId) {
+                        continue;
+                    }
                     $needs[$row->inventory_id] = ($needs[$row->inventory_id] ?? 0)
                         + ((float) $row->quantity_used * $quantity);
                 }
@@ -71,52 +128,35 @@ class InventoryDeductionService
     }
 
     /**
-     * Returns [] when there is enough stock for everything in the order.
-     * Otherwise returns a list of "Not enough <ingredient> for <item> ..." messages.
+     * RAW pantry check — NOT an order guard. Use cartShortfalls() for that.
      *
-     * @param  Order  $order  Must have items.menuItem.ingredients + items.options loaded
-     *                        when called against a persisted order. For the cart we use
-     *                        validateCart() below instead.
-     * @return string[]
-     */
-    public function validateStock(Order $order): array
-    {
-        $errors = [];
-
-        foreach ($order->items as $orderItem) {
-            $menuItem = $orderItem->menuItem;
-            if (!$menuItem) {
-                continue;
-            }
-
-            $selectedOptionIds = $orderItem->options->pluck('id')->all();
-            $needs = $this->requirementsForLine($menuItem, (int) $orderItem->quantity, $selectedOptionIds);
-
-            foreach ($needs as $inventoryId => $amount) {
-                $inv = Inventory::find($inventoryId);
-                if (!$inv) {
-                    continue;
-                }
-                if ($amount > (float) $inv->quantity) {
-                    $errors[] = 'Not enough ' . $inv->item_name . ' for ' . $menuItem->name
-                        . ' (need ' . rtrim(rtrim(number_format($amount, 3), '0'), '.')
-                        . ' ' . $inv->unit . ', have ' . $inv->quantity . ').';
-                }
-            }
-        }
-
-        return $errors;
-    }
-
-    /**
-     * Same shape as validateStock() but works off the in-memory cart, which is the
-     * format the customer checkout posts (an array of items, each with quantity
-     * and an array of selected options).
+     * This measures the requested lines against inventory.quantity exactly as
+     * it stands, with no row lock and without subtracting what already-placed
+     * orders have committed. Since stock only leaves the shelf at completion,
+     * that makes it blind to every pending order in the kitchen: it will
+     * happily approve the last serving twice.
+     *
+     * The walk-in counter used to gate orders on this, which is how staff
+     * could sell a serving an online order had already claimed — and because a
+     * manual order is written payment_status = 'paid', the shortage only
+     * surfaced later, at completion, on an order already paid for. Both order
+     * paths call cartShortfalls() now. What is left here is the honest
+     * "what does the shelf literally hold" question, which is all the
+     * remaining callers (tests asserting the branch-aware requirement walk)
+     * ask of it.
+     *
+     * Works off the in-memory cart format the customer checkout posts (an
+     * array of items, each with quantity and an array of selected options).
      *
      * @param  array<int, array{menu_item: MenuItem, quantity:int, selected_option_ids:int[]}>  $lines
+     * @param  int|null  $branchId  The one branch this whole cart/order targets — see
+     *                              requirementsForLine(). A single cart/order always
+     *                              targets exactly one branch (enforced upstream by the
+     *                              branch_mismatch backstop), so one value applies to
+     *                              every line.
      * @return string[]
      */
-    public function validateCartLines(array $lines): array
+    public function validateCartLines(array $lines, ?int $branchId = null): array
     {
         $totals = [];   // inventory_id => amount
         $labels = [];   // inventory_id => first item that needed it (for the message)
@@ -125,7 +165,8 @@ class InventoryDeductionService
             $needs = $this->requirementsForLine(
                 $line['menu_item'],
                 (int) $line['quantity'],
-                $line['selected_option_ids'] ?? []
+                $line['selected_option_ids'] ?? [],
+                $branchId
             );
             foreach ($needs as $invId => $amount) {
                 $totals[$invId] = ($totals[$invId] ?? 0) + $amount;
@@ -150,6 +191,220 @@ class InventoryDeductionService
     }
 
     /**
+     * Order statuses that have COMMITTED stock without having spent it yet.
+     *
+     * Inventory is only ever decremented when staff completes an order
+     * (deductWithLock() below). An order sitting in any of these statuses has
+     * therefore been promised to a customer but is still invisible in
+     * inventory.quantity — which is precisely what let two customers be sold
+     * the same last unit. 'completed' is excluded because its stock is already
+     * gone from quantity (counting it again would block sales the pantry can
+     * still cover); 'cancelled' is excluded because it never deducts at all.
+     */
+    public const COMMITTED_ORDER_STATUSES = ['pending', 'preparing', 'serving'];
+
+    /**
+     * How much of each inventory row is already spoken for by orders that have
+     * been placed but not yet completed.
+     *
+     * Keyed by inventory_id, which is branch-safe on its own: an inventory row
+     * belongs to exactly one branch and branches never share stock, so summing
+     * across every open order can never mix two branches' pantries.
+     *
+     * @param  int|null  $excludeOrderId  Ignore this order's own lines — used when
+     *                                    re-validating an order that already exists.
+     * @return array<int,float>  [inventory_id => amount committed]
+     */
+    public function committedQuantities(?int $excludeOrderId = null): array
+    {
+        $orders = Order::whereIn('status', self::COMMITTED_ORDER_STATUSES)
+            ->when($excludeOrderId !== null, fn ($q) => $q->whereKeyNot($excludeOrderId))
+            ->with([
+                'items.menuItem.recipeIngredients',
+                'items.options.ingredients.inventory',
+            ])
+            ->get();
+
+        $totals = [];
+
+        foreach ($orders as $order) {
+            foreach ($this->totalRequirements($order) as $invId => $amount) {
+                $totals[$invId] = ($totals[$invId] ?? 0) + $amount;
+            }
+        }
+
+        return $totals;
+    }
+
+    /**
+     * The customer-facing refusal for one menu item that cannot be supplied in
+     * the quantity asked for. Single source of the wording so the cart guard,
+     * the quantity control and checkout all phrase it identically.
+     *
+     * The zero case deliberately keeps the long-standing
+     * "out of stock due to ingredient availability" phrasing — that exact
+     * sentence is what the Out-of-Stock UI and its tests already speak.
+     */
+    public function shortfallMessage(string $itemName, int $available, int $requested): string
+    {
+        if ($available <= 0) {
+            return 'Sorry, ' . $itemName
+                . ' is currently out of stock due to ingredient availability'
+                . ' — please remove it from your order.';
+        }
+
+        return 'Only ' . $available . ' ' . $itemName . ' left in stock'
+            . ' — please adjust your order (you asked for ' . $requested . ').';
+    }
+
+    /**
+     * How many more units of $menuItem can still be promised right now:
+     * inventory MINUS everything open orders have already committed.
+     *
+     * Returns null when nothing constrains the item (no recipe and no legacy
+     * link), matching MenuItem::remainingServings()'s "unmeasurable" case.
+     *
+     * @param  array<int,float>|null  $committed  Pass a map from committedQuantities()
+     *                                            to avoid recomputing it per item.
+     */
+    public function unitsAvailableFor(
+        MenuItem $menuItem,
+        ?int $branchId = null,
+        array $selectedOptionIds = [],
+        ?array $committed = null
+    ): ?int {
+        $perUnit = $this->requirementsForLine($menuItem, 1, $selectedOptionIds, $branchId);
+
+        if (empty($perUnit)) {
+            return null;
+        }
+
+        $committed = $committed ?? $this->committedQuantities();
+        $inventory = Inventory::whereIn('id', array_keys($perUnit))->get()->keyBy('id');
+
+        $max = null;
+
+        foreach ($perUnit as $invId => $amount) {
+            if ($amount <= 0) {
+                continue;
+            }
+
+            $inv = $inventory->get($invId);
+            if (!$inv) {
+                continue; // Missing row — never blocks, same as the checks above.
+            }
+
+            $free = (float) $inv->quantity - (float) ($committed[$invId] ?? 0);
+            $canMake = (int) floor($free / $amount);
+            $max = $max === null ? $canMake : min($max, $canMake);
+        }
+
+        return $max === null ? null : max(0, $max);
+    }
+
+    /**
+     * THE checkout stock gate. Returns one customer-facing message per cart
+     * line that cannot be supplied — every short line, not just the first, so
+     * a customer fixing a multi-item order is told about all of it at once.
+     *
+     * Lines are settled in cart order against a running pool, so two lines
+     * sharing an ingredient cannot both be told the whole remaining stock is
+     * theirs.
+     *
+     * @param  array<int, array{menu_item: MenuItem, quantity:int, selected_option_ids?:int[]}>  $lines
+     * @param  bool  $lock  SELECT … FOR UPDATE the inventory rows first. Only valid
+     *                      inside a transaction; this is what makes two simultaneous
+     *                      checkouts queue up instead of both passing the check.
+     * @return string[]
+     */
+    public function cartShortfalls(array $lines, ?int $branchId = null, bool $lock = false): array
+    {
+        $perUnit = [];
+        $ids = [];
+
+        foreach ($lines as $i => $line) {
+            $needs = $this->requirementsForLine(
+                $line['menu_item'],
+                1,
+                $line['selected_option_ids'] ?? [],
+                $branchId
+            );
+
+            $perUnit[$i] = $needs;
+            foreach (array_keys($needs) as $invId) {
+                $ids[$invId] = true;
+            }
+        }
+
+        if (empty($ids)) {
+            return [];
+        }
+
+        // Same ordering as deductWithLock() so the two paths can never grab the
+        // same rows in opposite orders and deadlock each other.
+        $ids = array_keys($ids);
+        sort($ids);
+
+        $inventory = Inventory::whereIn('id', $ids)
+            ->when($lock, fn ($q) => $q->lockForUpdate())
+            ->get()
+            ->keyBy('id');
+
+        // Read AFTER the lock above, so a checkout that just lost the race sees
+        // the winner's order rather than the pantry as it looked before it.
+        $committed = $this->committedQuantities();
+
+        $remaining = [];
+        foreach ($ids as $invId) {
+            $inv = $inventory->get($invId);
+            $remaining[$invId] = $inv
+                ? (float) $inv->quantity - (float) ($committed[$invId] ?? 0)
+                : null; // Missing row — treated as unconstrained, as everywhere else.
+        }
+
+        $messages = [];
+
+        foreach ($lines as $i => $line) {
+            $needs = $perUnit[$i];
+            if (empty($needs)) {
+                continue; // No recipe / no legacy link — the recipe guard's business.
+            }
+
+            $requested = (int) $line['quantity'];
+            $max = null;
+
+            foreach ($needs as $invId => $amount) {
+                if ($amount <= 0 || $remaining[$invId] === null) {
+                    continue;
+                }
+                $canMake = (int) floor($remaining[$invId] / $amount);
+                $max = $max === null ? $canMake : min($max, $canMake);
+            }
+
+            if ($max === null) {
+                continue;
+            }
+
+            $max = max(0, $max);
+
+            // Whatever this line can actually have is taken out of the pool so
+            // the next line is judged against what is genuinely left.
+            $granted = min($requested, $max);
+            foreach ($needs as $invId => $amount) {
+                if ($remaining[$invId] !== null) {
+                    $remaining[$invId] -= $amount * $granted;
+                }
+            }
+
+            if ($requested > $max) {
+                $messages[] = $this->shortfallMessage($line['menu_item']->name, $max, $requested);
+            }
+        }
+
+        return $messages;
+    }
+
+    /**
      * Aggregate every line in the order into [inventory_id => total amount needed].
      * Helper for the locked deduction below.
      *
@@ -164,7 +419,12 @@ class InventoryDeductionService
                 continue;
             }
             $selectedOptionIds = $orderItem->options->pluck('id')->all();
-            $needs = $this->requirementsForLine($menuItem, (int) $orderItem->quantity, $selectedOptionIds);
+            $needs = $this->requirementsForLine(
+                $menuItem,
+                (int) $orderItem->quantity,
+                $selectedOptionIds,
+                $order->branch_id !== null ? (int) $order->branch_id : null
+            );
             foreach ($needs as $invId => $amount) {
                 $totals[$invId] = ($totals[$invId] ?? 0) + $amount;
             }
@@ -224,7 +484,12 @@ class InventoryDeductionService
                 continue;
             }
             $selectedOptionIds = $orderItem->options->pluck('id')->all();
-            $needs = $this->requirementsForLine($menuItem, (int) $orderItem->quantity, $selectedOptionIds);
+            $needs = $this->requirementsForLine(
+                $menuItem,
+                (int) $orderItem->quantity,
+                $selectedOptionIds,
+                $order->branch_id !== null ? (int) $order->branch_id : null
+            );
             if (empty($needs)) {
                 continue;
             }
@@ -255,7 +520,14 @@ class InventoryDeductionService
 
             foreach ($needs as $invId => $amount) {
                 $inv = $locked->get($invId);
-                $inv->quantity = (float) $inv->quantity - $amount;
+
+                // round(…, 3) to the precision the column actually stores
+                // (decimal(12,3)) rather than letting binary float noise —
+                // 9.995999999999999 for 10 - 0.004 — reach the database and
+                // the stock_movements row separately. quantity_after is read
+                // back off the model straight after, so the audit log and the
+                // shelf can never disagree.
+                $inv->quantity = round((float) $inv->quantity - $amount, 3);
                 $inv->save();
 
                 StockMovement::create([

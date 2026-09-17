@@ -76,6 +76,31 @@
     .voucher-form-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem 1.25rem;align-items:start;margin-bottom:1rem}
     @media (max-width:820px){.voucher-form-grid{grid-template-columns:repeat(2,1fr)}}
     @media (max-width:560px){.voucher-form-grid{grid-template-columns:1fr}}
+
+    /* ── Pagination — same visual language as admin/completed-orders.blade.php's
+         co-pager, copied rather than shared since this page carries its own
+         inline styles rather than a stylesheet include. ── */
+    .voucher-pager {
+        display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+        gap: 0.7rem; padding: 0.8rem 1rem; margin-top: 0.5rem;
+        border-top: 1px solid #F0E2D5; background: #FFFBF7; border-radius: 0 0 16px 16px;
+    }
+    .voucher-pager-info { font-size: 0.76rem; color: #8B7A72; font-weight: 600; }
+    .voucher-pager-nav { display: flex; align-items: center; gap: 0.3rem; flex-wrap: wrap; }
+    .voucher-page-btn {
+        min-width: 32px; height: 32px; padding: 0 0.5rem;
+        background: #fff; border: 1px solid #F0E2D5; border-radius: 9px;
+        font-family: 'Poppins', sans-serif; font-size: 0.76rem; font-weight: 700; color: #5B4740;
+        cursor: pointer; text-decoration: none;
+        display: inline-flex; align-items: center; justify-content: center;
+    }
+    .voucher-page-btn:hover:not(.is-disabled) { border-color: #F4845F; color: #C0392B; }
+    .voucher-page-btn.is-disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+    .voucher-page-btn.is-active {
+        background: linear-gradient(135deg, #F4845F, #EF8585);
+        color: #fff; border-color: transparent;
+    }
+    .voucher-page-gap { color: #C4B6AE; padding: 0 0.15rem; }
 </style>
 
 <p class="page-title">{{ $isAdmin ? 'Vouchers & Game' : 'Vouchers' }}</p>
@@ -278,7 +303,7 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
 
 <div class="content-card">
     <p style="font-size:0.9rem;font-weight:700;color:#333;margin-bottom:1rem;">
-        All Vouchers ({{ count($vouchers) }})
+        All Vouchers ({{ $vouchers->total() }})
         <span style="font-size:0.75rem;color:#888;font-weight:400;margin-left:0.5rem;">{{ $canAuthorVouchers ? 'Active vouchers appear on the spin wheel' : 'Share an active code with a customer' }}</span>
     </p>
 
@@ -440,6 +465,49 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
     <div style="text-align:center;padding:2rem;color:#aaa;font-size:0.85rem;">
         <i class="bi bi-ticket-perforated" style="font-size:2.5rem;display:block;margin-bottom:0.5rem;color:#ddd;"></i>
         No vouchers yet.@if($canAuthorVouchers) Create one above!@endif
+    </div>
+    @endif
+
+    {{-- Real server-side pagination (2026-09-14) — see the matching note in
+         admin/completed-orders.blade.php. This list used to load every
+         voucher ever minted on every visit. --}}
+    @if($vouchers->total() > 0 && ($vouchers->total() > 15 || $vouchers->lastPage() > 1))
+    <div class="voucher-pager">
+        <span class="voucher-pager-info">
+            Showing {{ $vouchers->firstItem() }}–{{ $vouchers->lastItem() }} of {{ $vouchers->total() }} vouchers
+        </span>
+        <div class="voucher-pager-nav">
+            <a href="{{ $vouchers->onFirstPage() ? '#' : $vouchers->previousPageUrl() }}"
+                class="voucher-page-btn {{ $vouchers->onFirstPage() ? 'is-disabled' : '' }}"
+                @if($vouchers->onFirstPage()) aria-disabled="true" onclick="return false;" @endif>
+                <i class="bi bi-chevron-left"></i>
+            </a>
+            @php
+                $vchCurrent = $vouchers->currentPage();
+                $vchLast = $vouchers->lastPage();
+                $vchPageNumbers = collect();
+                for ($i = 1; $i <= $vchLast; $i++) {
+                    if ($i === 1 || $i === $vchLast || abs($i - $vchCurrent) <= 1) {
+                        $vchPageNumbers->push($i);
+                    } elseif ($vchPageNumbers->last() !== '…') {
+                        $vchPageNumbers->push('…');
+                    }
+                }
+            @endphp
+            @foreach($vchPageNumbers as $vchPageNumber)
+                @if($vchPageNumber === '…')
+                    <span class="voucher-page-gap">…</span>
+                @else
+                    <a href="{{ $vouchers->url($vchPageNumber) }}"
+                        class="voucher-page-btn {{ $vchPageNumber === $vchCurrent ? 'is-active' : '' }}">{{ $vchPageNumber }}</a>
+                @endif
+            @endforeach
+            <a href="{{ $vouchers->hasMorePages() ? $vouchers->nextPageUrl() : '#' }}"
+                class="voucher-page-btn {{ $vouchers->hasMorePages() ? '' : 'is-disabled' }}"
+                @if(!$vouchers->hasMorePages()) aria-disabled="true" onclick="return false;" @endif>
+                <i class="bi bi-chevron-right"></i>
+            </a>
+        </div>
     </div>
     @endif
 </div>

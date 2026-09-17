@@ -96,6 +96,14 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
      * same lock staff did. Swapping the actor keeps this file testing the thing
      * it was written to test: that a branch-locked account cannot reach another
      * branch's record by typing its id.
+     *
+     * SINCE THEN: stock-in and stock-out went BACK to the all-three group, so
+     * for those two endpoints the reasoning above no longer applies and a
+     * staff actor tests the branch gate for real again. The manager cases
+     * below are kept rather than rewritten — a supervisor is still branch
+     * locked and that must not regress — and staff cases are added alongside
+     * them (see the "staff actor" block at the end of this file). The
+     * menu-item toggle is still manager-only, so it still uses this helper.
      */
     private function managerAt(int $branchId): User
     {
@@ -499,5 +507,116 @@ class StaffBranchScopeOnBranchRecordEndpointsTest extends TestCase
         $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
             ->postJson('/admin/tables/clear', ['branch_id' => $far->id, 'table_number' => '5'])
             ->assertStatus(403);
+    }
+
+    // ══════════════════ STAFF ACTOR — stock movement ══════════════════
+    //
+    // Staff regained stock-in / stock-out ("Update Stock" and "Stock
+    // Adjustments" are Y | Y | Y again), so for these two endpoints the branch
+    // gate is once more the ONLY thing standing between a counter account and
+    // another branch's shelf. That makes these the cases this file was
+    // originally written for: with the role gate open, a passing test here is
+    // proof the branch check itself is doing the work, not RoleMiddleware
+    // answering first.
+    //
+    // The manager versions above are deliberately kept. Both roles are in
+    // User::BRANCH_LOCKED_ROLES and both must stay locked; testing only the
+    // one whose role gate is open would let the other regress unnoticed.
+
+    public function test_staff_cannot_stock_in_another_branchs_inventory(): void
+    {
+        $far  = $this->otherBranch();
+        $item = $this->inventoryIn($far->id, 100);
+
+        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+            ->post('/admin/inventory/stock-in/' . $item->id, ['amount' => 25])
+            ->assertNotFound();
+
+        $this->assertSame(100.0, (float) $item->fresh()->quantity,
+            'the far branch quantity must be identical after a refused staff stock-in');
+        $this->assertSame(0, DB::table('stock_movements')->where('inventory_id', $item->id)->count(),
+            'a refused staff stock-in must not write a stock movement');
+    }
+
+    public function test_staff_can_stock_in_their_own_branchs_inventory(): void
+    {
+        $item = $this->inventoryIn(self::HOME_BRANCH, 100);
+
+        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+            ->post('/admin/inventory/stock-in/' . $item->id, ['amount' => 25])
+            ->assertRedirect();
+
+        $this->assertSame(125.0, (float) $item->fresh()->quantity);
+    }
+
+    public function test_staff_cannot_stock_out_another_branchs_inventory(): void
+    {
+        $far  = $this->otherBranch();
+        $item = $this->inventoryIn($far->id, 100);
+
+        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+            ->post('/admin/inventory/stock-out/' . $item->id, ['amount' => 40])
+            ->assertNotFound();
+
+        $this->assertSame(100.0, (float) $item->fresh()->quantity,
+            'writing down another branch\'s stock is how missing goods get hidden — '
+            . 'the branch lock is the only thing stopping it now that the role gate is open');
+        $this->assertSame(0, DB::table('stock_movements')->where('inventory_id', $item->id)->count());
+    }
+
+    public function test_staff_can_stock_out_their_own_branchs_inventory(): void
+    {
+        $item = $this->inventoryIn(self::HOME_BRANCH, 100);
+
+        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+            ->post('/admin/inventory/stock-out/' . $item->id, ['amount' => 40])
+            ->assertRedirect();
+
+        $this->assertSame(60.0, (float) $item->fresh()->quantity);
+    }
+
+    /**
+     * The refusal must not be a disclosure.
+     *
+     * A staff member probing ids must not be able to tell "that item belongs
+     * to another branch" from "no such item" — the first answer confirms a
+     * competitor branch stocks the thing, the second says nothing.
+     */
+    public function test_a_refused_staff_stock_movement_is_indistinguishable_from_a_missing_id(): void
+    {
+        $far   = $this->otherBranch();
+        $item  = $this->inventoryIn($far->id, 100);
+        $staff = $this->staffAt(self::HOME_BRANCH);
+
+        $missingId = (int) Inventory::max('id') + 99999;
+
+        $foreign = $this->actingAs($staff, 'admin')
+            ->post('/admin/inventory/stock-out/' . $item->id, ['amount' => 40]);
+        $missing = $this->actingAs($staff, 'admin')
+            ->post('/admin/inventory/stock-out/' . $missingId, ['amount' => 40]);
+
+        $this->assertSame($missing->getStatusCode(), $foreign->getStatusCode(),
+            'a foreign-branch inventory id must be refused exactly the way a nonexistent one is');
+        $foreign->assertDontSee($item->item_name, false);
+        $foreign->assertDontSee($far->name, false);
+    }
+
+    /**
+     * A non-numeric id is a router-level 404, not a TypeError 500.
+     *
+     * stockIn()/stockOut() type-hint `int $id`, so before whereNumber('id') was
+     * added to these two routes a crafted /admin/inventory/stock-in/abc reached
+     * the controller and blew up with an uncaught TypeError — a 500 and a stack
+     * trace where a 404 belongs.
+     */
+    public function test_a_non_numeric_inventory_id_is_a_clean_404(): void
+    {
+        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+            ->post('/admin/inventory/stock-in/abc', ['amount' => 5])
+            ->assertNotFound();
+
+        $this->actingAs($this->staffAt(self::HOME_BRANCH), 'admin')
+            ->post('/admin/inventory/stock-out/abc', ['amount' => 5])
+            ->assertNotFound();
     }
 }

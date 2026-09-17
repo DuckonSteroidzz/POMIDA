@@ -67,7 +67,7 @@ class AdminTableScrollWrapperTest extends TestCase
 
         $this->assertTableIsWrappedForScroll(
             $html,
-            '<table style="width:100%; font-size:0.8rem;">',
+            '<table id="staffTable" style="width:100%; font-size:0.8rem;">',
             'Staff Accounts'
         );
     }
@@ -83,59 +83,30 @@ class AdminTableScrollWrapperTest extends TestCase
         }
     }
 
-    // ══════════ Analytics — four tables ══════════
+    // ══════════ Analytics — one table (Top 5 Products) since the Sept 2026
+    //             redesign to a simplified dashboard (Finding #7) removed
+    //             Best/Least Sellers, Branch Performance and Sales per Branch ══════════
 
-    public function test_all_four_analytics_tables_are_wrapped_for_horizontal_scroll(): void
+    public function test_analytics_top_products_table_is_wrapped_for_horizontal_scroll(): void
     {
         $html = $this->actingAs($this->admin(), 'admin')
             ->get('/admin/analytics')
             ->assertOk()
             ->getContent();
 
-        $needles = [
-            'Best Sellers'         => '<th style="padding:0.4rem; text-align:left;">#</th>',
-            'Least Sellers'        => '<i class="bi bi-graph-down" style="color:#888;"></i> Least Sellers',
-            'Branch Performance'   => '<th style="padding:0.4rem; text-align:left;">Branch</th>',
-        ];
-
-        // The actual <table> tags are identical across these sections, so the
-        // wrapper check runs against each <table ...> occurrence in document
-        // order rather than a per-section needle that could match text
-        // outside the table.
-        $tableOpenTag = '<table style="width:100%; font-size:0.78rem; border-collapse:collapse;">';
-        $count = substr_count($html, $tableOpenTag);
-
-        $this->assertGreaterThanOrEqual(
-            3,
-            $count,
-            'expected at least the Best Sellers / Least Sellers / Branch Performance tables to be present'
+        $this->assertTableIsWrappedForScroll(
+            $html,
+            '<table style="width:100%; font-size:0.78rem; border-collapse:collapse;">',
+            'Analytics Top 5 Products'
         );
-
-        $offset = 0;
-        for ($i = 0; $i < $count; $i++) {
-            $pos = strpos($html, $tableOpenTag, $offset);
-            $this->assertNotFalse($pos);
-
-            $wrapperPos = strrpos(substr($html, 0, $pos), 'overflow-x:auto');
-            $this->assertNotFalse($wrapperPos, "analytics table #{$i} has no overflow-x:auto wrapper before it");
-
-            $between = substr($html, $wrapperPos, $pos - $wrapperPos);
-            $this->assertSame(
-                0,
-                substr_count($between, '</div>'),
-                "analytics table #{$i}'s wrapper div closes before reaching the table"
-            );
-
-            $offset = $pos + strlen($tableOpenTag);
-        }
     }
 
-    public function test_analytics_best_sellers_table_still_has_its_original_columns(): void
+    public function test_analytics_top_products_table_still_has_its_original_columns(): void
     {
         $html = $this->actingAs($this->admin(), 'admin')->get('/admin/analytics')->getContent();
 
         $this->assertStringContainsString('Qty Sold', $html);
-        $this->assertStringContainsString('Best Sellers', $html);
+        $this->assertStringContainsString('Top 5 Products', $html);
     }
 
     // ══════════ the recipe sub-tables ══════════

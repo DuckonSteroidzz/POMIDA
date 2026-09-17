@@ -245,12 +245,13 @@ class CartQuantityInstantSyncTest extends TestCase
     // ══════════════════════════════════════════════════════════════════
 
     /**
-     * Even if the client lets a quantity past the stock limit through (a
-     * broken clamp), the existing placeOrder() stock re-validation must still
-     * catch it. This exercises that path directly with a throwaway
-     * recipe-backed item whose single ingredient only covers 3 servings.
+     * updateCart() (Sept 2026 fix) now refuses a quantity current inventory
+     * cannot cover, the same as addToCart() always has — so the client can no
+     * longer tap its way to an over-stock number sitting silently in the
+     * cart. This exercises that path directly with a throwaway recipe-backed
+     * item whose single ingredient only covers 3 servings.
      */
-    public function test_place_order_still_rejects_a_quantity_that_exceeds_ingredient_stock(): void
+    public function test_update_cart_refuses_a_quantity_that_exceeds_ingredient_stock(): void
     {
         $customer = $this->customer();
 
@@ -281,15 +282,65 @@ class CartQuantityInstantSyncTest extends TestCase
             'quantity_used' => 10,
         ]);
 
-        $before = (int) Order::max('id');
         $key = (string) $menuItem->id;
-
         $session = ['cart' => $this->cartFor($menuItem, 3), 'branch_id' => 1, 'order_type' => 'pick_up'];
 
-        // Client "allowed" 9; server must refuse.
+        // Client asks for 9; only 3 servings are covered — server refuses and
+        // reports the true max so the UI can revert to it.
         $this->actingAs($customer, 'customer')->withSession($session)
-            ->putJson("/customer/cart/update/{$key}", ['quantity' => 9])->assertOk();
-        $session['cart'][$key]['quantity'] = 9;
+            ->putJson("/customer/cart/update/{$key}", ['quantity' => 9])
+            ->assertStatus(422)
+            ->assertJson(['success' => false, 'max_quantity' => 3]);
+
+        // A within-stock update on the same item still succeeds — refusal is
+        // paired with acceptance, not a blanket block on this line.
+        $this->actingAs($customer, 'customer')->withSession($session)
+            ->putJson("/customer/cart/update/{$key}", ['quantity' => 3])
+            ->assertOk()
+            ->assertJson(['success' => true]);
+    }
+
+    /**
+     * Backstop: even if an over-stock quantity reaches the session cart some
+     * OTHER way than updateCart() (a stale session, a directly crafted
+     * request), placeOrder()'s own re-validation must still catch it — the
+     * updateCart() guard above is defense in depth, not the only line.
+     */
+    public function test_place_order_still_rejects_a_stale_over_stock_cart_line(): void
+    {
+        $customer = $this->customer();
+
+        $inventory = Inventory::create([
+            'branch_id'       => 1,
+            'item_name'       => 'CQIST Stale Ingredient ' . uniqid(),
+            'item_code'       => 'CQISTS-' . strtoupper(substr(uniqid(), -8)),
+            'quantity'        => 30,      // 10 per serving -> 3 servings max
+            'unit'            => 'g',
+            'low_stock_alert' => 1,
+            'unit_cost'       => 1,
+            'is_active'       => true,
+        ]);
+
+        $menuItem = MenuItem::create([
+            'category_id'   => Category::where('is_active', true)->value('id') ?? Category::value('id'),
+            'branch_id'     => 1,
+            'name'          => 'CQIST Stale Item ' . uniqid(),
+            'price'         => 100,
+            'cost'          => 0,
+            'is_available'  => true,
+            'display_order' => 0,
+        ]);
+
+        MenuItemIngredient::create([
+            'menu_item_id'  => $menuItem->id,
+            'inventory_id'  => $inventory->id,
+            'quantity_used' => 10,
+        ]);
+
+        $before = (int) Order::max('id');
+
+        // Session already holds 9 — simulating a route other than updateCart.
+        $session = ['cart' => $this->cartFor($menuItem, 9), 'branch_id' => 1, 'order_type' => 'pick_up'];
 
         $this->actingAs($customer, 'customer')->withSession($session)
             ->post('/customer/place-order', [

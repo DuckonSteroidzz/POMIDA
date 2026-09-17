@@ -21,6 +21,105 @@
            from the content's min-content, which the staff table blows past. */
         .staff-cols { grid-template-columns: minmax(0, 1fr); }
     }
+
+    /* Same scrolling-shadows technique as completed-orders.blade.php's
+       .co-table-card and inventory.blade.php's .iv-table-card. The 6-column
+       table (789px natural width) still doesn't fit its own wrapper once
+       .staff-cols splits into two side-by-side cards above 820px — there was
+       no cue at all that Role/Branch/Status/Action kept going past the
+       right edge. */
+    @media (min-width: 768px) {
+        .su-table-wrap {
+            background-image:
+                linear-gradient(to right, #fff 30%, rgba(255,255,255,0)),
+                linear-gradient(to left, #fff 30%, rgba(255,255,255,0)),
+                linear-gradient(to right, rgba(0,0,0,.16), rgba(0,0,0,0) 6px),
+                linear-gradient(to left, rgba(0,0,0,.16), rgba(0,0,0,0) 6px);
+            background-position: left, right, left, right;
+            background-repeat: no-repeat;
+            background-size: 40px 100%, 40px 100%, 6px 100%, 6px 100%;
+            background-attachment: local, local, scroll, scroll;
+        }
+    }
+
+    /* ── Mobile: the All Portal Accounts table becomes cards ──
+       Matching the pattern already used on completed-orders.blade.php /
+       inventory.blade.php. Before this fix, only Name and Email fit in the
+       viewport below 768px — Role, Branch, Status and every action button
+       scrolled off with no visual cue at all, since #staffTable had nothing
+       but a bare overflow-x:auto wrapper around a normal table. The same
+       auto-layout table also forced the inline Edit form's 2-column grid to
+       ~480px wide regardless of its own CSS, because an HTML table sizes
+       every cell — including a hidden colspan row — from the widest content
+       across ALL rows; only display:block here (not a narrower grid alone)
+       removes that constraint. */
+    @media (max-width: 767px) {
+        #staffTable thead { display: none; }
+        #staffTable, #staffTable tbody, #staffTable tr, #staffTable td {
+            display: block; width: 100%;
+        }
+        #staffTable tbody tr.su-row {
+            background: #fff; border: 1px solid #eee; border-radius: 12px;
+            box-shadow: 0 8px 20px -18px rgba(0,0,0,.35);
+            padding: 0.2rem 0.1rem; margin-bottom: 0.6rem;
+        }
+        /* [data-label] only — NOT the bare colspan="6" cells that hold the
+           Edit / Set Password forms below. Those still need the block
+           layout from the rule above, but not this label+value grid: an
+           untargeted `td` selector here once matched them too, squeezing
+           the whole inline form into the 66% value column (with an empty,
+           label-less 34% column wasting the rest) instead of using the
+           full card width. */
+        #staffTable tbody td[data-label] {
+            display: grid; grid-template-columns: 34% minmax(0,66%);
+            gap: 0.5rem; align-items: center;
+            border-bottom: 1px dashed #f0f0f0 !important;
+            padding: 0.5rem 0.7rem !important; text-align: left !important;
+            /* A long, unbroken email address (no spaces to wrap at) was the
+               one thing still forcing the card a few px past the viewport —
+               let it wrap onto a second line instead of stretching the row. */
+            overflow-wrap: anywhere;
+        }
+        #staffTable tbody td[data-label]:last-child { border-bottom: none !important; }
+        #staffTable tbody td[data-label]::before {
+            content: attr(data-label); font-size: 0.66rem; font-weight: 700;
+            text-transform: uppercase; letter-spacing: 0.06em; color: #999;
+        }
+        /* The colspan cells (Edit / Set Password forms) get normal padding
+           and a bottom border of their own, matching the card's inner
+           rhythm now that the label+value grid above skips them. */
+        #staffTable tbody td:not([data-label]) {
+            padding: 0.6rem 0.7rem 1rem !important;
+        }
+        /* The action cell holds 4 separate buttons, not one value — it reads
+           better as its own full-width stack than squeezed into a 66% value
+           column next to a single "ACTIONS" label. */
+        #staffTable tbody td.su-actions {
+            display: flex; flex-direction: column; gap: 0.45rem;
+            text-align: left !important;
+        }
+        #staffTable tbody td.su-actions::before { margin-bottom: 0.15rem; }
+        /* Full-width, taller buttons — the originals render at ~25px tall,
+           well under the ~44px a thumb needs. !important because each
+           button carries its own inline style="" (higher specificity than
+           any class here), and this is a mobile-only override of exactly
+           that — desktop keeps the original compact inline buttons. */
+        #staffTable tbody td.su-actions button {
+            width: 100% !important;
+            margin-right: 0 !important;
+            padding: 0.7rem 0.8rem !important;
+            font-size: 0.78rem !important;
+            min-height: 44px;
+        }
+        #staffTable tbody td.su-actions form { width: 100%; margin: 0 !important; }
+
+        /* The inline Edit row's 2-column form (Name/Email/Contact/Role/
+           Branch) — one field per row, like every other admin form at this
+           width. */
+        tr[id^="edit-row-"] form {
+            grid-template-columns: 1fr !important;
+        }
+    }
 </style>
 
 <p class="page-title">Staff Accounts</p>
@@ -149,8 +248,8 @@
                  table has 5 columns including Email, which does not wrap, so
                  without this a narrow screen pushed the whole page sideways
                  instead of just this table. --}}
-            <div style="overflow-x:auto;">
-            <table style="width:100%; font-size:0.8rem;">
+            <div class="su-table-wrap" style="overflow-x:auto;">
+            <table id="staffTable" style="width:100%; font-size:0.8rem;">
                 <thead>
                     <tr style="text-align:left; color:#888; font-size:0.7rem;">
                         <th style="padding:0.3rem 0.4rem;">Name</th>
@@ -163,23 +262,23 @@
                 </thead>
                 <tbody>
                     @foreach($staff as $s)
-                    <tr style="border-top:1px solid #f0f0f0;">
-                        <td style="padding:0.4rem;">{{ $s->name }}</td>
-                        <td style="padding:0.4rem; color:#666;">{{ $s->email }}</td>
-                        <td style="padding:0.4rem;">
+                    <tr style="border-top:1px solid #f0f0f0;" class="su-row">
+                        <td style="padding:0.4rem;" data-label="Name">{{ $s->name }}</td>
+                        <td style="padding:0.4rem; color:#666;" data-label="Email">{{ $s->email }}</td>
+                        <td style="padding:0.4rem;" data-label="Role">
                             <span style="background:{{ $s->role === 'supervisor' ? '#e7d9f5' : '#e3eaf2' }}; color:{{ $s->role === 'supervisor' ? '#4a2c68' : '#2c3e50' }}; padding:0.15rem 0.5rem; border-radius:10px; font-size:0.7rem; font-weight:600;">
                                 {{ ucfirst($s->role) }}
                             </span>
                         </td>
-                        <td style="padding:0.4rem;">{{ $s->branch->name ?? '—' }}</td>
-                        <td style="padding:0.4rem;">
+                        <td style="padding:0.4rem;" data-label="Branch">{{ $s->branch->name ?? '—' }}</td>
+                        <td style="padding:0.4rem;" data-label="Status">
                             @if($s->is_active)
                                 <span style="background:#d4edda; color:#155724; padding:0.15rem 0.5rem; border-radius:10px; font-size:0.7rem; font-weight:600;">Active</span>
                             @else
                                 <span style="background:#f8d7da; color:#721c24; padding:0.15rem 0.5rem; border-radius:10px; font-size:0.7rem; font-weight:600;">Disabled</span>
                             @endif
                         </td>
-                        <td style="padding:0.4rem; text-align:right; white-space:nowrap;">
+                        <td style="padding:0.4rem; text-align:right; white-space:nowrap;" data-label="Actions" class="su-actions">
                             {{-- "Edit Staff Information" — Y | Y | N. Same
                                  expandable-row pattern as Set Password below,
                                  rather than a modal or a separate page, so the

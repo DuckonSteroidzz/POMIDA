@@ -10,23 +10,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
-    <style type="text/tailwindcss">
-        
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-blush: #EF8585;
-            --color-peach-rose: #F6B49B;
-            --color-peach-sand: #F8D7B0;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    @vite(['resources/css/app.css'])
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -43,13 +30,6 @@
             h1, h2, h3, .font-display { font-family: var(--font-display); }
             select, input, button, a { font-family: inherit; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1.25rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
         }
     </style>
     <style>
@@ -171,7 +151,7 @@
        background) so the ticket, Order Details and Thank You note read as one
        continuous slip instead of three floating cards. */
     aside > div,
-    .card-surface,
+    .card-surface-lg,
     li {
         background: transparent !important;
         border: 0 !important;
@@ -202,7 +182,7 @@
        logical sections — the ticket, Order Details, and the Thank You note —
        so the slip reads as one continuous column. Reuses the #ccc divider
        colour and 0.5rem spacing already used elsewhere in this block. The
-       extra type-selector weight (vs. the `aside > div` / `.card-surface`
+       extra type-selector weight (vs. the `aside > div` / `.card-surface-lg`
        rule above) is intentional so these dashed rules are not clobbered by
        the `border: 0` reset. */
     section + aside > :first-child,
@@ -231,7 +211,7 @@
     /* Badges read as plain words on paper — no rounded outline, no fill, no
        icon. The Status pill also carries an inline background colour, so the
        override has to be !important. Screen appearance is unchanged. */
-    .card-surface dd span,
+    .card-surface-lg dd span,
     main ul li span[class*="rounded-full"],
     main ul li span[class*="ring-"] {
         background: transparent !important;
@@ -243,7 +223,7 @@
         font-weight: 600 !important;
     }
 
-    .card-surface dd span i { display: none !important; }
+    .card-surface-lg dd span i { display: none !important; }
 
     /* The itemised list as a paper table: hairline rows, no cards, money
        right-aligned with lining figures. Each <li> already carries
@@ -372,6 +352,9 @@
                     <span class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-white text-2xl shadow-sm">🍑</span>
                     <h2 class="mt-3 font-display text-2xl font-black tracking-tight text-peach-deep sm:text-3xl">Peachy</h2>
                     <p class="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-peach-red/75">Cakes &amp; Deli Cafe</p>
+                    @if($order->branch)
+                    <p class="mt-1 text-[0.72rem] font-bold uppercase tracking-[0.16em] text-peach-deep/60">{{ $order->branch->name }}</p>
+                    @endif
 
                     <div class="mt-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-1.5 shadow-sm">
                         <i class="bi bi-receipt-cutoff text-peach-red"></i>
@@ -451,7 +434,7 @@
             {{-- ===== Right: details + thanks ===== --}}
             <aside class="rise rise-3 space-y-5 lg:sticky lg:top-24">
 
-                <div class="card-surface p-5 sm:p-6">
+                <div class="card-surface-lg p-5 sm:p-6">
                     <h3 class="mb-4 font-display text-base font-black tracking-tight text-peach-deep sm:text-lg">Order Details</h3>
 
                     <dl class="m-0 space-y-3.5">
@@ -542,6 +525,10 @@
             @endif
         </div>
     </nav>
+    @endif
+
+    @if(!isset($isAdminView) || !$isAdminView)
+    @include('customer.partials.idle-timeout')
     @endif
 </body>
 

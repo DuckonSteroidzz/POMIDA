@@ -637,4 +637,183 @@ class TableOccupancyTest extends TestCase
         );
         $this->assertNull(session(TableOccupancy::SESSION_KEY));
     }
+
+    // ══════════ Visibility: the joining-device banner ══════════
+    //
+    // Sharing itself is unchanged (see the sections above, all still passing
+    // unmodified). What was missing is that a device joining an existing
+    // session looked identical to a device that opened one — "you joined
+    // someone else's session" and "there is no lock at all" rendered as the
+    // same silence. These pin that the flash exists, is scoped to the
+    // JOINING device only, and actually reaches the page.
+
+    public function test_the_first_device_at_a_table_sees_no_join_banner(): void
+    {
+        $this->scan(1, '80')->assertSessionMissing('table_session_joined_table');
+    }
+
+    public function test_a_joining_device_is_flashed_the_table_it_joined(): void
+    {
+        $this->scan(1, '81');
+
+        // A different person at the table = a different session cookie.
+        $this->flushSession();
+        RateLimiter::clear('qr-scan:127.0.0.1');
+
+        $this->scan(1, '81')->assertSessionHas('table_session_joined_table', '81');
+    }
+
+    public function test_the_typed_code_door_also_flashes_a_joining_device(): void
+    {
+        $this->scan(1, '81a');
+
+        $this->flushSession();
+        RateLimiter::clear('table-code:127.0.0.1');
+
+        $code = $this->permanentCode(1, '81a');
+        $this->typeCode($code)->assertSessionHas('table_session_joined_table', '81A');
+    }
+
+    public function test_the_url_landing_also_flashes_a_joining_device(): void
+    {
+        $this->scan(1, '81b');
+
+        $this->flushSession();
+
+        $this->landOnUrl(1, '81b')->assertSessionHas('table_session_joined_table', '81B');
+    }
+
+    public function test_the_join_banner_renders_on_the_menu_the_joining_device_lands_on(): void
+    {
+        $this->scan(1, '82');
+
+        $this->flushSession();
+        RateLimiter::clear('qr-scan:127.0.0.1');
+
+        $this->followingRedirects();
+
+        // Not escaped: "You've" and "Table 82's" are literal static text in
+        // the blade, outside any {{ }} interpolation, so Blade never runs them
+        // through e() — only the interpolated table number is. assertSee's
+        // default escaping assumes the WHOLE expected string went through
+        // e(), which would wrongly look for "You&#039;ve" here.
+        $this->scan(1, '82')
+            ->assertOk()
+            ->assertSee("You've joined Table 82's session.", false);
+    }
+
+    public function test_the_first_devices_own_menu_load_never_shows_a_join_banner(): void
+    {
+        $this->followingRedirects();
+
+        $this->scan(1, '83')
+            ->assertOk()
+            ->assertDontSee("You've joined Table 83's session.", false);
+    }
+
+    // ══════════ Visibility: the staff-panel device count ══════════
+    //
+    // A read-time count against table_session_devices — see that table's
+    // migration for why this is a child table rather than a counter column
+    // maintained by hand. Nothing here changes what claim() or any release
+    // path DOES; these only confirm the count reflects it correctly.
+
+    public function test_device_count_starts_at_one_for_the_device_that_opened_the_table(): void
+    {
+        $this->scan(1, '84');
+
+        $this->assertSame(1, TableOccupancy::activeDeviceCount(TableOccupancy::activeFor(1, '84')));
+    }
+
+    public function test_device_count_rises_when_a_second_device_joins(): void
+    {
+        $this->scan(1, '85');
+
+        $this->flushSession();
+        RateLimiter::clear('qr-scan:127.0.0.1');
+        $this->scan(1, '85');
+
+        $this->assertSame(2, TableOccupancy::activeDeviceCount(TableOccupancy::activeFor(1, '85')));
+    }
+
+    public function test_the_same_device_rescanning_is_not_counted_twice(): void
+    {
+        $this->scan(1, '86');
+        $this->scan(1, '86');
+
+        $this->assertSame(1, TableOccupancy::activeDeviceCount(TableOccupancy::activeFor(1, '86')));
+    }
+
+    public function test_device_count_drops_to_zero_after_the_idle_sweep_releases_the_table(): void
+    {
+        $this->scan(1, '87');
+        $session = TableOccupancy::activeFor(1, '87');
+        $this->assertSame(1, TableOccupancy::activeDeviceCount($session));
+
+        DB::table('table_sessions')->where('id', $session->id)->update([
+            'last_seen_at' => now()->subMinutes(TableOccupancy::INACTIVITY_MINUTES + 1),
+            'created_at'   => now()->subMinutes(TableOccupancy::INACTIVITY_MINUTES + 1),
+        ]);
+
+        TableOccupancy::sweepIdle();
+
+        $this->assertSame(0, TableOccupancy::activeDeviceCount($session->fresh()));
+    }
+
+    public function test_device_count_drops_to_zero_when_the_order_completes(): void
+    {
+        $this->scan(1, '88');
+        $session = TableOccupancy::activeFor(1, '88');
+        $order = $this->makeOrder(1, '88');
+        TableOccupancy::attachOrder($order);
+
+        $this->assertSame(1, TableOccupancy::activeDeviceCount($session->fresh()));
+
+        $order->status = 'completed';
+        $order->save();
+
+        $this->assertSame(0, TableOccupancy::activeDeviceCount($session->fresh()));
+    }
+
+    public function test_device_count_drops_to_zero_when_the_order_is_cancelled(): void
+    {
+        $this->scan(1, '89');
+        $session = TableOccupancy::activeFor(1, '89');
+        $order = $this->makeOrder(1, '89');
+        TableOccupancy::attachOrder($order);
+
+        $order->status = 'cancelled';
+        $order->save();
+
+        $this->assertSame(0, TableOccupancy::activeDeviceCount($session->fresh()));
+    }
+
+    public function test_device_count_drops_to_zero_after_staff_clear(): void
+    {
+        $this->scan(1, '90');
+        $session = TableOccupancy::activeFor(1, '90');
+        $this->assertSame(1, TableOccupancy::activeDeviceCount($session));
+
+        $admin = User::where('role', 'admin')->firstOrFail();
+        $this->actingAs($admin, 'admin')
+            ->postJson('/admin/tables/clear', ['branch_id' => 1, 'table_number' => '90'])
+            ->assertOk();
+
+        $this->assertSame(0, TableOccupancy::activeDeviceCount($session->fresh()));
+    }
+
+    public function test_a_device_gone_quiet_past_the_guest_idle_window_drops_out_of_the_live_count(): void
+    {
+        // Mirrors GUEST_IDLE_MINUTES exactly — a device counts as "there" by
+        // the same clock that decides whether ITS OWN browser is bounced back
+        // to the code-entry page.
+        $this->scan(1, '91');
+        $session = TableOccupancy::activeFor(1, '91');
+
+        DB::table('table_session_devices')
+            ->where('table_session_id', $session->id)
+            ->update(['last_activity_at' => now()->subMinutes(TableOccupancy::GUEST_IDLE_MINUTES + 1)]);
+
+        $this->assertSame(0, TableOccupancy::activeDeviceCount($session));
+    }
 }

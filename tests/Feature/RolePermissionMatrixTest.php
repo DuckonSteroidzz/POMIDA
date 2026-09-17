@@ -148,6 +148,19 @@ class RolePermissionMatrixTest extends TestCase
     }
 
     /**
+     * Already archived (deleted-stage-one), for the restore / permanent-delete
+     * rows below — those act on a row that has already been through
+     * inventory.delete, not a live one.
+     */
+    private function archivedInventoryIn(int $branchId): Inventory
+    {
+        $item = $this->inventoryIn($branchId);
+        $item->archive();
+
+        return $item;
+    }
+
+    /**
      * A voucher, scoped to $branchId (null = global, valid everywhere).
      *
      * The parameter arrived with the Sept 2026 branch-scope pass. Before it,
@@ -242,9 +255,21 @@ class RolePermissionMatrixTest extends TestCase
             'completed orders'       => ['GET',    'admin.completed-orders',    ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'view inventory'         => ['GET',    'admin.inventory',           ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'add inventory'          => ['POST',   'admin.inventory.store',     ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
-            'update stock (in)'      => ['POST',   'admin.inventory.stock-in',  ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
-            'stock adjustment (out)' => ['POST',   'admin.inventory.stock-out', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            // Stock movement is Y | Y | Y — staff record what is on the shelf
+            // during their own shift. The DEFINITION rows either side of these
+            // stay Y | Y | N, and that contrast is the whole point of the
+            // split: a staff account changes quantities and nothing else.
+            'update stock (in)'      => ['POST',   'admin.inventory.stock-in',  ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
+            'stock adjustment (out)' => ['POST',   'admin.inventory.stock-out', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
+            // The inventory DEFINITION — name, unit, unit cost, low-stock
+            // threshold. Explicit rows so the staff stock-movement grant above
+            // can never be widened into an edit grant without a test saying so.
+            'open inventory editor'  => ['GET',    'admin.inventory.edit',      ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'edit inventory item'    => ['PUT',    'admin.inventory.update',    ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'delete inventory'       => ['DELETE', 'admin.inventory.delete',    ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            'view deleted inventory' => ['GET',    'admin.inventory.deleted',   ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            'restore inventory'      => ['PUT',    'admin.inventory.restore',   ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            'permanently delete inventory' => ['DELETE', 'admin.inventory.force-delete', ['admin' => self::ALLOW, 'supervisor' => self::DENY, 'staff' => self::DENY]],
             'view menu items'        => ['GET',    'admin.menu-items',          ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'add menu item'          => ['POST',   'admin.new-menu-item.post',  ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'edit menu item'         => ['PUT',    'admin.menu-items.update',   ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
@@ -349,12 +374,31 @@ class RolePermissionMatrixTest extends TestCase
                     'branch_id' => $branch,
                 ],
             ],
+            // 'amount' and 'note', NOT 'quantity'/'notes': those are what
+            // stockIn()/stockOut() actually validate. The old spelling was
+            // silently ignored and the request failed validation instead of
+            // moving stock — harmless while every staff row here was DENY (the
+            // role gate answered first), but useless the moment one is ALLOW.
             'admin.inventory.stock-in',
             'admin.inventory.stock-out' => [
                 [$this->inventoryIn($branch)->id],
-                ['quantity' => 1, 'notes' => self::PREFIX . ' movement'],
+                ['amount' => 1, 'note' => self::PREFIX . ' movement'],
+            ],
+            'admin.inventory.edit' => [[$this->inventoryIn($branch)->id], []],
+            'admin.inventory.update' => [
+                [$this->inventoryIn($branch)->id],
+                [
+                    'item_name'       => self::PREFIX . ' Renamed Stock ' . uniqid(),
+                    'item_code'       => self::PREFIX . strtoupper(substr(uniqid(), -6)),
+                    'unit'            => 'kg',
+                    'quantity'        => 12,
+                    'unit_cost'       => 6,
+                    'low_stock_alert' => 3,
+                ],
             ],
             'admin.inventory.delete' => [[$this->inventoryIn($branch)->id], []],
+            'admin.inventory.restore',
+            'admin.inventory.force-delete' => [[$this->archivedInventoryIn($branch)->id], []],
             'admin.menu-items.toggle',
             'admin.menu-items.delete' => [[$this->menuItemIn($branch)->id], []],
             'admin.menu-items.update' => [
@@ -498,6 +542,7 @@ class RolePermissionMatrixTest extends TestCase
             'manager / no branches link'   => ['supervisor', 'admin.home', 'admin.branches', []],
             'manager / no account link'    => ['supervisor', 'admin.home', 'admin.account', []],
             'manager / no spin wheel'      => ['supervisor', 'admin.vouchers', 'admin.game.toggle', []],
+            'manager / no deleted items link' => ['supervisor', 'admin.inventory', 'admin.inventory.deleted', []],
         ];
     }
 
@@ -508,8 +553,12 @@ class RolePermissionMatrixTest extends TestCase
      * POST /admin/inventory and GET /admin/inventory are the same URL, as are
      * POST and GET /admin/vouchers, so "the URL is absent" is unprovable for
      * those — a staff member has a nav link to both lists. What must be absent
-     * is the CONTROL: the Add Item button, the Stock In/Out buttons, the
-     * Create New Voucher form.
+     * is the CONTROL: the Add Item button, the Edit button, the Create New
+     * Voucher form.
+     *
+     * $shouldSee is why this provider outgrew its name: the Stock In/Out rows
+     * assert PRESENCE for staff, because those controls became theirs. Same
+     * mechanism, opposite expectation, one table.
      *
      * @dataProvider markupControlCases
      */
@@ -536,12 +585,19 @@ class RolePermissionMatrixTest extends TestCase
     public static function markupControlCases(): array
     {
         return [
-            // Inventory — VIEW-ONLY for staff.
+            // Inventory — staff MOVE stock but never change its definition.
+            // The three rows below are the whole shape of that split, asserted
+            // on one page for one role: In and Out present, Add Item absent.
             'staff / no add item button'   => ['staff', 'admin.inventory', 'openAddModal()', false],
-            'staff / no stock in button'   => ['staff', 'admin.inventory', "openStockModal(this, 'in')", false],
-            'staff / no stock out button'  => ['staff', 'admin.inventory', "openStockModal(this, 'out')", false],
+            'staff / has stock in button'  => ['staff', 'admin.inventory', "openStockModal(this, 'in')", true],
+            'staff / has stock out button' => ['staff', 'admin.inventory', "openStockModal(this, 'out')", true],
+            // Edit is the definition, so it stays hidden from staff even
+            // though the In/Out buttons beside it are now theirs.
+            'staff / no edit item button'  => ['staff', 'admin.inventory', 'openEditModal(this)', false],
+            'staff / no delete inv'        => ['staff', 'admin.inventory', 'confirmDelete(this.dataset.id)', false],
             'manager / has add item'       => ['supervisor', 'admin.inventory', 'openAddModal()', true],
             'manager / has stock in'       => ['supervisor', 'admin.inventory', "openStockModal(this, 'in')", true],
+            'manager / has edit item'      => ['supervisor', 'admin.inventory', 'openEditModal(this)', true],
             // Delete Inventory is owner-only even for a manager.
             'manager / no delete inv'      => ['supervisor', 'admin.inventory', 'confirmDelete(this.dataset.id)', false],
             'owner / has delete inv'       => ['admin', 'admin.inventory', 'confirmDelete(this.dataset.id)', true],
@@ -604,16 +660,61 @@ class RolePermissionMatrixTest extends TestCase
      * A refusal that redirects AFTER doing the work would pass every status
      * assertion above. These check the side effect is absent.
      */
-    public function test_a_denied_staff_stock_movement_changes_no_quantity(): void
+    /**
+     * Staff MAY move stock, so the side-effect question for them inverted:
+     * this used to assert a refused stock-in moved nothing. The refusal it
+     * asserted is gone, so asserting it again would test nothing. What must
+     * still be true is the other half of the split — a staff member who can
+     * change a QUANTITY still cannot change the item's DEFINITION.
+     */
+    public function test_a_denied_staff_inventory_edit_changes_no_definition(): void
     {
         $item = $this->inventoryIn(self::HOME_BRANCH);
-        $before = $item->quantity;
+        $beforeName = $item->item_name;
+        $beforeCost = $item->unit_cost;
 
         $this->actingAs($this->staff(), 'admin')
-            ->post(route('admin.inventory.stock-in', $item->id), ['quantity' => 50])
+            ->put(route('admin.inventory.update', $item->id), [
+                'item_name'       => self::PREFIX . ' Staff Renamed',
+                'item_code'       => self::PREFIX . 'STAFFED',
+                'unit'            => 'kg',
+                'quantity'        => 999,
+                'unit_cost'       => 9999,
+                'low_stock_alert' => 1,
+            ])
             ->assertRedirect(route('admin.home'));
 
-        $this->assertEquals($before, $item->fresh()->quantity, 'A refused stock-in still moved stock.');
+        $fresh = $item->fresh();
+        $this->assertSame($beforeName, $fresh->item_name, 'A refused inventory edit still renamed the item.');
+        $this->assertEquals($beforeCost, $fresh->unit_cost, 'A refused inventory edit still changed the unit cost.');
+        $this->assertEquals(10, $fresh->quantity, 'A refused inventory edit still moved stock through the edit form.');
+    }
+
+    /**
+     * The grant's own side effect, asserted positively: an ALLOW row that
+     * redirected without doing the work would pass every status assertion in
+     * the grid above. This is the mirror of the denial tests around it.
+     */
+    public function test_a_permitted_staff_stock_movement_moves_stock_and_is_attributed(): void
+    {
+        $item  = $this->inventoryIn(self::HOME_BRANCH);
+        $staff = $this->staff(self::HOME_BRANCH);
+
+        $this->actingAs($staff, 'admin')
+            ->post(route('admin.inventory.stock-in', $item->id), [
+                'amount' => 5,
+                'note'   => self::PREFIX . ' delivery',
+            ])
+            ->assertRedirect(route('admin.inventory'));
+
+        $this->assertEquals(15, $item->fresh()->quantity, 'A permitted staff stock-in did not move stock.');
+
+        // Attribution is what makes the grant auditable rather than anonymous.
+        $this->assertDatabaseHas('stock_movements', [
+            'inventory_id'  => $item->id,
+            'movement_type' => 'in',
+            'user_id'       => $staff->id,
+        ]);
     }
 
     public function test_a_denied_staff_menu_toggle_changes_no_availability(): void
@@ -956,6 +1057,7 @@ class RolePermissionMatrixTest extends TestCase
         return [
             ['admin.home'], ['admin.summary'], ['admin.analytics'], ['admin.ads'],
             ['admin.users'], ['admin.branches'], ['admin.account'], ['admin.inventory'],
+            ['admin.inventory.deleted'],
             ['admin.menu-items'], ['admin.menu-options'], ['admin.add-category'],
             ['admin.vouchers'], ['admin.qr-generator'], ['admin.completed-orders'],
             ['admin.archived'],

@@ -7,6 +7,9 @@ use App\Models\Category;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Str;
+use Intervention\Image\Drivers\Gd\Driver;
+use Intervention\Image\ImageManager;
 
 class AdminController extends Controller
 {
@@ -263,7 +266,7 @@ class AdminController extends Controller
         }
     }
 
-    public function showAnalytics()
+    public function showAnalytics(\Illuminate\Http\Request $request)
     {
         $selectedBranch = $this->getSelectedBranch();
         $isAllBranches = $selectedBranch === 'all';
@@ -272,79 +275,123 @@ class AdminController extends Controller
             ? 'All Branches'
             : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
 
+        $period = $request->query('period', 'last30');
+        [$start, $end] = $this->resolveAnalyticsPeriod(
+            $period,
+            $request->query('date_from'),
+            $request->query('date_to')
+        );
+
         $analytics = new \App\Services\AnalyticsService($selectedBranch);
 
-        $today     = $analytics->salesToday();
-        $thisWeek  = $analytics->salesThisWeek();
-        $thisMonth = $analytics->salesThisMonth();
+        $totalSales    = $analytics->salesForRange($start, $end);
+        $totalOrders   = $analytics->ordersCountForRange($start, $end);
+        $averageOrderValue = $analytics->averageOrderValueForRange($start, $end);
+        $averageRating = $analytics->averageRatingForRange($start, $end);
 
-        $deltaToday = $analytics->percentChange($today, $analytics->salesYesterday());
-        $deltaWeek  = $analytics->percentChange($thisWeek, $analytics->salesLastWeek());
-        $deltaMonth = $analytics->percentChange($thisMonth, $analytics->salesLastMonth());
+        $dailySales   = $analytics->dailySalesSeriesForRange($start, $end);
+        $topProducts  = $analytics->topProductsForRange($start, $end, 5);
 
-        $recommendations = $analytics->recommendations();
+        return view('admin.analytics', [
+            'branchName'        => $branchName,
+            'isAllBranches'     => $isAllBranches,
+            'selectedBranch'    => $selectedBranch,
+            'period'            => $period,
+            'dateFrom'          => $request->query('date_from', $start->toDateString()),
+            'dateTo'            => $request->query('date_to', $end->toDateString()),
+            'periodStart'       => $start,
+            'periodEnd'         => $end,
+            'totalSales'        => $totalSales,
+            'totalOrders'       => $totalOrders,
+            'averageOrderValue' => $averageOrderValue,
+            'averageRating'     => $averageRating,
+            'dailySales'        => $dailySales,
+            'topProducts'       => $topProducts,
+        ]);
+    }
 
-        $bestSellers  = $analytics->bestSellers(5);
-        $leastSellers = $analytics->leastSellers(5);
+    /**
+     * "Print" for Analytics — the same printInFrame() shape as
+     * printCompletedOrders(): re-resolves the SAME branch scope and
+     * date range from the querystring, unbounded, and hands it to a
+     * print-only view. Nothing here re-derives a figure differently than
+     * showAnalytics() did — same AnalyticsService methods, same arguments.
+     */
+    public function printAnalytics(\Illuminate\Http\Request $request)
+    {
+        $selectedBranch = $this->getSelectedBranch();
+        $isAllBranches = $selectedBranch === 'all';
 
-        $outOfStock   = $analytics->outOfStock();
-        $lowStock     = $analytics->lowStock();
-        $slowMovers   = $analytics->slowMovers();
-        $linkedToBest = $analytics->inventoryLinkedToBestSellers();
+        $branchName = $isAllBranches
+            ? 'All Branches'
+            : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
 
-        $dailyTrend      = $analytics->dailyTrend(14);
-        $salesByCategory = $analytics->salesByCategory();
-        $salesPerBranch  = $isAllBranches ? $analytics->salesPerBranch() : collect();
+        $period = $request->query('period', 'last30');
+        [$start, $end] = $this->resolveAnalyticsPeriod(
+            $period,
+            $request->query('date_from'),
+            $request->query('date_to')
+        );
 
-        /*
-         * Branch comparison. Deliberately NOT scoped to the selected branch —
-         * the whole point is where each branch stands relative to the others,
-         * so it reads the same no matter which branch is selected. The
-         * currently selected branch is highlighted in the view instead.
-         */
-        $branchPerformance = $analytics->branchPerformance();
+        $analytics = new \App\Services\AnalyticsService($selectedBranch);
 
-        /*
-         * Keep the demonstration history from rotting out of the forecast's
-         * rolling window. Two cheap indexed reads on every load; it only writes
-         * on the rare occasion coverage has genuinely gone thin, and it is
-         * inert unless BOTH config('demo.auto_top_up_sales') is explicitly true
-         * AND the app is running in the 'local' environment — see
-         * DemoSalesTopUp::isEnabled(). On any real deployment this is a no-op.
-         *
-         * Called from here rather than from inside AnalyticsService because
-         * that class documents itself as read-only; fabricating orders from
-         * within it would quietly break that promise.
-         */
-        app(\App\Services\DemoSalesTopUp::class)->ensureForecastCoverage();
+        $totalSales    = $analytics->salesForRange($start, $end);
+        $totalOrders   = $analytics->ordersCountForRange($start, $end);
+        $averageOrderValue = $analytics->averageOrderValueForRange($start, $end);
+        $averageRating = $analytics->averageRatingForRange($start, $end);
 
-        $salesForecast   = $analytics->salesForecast();
-        $averageRating   = $analytics->averageRating();
+        $dailySales  = $analytics->dailySalesSeriesForRange($start, $end);
+        $topProducts = $analytics->topProductsForRange($start, $end, 5);
 
-        return view('admin.analytics', compact(
-            'branchName',
-            'isAllBranches',
-            'today',
-            'thisWeek',
-            'thisMonth',
-            'deltaToday',
-            'deltaWeek',
-            'deltaMonth',
-            'recommendations',
-            'bestSellers',
-            'leastSellers',
-            'outOfStock',
-            'lowStock',
-            'slowMovers',
-            'linkedToBest',
-            'dailyTrend',
-            'salesByCategory',
-            'salesPerBranch',
-            'branchPerformance',
-            'selectedBranch',
-            'salesForecast',
-            'averageRating'
-        ));
+        return view('admin.analytics-print', [
+            'branchName'        => $branchName,
+            'period'            => $period,
+            'periodStart'       => $start,
+            'periodEnd'         => $end,
+            'totalSales'        => $totalSales,
+            'totalOrders'       => $totalOrders,
+            'averageOrderValue' => $averageOrderValue,
+            'averageRating'     => $averageRating,
+            'dailySales'        => $dailySales,
+            'topProducts'       => $topProducts,
+            'printedBy'         => optional(auth('admin')->user())->name ?? 'Unknown user',
+            'printedAt'         => now(),
+        ]);
+    }
+
+    /**
+     * Resolve [start, end] Carbon boundaries for the Analytics date-range
+     * dropdown. Presets are deliberately different from Summary's (Today /
+     * Last 7 Days / Last 30 Days / This Month / Custom) — Analytics has no
+     * "This Week" or previous-period comparison, so there is nothing to
+     * mirror from resolveSummaryPeriod() beyond the shared 'custom' shape.
+     */
+    private function resolveAnalyticsPeriod(string $period, ?string $dateFrom, ?string $dateTo): array
+    {
+        switch ($period) {
+            case 'today':
+                return [today()->startOfDay(), today()->endOfDay()];
+
+            case 'last7':
+                return [now()->subDays(6)->startOfDay(), now()->endOfDay()];
+
+            case 'month':
+                return [now()->startOfMonth(), now()->endOfMonth()];
+
+            case 'custom':
+                if ($dateFrom && $dateTo) {
+                    return [
+                        \Carbon\Carbon::parse($dateFrom)->startOfDay(),
+                        \Carbon\Carbon::parse($dateTo)->endOfDay(),
+                    ];
+                }
+                // Fall through to the last30 default when a custom period is
+                // requested without both bounds — same reasoning as an
+                // unrecognised period string.
+            case 'last30':
+            default:
+                return [now()->subDays(29)->startOfDay(), now()->endOfDay()];
+        }
     }
 
     /**
@@ -434,6 +481,29 @@ class AdminController extends Controller
             && (bool) $inventory->is_active
             && (int) $inventory->branch_id === (int) $selectedBranch;
     }
+
+    /**
+     * Menu-item photos render at most ~550px wide (item-details hero image on a
+     * 1152px container); 800px on the long edge covers that at ~1.45x pixel
+     * density with headroom to spare. Resize failures (corrupt/unsupported
+     * image data) fall back to the original file rather than breaking the
+     * upload — GD already accepted it via the `image` validation rule.
+     */
+    private function resizeMenuImage(string $absolutePath): void
+    {
+        try {
+            $manager = new ImageManager(new Driver());
+            $manager->read($absolutePath)
+                ->scaleDown(width: 800, height: 800)
+                ->save($absolutePath, quality: 80);
+        } catch (\Throwable $e) {
+            Log::warning('Menu image resize failed; storing original upload as-is.', [
+                'path' => $absolutePath,
+                'error' => $e->getMessage(),
+            ]);
+        }
+    }
+
     public function storeNewMenuItem(Request $request)
     {
         // The Add form always renders at least one ingredient row so the section
@@ -532,6 +602,8 @@ class AdminController extends Controller
             $file->move(public_path('uploads/menu-items'), $filename);
 
             $imagePath = 'uploads/menu-items/' . $filename;
+
+            $this->resizeMenuImage(public_path($imagePath));
         }
 
         // The item and its whole recipe are one unit of work: a half-saved item
@@ -591,7 +663,14 @@ class AdminController extends Controller
 
     public function updateMenuItem(Request $request, int $id)
     {
-        $menuItem = \App\Models\MenuItem::findOrFail($id);
+        // Branch-scoped for supervisor, unrestricted for admins — see
+        // App\Services\AdminOrderAccess. Without this, a branch-locked
+        // supervisor could open ANY menu item id: getSelectedBranch() is
+        // always their own branch (never 'all'), so $targetBranch below
+        // would silently reassign a far-branch item's branch_id to their
+        // own branch on save. A foreign id gets the same 404 as a
+        // nonexistent one.
+        $menuItem = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $id);
 
         $validated = $request->validate([
             'category_id' => 'required|exists:categories,id',
@@ -649,6 +728,8 @@ class AdminController extends Controller
             $file->move(public_path('uploads/menu-items'), $filename);
 
             $menuItem->image = 'uploads/menu-items/' . $filename;
+
+            $this->resizeMenuImage(public_path($menuItem->image));
         }
 
         $menuItem->category_id = $validated['category_id'];
@@ -749,7 +830,11 @@ class AdminController extends Controller
 
     public function addIngredient(Request $request, int $menuItem)
 {
-    $menuItemModel = \App\Models\MenuItem::findOrFail($menuItem);
+    // Branch-scoped for supervisor, unrestricted for admins — see
+    // App\Services\AdminOrderAccess. A recipe row follows "Edit Menu Items"
+    // (Y | Y | N), so a foreign-branch menu item id gets the same 404 as a
+    // nonexistent one rather than accepting a recipe write onto it.
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
 
     $validated = $request->validate([
         'inventory_id' => 'required|exists:inventory,id',
@@ -757,6 +842,21 @@ class AdminController extends Controller
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
+
+    // Same rule storeNewMenuItem()/updateMenuItem() already apply to every
+    // recipe row: an ingredient must belong to the item's own branch. Only
+    // checked when the item HAS a branch — a shared (NULL branch_id) item
+    // is unaffected, matching how the rest of this rule already treats it.
+    if ($menuItemModel->branch_id !== null
+        && !$this->inventoryIsSelectableForBranch($inventory->id, $menuItemModel->branch_id)) {
+        $message = 'Selected inventory item must belong to the same branch as this menu item.';
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+
+        return redirect()->back()->withErrors(['inventory_id' => $message]);
+    }
 
     // Prevent duplicate ingredient entries for the same menu item.
     $existing = \App\Models\MenuItemIngredient::where('menu_item_id', $menuItemModel->id)
@@ -807,8 +907,14 @@ class AdminController extends Controller
 
 public function deleteIngredient(Request $request, int $menuItem, int $ingredient)
 {
+    // Branch-scoped for supervisor, unrestricted for admins — see
+    // App\Services\AdminOrderAccess. Same rule addIngredient() applies:
+    // a foreign-branch menu item id gets the same 404 as a nonexistent one
+    // rather than accepting a recipe deletion against it.
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+
     $ingredientModel = \App\Models\MenuItemIngredient::where('id', $ingredient)
-        ->where('menu_item_id', $menuItem)
+        ->where('menu_item_id', $menuItemModel->id)
         ->firstOrFail();
 
     // Nothing references a recipe line, but this endpoint answers both JSON
@@ -841,6 +947,15 @@ public function deleteIngredient(Request $request, int $menuItem, int $ingredien
  * These are deducted on top of the base recipe, but only when the customer
  * actually selects the option on their order.
  * Mirrors addIngredient() above, which does the same for menu items.
+ *
+ * BRANCH-LOCKED SUPERVISOR GUARD (Phase 3 audit, Finding #3, Sept 2026).
+ * addIngredient() checks a recipe row against inventoryIsSelectableForBranch(),
+ * which compares the inventory item's branch to the OWNING MENU ITEM's branch.
+ * An option has no owning menu item — it is a global row that can be assigned
+ * to items in several branches — so there is nothing to compare the inventory
+ * item to except the ACTOR's own locked branch. A branch-locked supervisor may
+ * only link ingredients from their own branch's inventory; an admin stays
+ * unrestricted, the same split AdminOrderAccess draws everywhere else.
  */
 public function addOptionIngredient(Request $request, int $menuOption)
 {
@@ -852,6 +967,18 @@ public function addOptionIngredient(Request $request, int $menuOption)
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
+
+    $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+    if ($lockedBranchId !== null && (int) $inventory->branch_id !== $lockedBranchId) {
+        $message = "You can only link ingredients from your own branch's inventory.";
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+
+        return redirect()->back()->withErrors(['inventory_id' => $message]);
+    }
 
     // Prevent duplicate ingredient entries for the same option.
     $existing = \App\Models\MenuOptionIngredient::where('menu_option_id', $optionModel->id)
@@ -934,6 +1061,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             ->get();
 
         $subcategories = \App\Models\Subcategory::with('category')
+            ->withCount('menuItems')
             ->orderBy('name')
             ->get();
 
@@ -1254,7 +1382,11 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
     public function showMenuOptions()
     {
-        $options = \App\Models\MenuOption::with('ingredients.inventory')
+        // 'menuItems:id,branch_id' so the view can list, per option, which
+        // branches it is actually assigned to and whether each has its own
+        // ingredient mapping — see MenuOption::isMappedForBranch() (Phase 3
+        // audit, Finding #3).
+        $options = \App\Models\MenuOption::with(['ingredients.inventory', 'menuItems:id,branch_id'])
             ->orderBy('name')
             ->get();
 
@@ -1262,18 +1394,29 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             ->orderBy('name')
             ->get();
 
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
         // Menu options are global (no branch_id), so offer every active inventory
         // item and label each with its branch so the admin picks the right one.
+        // A branch-locked supervisor sees (and addOptionIngredient() only
+        // accepts) their OWN branch's inventory — mirrors the restriction
+        // inventoryIsSelectableForBranch() already applies to recipe rows.
         $inventoryItems = \App\Models\Inventory::with('branch')
             ->where('is_active', true)
+            ->when($lockedBranchId !== null, fn($q) => $q->where('branch_id', $lockedBranchId))
             ->orderBy('item_name')
             ->get();
+
+        // Every branch, for the per-branch mapped/unmapped indicator next to
+        // each option — keyed by id so the view can look one up by the
+        // option's assigned menu-item branch ids without another query.
+        $branches = \App\Models\Branch::orderBy('id')->get()->keyBy('id');
 
         $archivedCount = $this->archivedCatalogueCount();
 
         return view(
             'admin.menu-options',
-            compact('options', 'categories', 'inventoryItems', 'archivedCount')
+            compact('options', 'categories', 'inventoryItems', 'branches', 'archivedCount')
         );
     }
 
@@ -1465,7 +1608,12 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
      */
     public function assignOptions(Request $request, int $menuItemId)
     {
-        $menuItem = \App\Models\MenuItem::findOrFail($menuItemId);
+        // Branch-scoped for supervisor, unrestricted for admins — see
+        // App\Services\AdminOrderAccess. Options themselves are global (no
+        // branch_id — see showMenuOptions()), so only the menu item being
+        // assigned needs the branch check. A foreign id gets the same 404
+        // as a nonexistent one.
+        $menuItem = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItemId);
 
         $optionIds = $request->input('option_ids', []);
 
@@ -1559,13 +1707,26 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 ->orderBy('cancelled_at', 'asc')
                 ->get();
 
-            $branches = \App\Models\Branch::where('is_active', true)
-                ->orderBy('name')
-                ->get();
+            // The manual-order form's own branch picker. A branch-locked
+            // staff/supervisor may only ever submit into their own branch
+            // (storeManualOrder() enforces this via AdminOrderAccess::
+            // allowsBranch()), so the dropdown must not offer branches that
+            // submission would just 404 on.
+            $lockedBranchIdForManualOrder = \App\Services\AdminOrderAccess::lockedBranchId();
+
+            $branches = ($lockedBranchIdForManualOrder !== null)
+                ? \App\Models\Branch::where('id', $lockedBranchIdForManualOrder)
+                    ->where('is_active', true)
+                    ->orderBy('name')
+                    ->get()
+                : \App\Models\Branch::where('is_active', true)
+                    ->orderBy('name')
+                    ->get();
 
             $menuItems = \App\Models\MenuItem::with([
                 'category',
                 'subcategory',
+                'recipeIngredients',
                 'options' => function ($query) {
                     $query->where('is_active', true)
                         ->orderBy('display_order')
@@ -1771,7 +1932,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
             $branchId = (int) $validated['branch_id'];
 
-            $menuItems = \App\Models\MenuItem::with('options')
+            $menuItems = \App\Models\MenuItem::with(['options.ingredients.inventory', 'recipeIngredients'])
                 ->whereIn(
                     'id',
                     collect($validated['items'])
@@ -1806,6 +1967,21 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             foreach ($validated['items'] as $item) {
                 $menuItem = $menuItems->get((int) $item['menu_item_id']);
 
+                // No-recipe guard (Phase 3 audit, Finding #9): mirrors
+                // MenuItem::orderBlockedReason() on the customer checkout —
+                // an item with no recipe lines and no legacy inventory_item_id
+                // link has no bill of materials, so completing this order
+                // later would deduct nothing and the kitchen would have no
+                // instructions. Staff-facing wording since this is the
+                // counter flow, not the customer's.
+                if ($menuItem->isMissingRecipe()) {
+                    return back()
+                        ->withErrors([
+                            'items' => $menuItem->name . ' has no recipe set and cannot be added to an order yet.'
+                        ])
+                        ->withInput();
+                }
+
                 $selectedOptionIds = collect($item['options'] ?? [])
                     ->map(fn($id) => (int) $id)
                     ->unique()
@@ -1822,6 +1998,19 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                         return back()
                             ->withErrors([
                                 'items' => 'Invalid option selected for ' . $menuItem->name . '.'
+                            ])
+                            ->withInput();
+                    }
+
+                    // Branch-aware add-on guard (Phase 3 audit, Finding #3):
+                    // a global option needs its own ingredient link for THIS
+                    // walk-in order's branch — branches never share stock.
+                    // Mirrors the same refusal the online checkout applies in
+                    // OrderController::placeOrder().
+                    if (! $option->isMappedForBranch($branchId)) {
+                        return back()
+                            ->withErrors([
+                                'items' => 'The "' . $option->name . '" add-on is not available for this branch.'
                             ])
                             ->withInput();
                     }
@@ -1856,12 +2045,32 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             // 'completed' and therefore the single place inventory is deducted.
             // Deducting here as well would double-deduct every walk-in order, so this
             // step only VALIDATES — it never subtracts stock.
+            //
+            // THE GUARD IS cartShortfalls(), the same one the customer checkout
+            // uses — not validateCartLines(), which this path used to call.
+            // The counter is the other door into the same pantry, and that
+            // older check measured against the RAW inventory.quantity: since
+            // stock only leaves at completion, an online order that had
+            // already spoken for the last serving was invisible to it, so
+            // staff were waved through to sell it a second time. Because a
+            // manual order is written payment_status = 'paid', the shortage
+            // then surfaced at completeOrder() — on an order the customer had
+            // already paid for, which is precisely the harm the oversell fix
+            // was built to prevent. Reproduced end to end in
+            // InventoryDeductionEndToEndTest.
+            //
+            // This unlocked pass exists only to fail fast and phrase the
+            // refusal the way customers already see it ("Only N left"); the
+            // authoritative, locked re-check runs inside the order
+            // transaction below.
+            $stockLines = array_map(fn($data) => [
+                'menu_item' => $data['menu_item'],
+                'quantity' => $data['quantity'],
+                'selected_option_ids' => array_column($data['options'], 'id'),
+            ], $itemsToCreate);
+
             $stockErrors = app(\App\Services\InventoryDeductionService::class)
-                ->validateCartLines(array_map(fn($data) => [
-                    'menu_item' => $data['menu_item'],
-                    'quantity' => $data['quantity'],
-                    'selected_option_ids' => array_column($data['options'], 'id'),
-                ], $itemsToCreate));
+                ->cartShortfalls($stockLines, (int) $branchId);
 
             if (!empty($stockErrors)) {
                 return back()
@@ -2017,8 +2226,31 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     $changeAmount,
                     $branchId,
                     $voucherId,
-                    $voucherClaim
+                    $voucherClaim,
+                    $stockLines
                 ) {
+                    /*
+                     * AUTHORITATIVE stock gate, and deliberately the first
+                     * statement in the transaction — the same position and the
+                     * same call the customer checkout makes
+                     * (OrderController::placeOrder). It takes SELECT … FOR
+                     * UPDATE on every inventory row these lines touch, so a
+                     * checkout or a second terminal wanting the same rows
+                     * blocks here until this order has committed and is then
+                     * counted as committed demand, instead of both being waved
+                     * through on the same last serving.
+                     *
+                     * Throwing rolls the whole transaction back: no order row,
+                     * no order_items, no spent voucher. RuntimeException is
+                     * what the catch below already renders to staff verbatim.
+                     */
+                    $lockedShortfalls = app(\App\Services\InventoryDeductionService::class)
+                        ->cartShortfalls($stockLines, (int) $branchId, true);
+
+                    if (!empty($lockedShortfalls)) {
+                        throw new \RuntimeException($lockedShortfalls[0]);
+                    }
+
                     $adminUser = \Illuminate\Support\Facades\Auth::guard('admin')->user();
 
                     $order = \App\Models\Order::create([
@@ -2144,7 +2376,13 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             }
         }
 
-    public function showCompletedOrders(Request $request)
+    /**
+     * The filtered, branch-scoped completed/cancelled orders query, shared by
+     * the paginated on-screen list and the unbounded "Print Filtered" report
+     * below — one place that decides which rows match, so the two can never
+     * silently disagree about what "filtered" means.
+     */
+    private function completedOrdersQuery(Request $request)
     {
         $selectedBranch = $this->getSelectedBranch();
 
@@ -2171,13 +2409,64 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             $query->where('status', $request->status);
         }
 
-        $orders = $query->orderBy('updated_at', 'desc')->get();
+        return $query->orderBy('updated_at', 'desc');
+    }
+
+    /**
+     * Allow-listed rows-per-page, same 4 choices the old client-side "Rows"
+     * selector offered — this just makes the server actually apply the
+     * choice instead of the browser hiding the rest of an unbounded result.
+     */
+    private function paginationPerPage(Request $request, int $default = 25): int
+    {
+        $requested = (int) $request->input('per_page', $default);
+
+        return in_array($requested, [15, 25, 50, 100], true) ? $requested : $default;
+    }
+
+    public function showCompletedOrders(Request $request)
+    {
+        // Real server-side pagination (2026-09-14): this page used to load
+        // EVERY matching order and hide the rest with CSS, which meant the
+        // full history — and every branch's data transferred over it — grew
+        // heavier on every mobile page load as the order history grew. Only
+        // the current page's rows are ever fetched or rendered now.
+        $orders = $this->completedOrdersQuery($request)
+            ->paginate($this->paginationPerPage($request))
+            ->withQueryString();
 
         $orderRatings = \App\Models\OrderRating::whereIn('order_id', $orders->pluck('id'))
             ->get()
             ->keyBy('order_id');
 
         return view('admin.completed-orders', compact('orders', 'orderRatings'));
+    }
+
+    /**
+     * "Print Filtered" — every order matching the current filters, not just
+     * the on-screen page. Deliberately its own unbounded query rather than
+     * reusing whatever the paginated list happens to hold: since pagination
+     * was added, the Blade variable on the list page only ever has one
+     * page's worth of rows, so printing "the current list" would silently
+     * print one page instead of the filtered set the button promises. This
+     * is a standalone print document (own <html>, no admin chrome to hide),
+     * opened in a new tab and printed immediately — the same pattern
+     * printReceipt() already uses for a single order.
+     */
+    public function printCompletedOrders(Request $request)
+    {
+        $orders = $this->completedOrdersQuery($request)->get();
+
+        $orderRatings = \App\Models\OrderRating::whereIn('order_id', $orders->pluck('id'))
+            ->get()
+            ->keyBy('order_id');
+
+        $selectedBranch = $this->getSelectedBranch();
+        $selectedBranchName = $selectedBranch !== 'all'
+            ? \App\Models\Branch::find($selectedBranch)?->name
+            : null;
+
+        return view('admin.completed-orders-print', compact('orders', 'orderRatings', 'selectedBranchName'));
     }
 
     public function completeOrder(int $id)
@@ -2574,7 +2863,11 @@ public function markOrderRefunded(int $id)
     {
         $selectedBranch = $this->getSelectedBranch();
 
-        $inventory = \App\Models\Inventory::orderBy('item_name')
+        // notArchived(): a soft-deleted item is not "gone", it is off THIS
+        // list — see Inventory::archive() and the "Deleted Items" page
+        // (showDeletedInventory() below).
+        $inventory = \App\Models\Inventory::notArchived()
+            ->orderBy('item_name')
             ->when(
                 $selectedBranch !== 'all',
                 fn($q) => $q->where('branch_id', $selectedBranch)
@@ -2596,10 +2889,125 @@ public function markOrderRefunded(int $id)
             ->limit(20)
             ->get();
 
+        // "Deleted Items (N)" link — admin-only feature, but cheap enough to
+        // always compute so the count is never stale on this page.
+        $deletedInventoryCount = \App\Models\Inventory::onlyArchived()->count();
+
         return view(
             'admin.inventory',
-            compact('inventory', 'categories', 'stockMovements')
+            compact('inventory', 'categories', 'stockMovements', 'deletedInventoryCount')
         );
+    }
+
+    /**
+     * The owner asked for a plain CSV/spreadsheet download of the Inventory
+     * table, not a browser print view. No spreadsheet library (e.g.
+     * maatwebsite/excel) is installed in this project, and this close to
+     * the defense pulling one in for a single table is not worth the risk
+     * — Excel opens a UTF-8 CSV natively, so a streamed CSV with a BOM
+     * satisfies "Excel or notepad-style export" without a new dependency.
+     * Same branch scope, same row order, and the same columns as the
+     * on-screen table (showInventory() above) — this is a export of what
+     * is already visible, not a separate report.
+     */
+    public function exportInventory()
+    {
+        $selectedBranch = $this->getSelectedBranch();
+
+        // Same notArchived() filter as the on-screen table (showInventory()
+        // above) — this export is a download of what is already visible, not
+        // a separate report, and that must include staying in sync on which
+        // rows a soft delete removed from both.
+        $inventory = \App\Models\Inventory::notArchived()
+            ->orderBy('item_name')
+            ->when(
+                $selectedBranch !== 'all',
+                fn($q) => $q->where('branch_id', $selectedBranch)
+            )
+            ->get();
+
+        $branchName = $selectedBranch === 'all'
+            ? 'All Branches'
+            : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
+
+        $filenameBranch = Str::slug($branchName) ?: 'all-branches';
+        $filename = "inventory_{$filenameBranch}_" . now()->format('Y-m-d') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+        ];
+
+        $callback = function () use ($inventory, $branchName) {
+            $file = fopen('php://output', 'w');
+
+            // Excel opens a CSV as the system codepage unless it finds a BOM;
+            // without this the peso sign arrives as mojibake.
+            fwrite($file, "\xEF\xBB\xBF");
+
+            fputcsv($file, ['Peachy Cakes & Deli Cafe — Inventory']);
+            fputcsv($file, ['Branch', $branchName]);
+            fputcsv($file, ['Generated', now()->format('M d, Y g:i A')]);
+            fputcsv($file, ['Generated by', optional(auth('admin')->user())->name ?? 'Unknown user']);
+            fputcsv($file, []);
+
+            fputcsv($file, [
+                'Item Name',
+                'Quantity',
+                'Unit',
+                'Low Stock Alert',
+                'Stock Value',
+                'Status',
+            ]);
+
+            // Same three-way split and the same running total the stat tiles
+            // at the top of the Inventory page compute (admin.inventory's own
+            // @php block) — out first, then low, so a row can only land in
+            // one bucket, matching quantity <= 0 / quantity <= low_stock_alert
+            // / else exactly. Accumulated in this same loop rather than a
+            // second pass, so it can never drift from the rows above it.
+            $countOut = 0;
+            $countLow = 0;
+            $countOk = 0;
+            $totalStockValue = 0;
+
+            foreach ($inventory as $item) {
+                $isOut = $item->quantity <= 0;
+                $isLow = !$isOut && $item->quantity <= $item->low_stock_alert;
+                $status = $isOut ? 'Out of Stock' : ($isLow ? 'Low Stock' : 'In Stock');
+
+                if ($isOut) { $countOut++; }
+                elseif ($isLow) { $countLow++; }
+                else { $countOk++; }
+                $totalStockValue += (float) $item->quantity * (float) $item->unit_cost;
+
+                fputcsv($file, [
+                    $item->item_name,
+                    // 3 decimals to match the column (decimal(12,3)) and the
+                    // on-screen table — exporting at 2 rounded fractional
+                    // stock away, same as the page used to.
+                    rtrim(rtrim(number_format($item->quantity, 3, '.', ''), '0'), '.'),
+                    $item->unit,
+                    rtrim(rtrim(number_format($item->low_stock_alert, 3, '.', ''), '0'), '.'),
+                    number_format($item->quantity * $item->unit_cost, 2, '.', ''),
+                    $status,
+                ]);
+            }
+
+            // The same figures as the page's stat strip, in the same order —
+            // Total / In Stock / Low Stock / Out of Stock / Total Stock Value.
+            fputcsv($file, []);
+            fputcsv($file, ['SUMMARY']);
+            fputcsv($file, ['Total Items', count($inventory)]);
+            fputcsv($file, ['In Stock', $countOk]);
+            fputcsv($file, ['Low Stock', $countLow]);
+            fputcsv($file, ['Out of Stock', $countOut]);
+            fputcsv($file, ['Total Stock Value', number_format($totalStockValue, 2, '.', '')]);
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     public function storeInventory(Request $request)
@@ -2696,7 +3104,11 @@ public function markOrderRefunded(int $id)
      */
     public function updateInventory(Request $request, int $id)
     {
-        $item = \App\Models\Inventory::findOrFail($id);
+        // Branch-scoped for supervisor, unrestricted for admins — see
+        // App\Services\AdminOrderAccess. Same rule stockIn()/stockOut()/
+        // editInventory() already apply; this definition edit endpoint had
+        // been missed. A foreign id gets the same 404 as a nonexistent one.
+        $item = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\Inventory::class, $id);
 
         $validated = $request->validate([
             'item_name' => 'required|string|max:255',
@@ -2830,36 +3242,152 @@ public function markOrderRefunded(int $id)
         );
     }
 
+    /**
+     * "Delete" is now the FIRST of two stages: this moves the item off the
+     * normal Inventory list and into Deleted Items, recoverable at any time.
+     * The previous single, irreversible delete is now forceDeleteInventory()
+     * below, reachable only from the Deleted Items page.
+     *
+     * Deliberately does NOT touch stock_movements or the recipe links
+     * (menu_item_ingredients / menu_option_ingredients) — archiving only
+     * stamps archived_at (and mangles item_code, see Inventory::archive()),
+     * so an archived item keeps deducting normally for any recipe still
+     * pointing at it until it is either restored or permanently deleted. That
+     * is exactly what makes this stage safe to use freely.
+     */
     public function deleteInventory(int $id)
     {
-        $item = \App\Models\Inventory::findOrFail($id);
+        $item = \App\Models\Inventory::notArchived()->findOrFail($id);
+
+        $item->archive();
+
+        return redirect()->route('admin.inventory')
+            ->with(
+                'success',
+                'Inventory item "' . $item->item_name . '" was moved to Deleted Items. '
+                . 'Restore it any time, or permanently delete it from there.'
+            );
+    }
+
+    /**
+     * Deleted Items — admin-only, matching "Delete Inventory Records" (Y | N | N).
+     */
+    public function showDeletedInventory()
+    {
+        $selectedBranch = $this->getSelectedBranch();
+
+        $deletedItems = \App\Models\Inventory::onlyArchived()
+            ->when(
+                $selectedBranch !== 'all',
+                fn($q) => $q->where('branch_id', $selectedBranch)
+            )
+            ->orderByDesc('archived_at')
+            ->get();
 
         /*
-         * Recipe links (menu_item_ingredients / menu_option_ingredients) are
-         * ON DELETE CASCADE, so deleting this stock item silently takes the
-         * recipe lines with it and those menu items stop deducting anything.
-         * That is the existing policy and is not being changed here — but the
-         * admin is told, instead of finding out when stock stops moving.
+         * What a Permanent Delete would do to each row, computed up front so
+         * the page can say so BEFORE the admin clicks — not as a surprise in
+         * the success message afterward. Mirrors the two checks
+         * forceDeleteInventory() itself makes.
          */
+        $recipeCounts = [];
+        $movementCounts = [];
+        foreach ($deletedItems as $item) {
+            $recipeCounts[$item->id] = \App\Models\MenuItemIngredient::where('inventory_id', $item->id)->count()
+                + \App\Models\MenuOptionIngredient::where('inventory_id', $item->id)->count();
+            $movementCounts[$item->id] = \App\Models\StockMovement::where('inventory_id', $item->id)->count();
+        }
+
+        return view('admin.inventory-deleted', compact('deletedItems', 'recipeCounts', 'movementCounts'));
+    }
+
+    /** Bring an archived item back to the normal Inventory list. */
+    public function restoreInventory(int $id)
+    {
+        $item = \App\Models\Inventory::onlyArchived()->find($id);
+
+        if (!$item) {
+            return redirect()->route('admin.inventory.deleted')
+                ->withErrors(['error' => 'That item is not in Deleted Items — it may have been restored or permanently deleted already.']);
+        }
+
+        $item->unarchive();
+
+        $message = 'Inventory item "' . $item->item_name . '" was restored.';
+
+        // unarchive() keeps the mangled item_code when the original was
+        // claimed by something else in the meantime — told explicitly here
+        // rather than left for the admin to notice a strange code later.
+        if (str_ends_with((string) $item->item_code, '-DEL-' . $item->id)) {
+            $message .= ' Its original item code was taken by another item in the meantime, '
+                . 'so it kept "' . $item->item_code . '" — update it if you want a different one.';
+        }
+
+        return redirect()->route('admin.inventory')->with('success', $message);
+    }
+
+    /**
+     * THE actual, irreversible delete — only reachable from Deleted Items, so
+     * only ever called on a row that has already been through the recoverable
+     * stage above.
+     *
+     * Two references are checked, exactly as investigated for this feature:
+     *
+     *   menu_item_ingredients / menu_option_ingredients (recipe lines) are
+     *   ON DELETE CASCADE — unchanged, existing policy (see deleteInventory()'s
+     *   previous version): the admin is told, not blocked, because by the time
+     *   an item reaches this second stage it has already been off the live
+     *   Inventory list for a while and any recipe still pointing at it was
+     *   already visibly broken (see Inventory::archive()'s docblock — an
+     *   archived row still deducts normally, so nothing silently stopped
+     *   working until THIS click).
+     *
+     *   stock_movements.inventory_id is ON DELETE SET NULL (migration
+     *   2026_09_16_000001) — the movement rows survive with inventory_id
+     *   NULL. deleted_item_name is stamped onto them first so the Stock
+     *   Movements Log keeps saying what they were for instead of showing
+     *   "N/A" for history that used to have a name.
+     */
+    public function forceDeleteInventory(int $id)
+    {
+        $item = \App\Models\Inventory::onlyArchived()->find($id);
+
+        if (!$item) {
+            return redirect()->route('admin.inventory.deleted')
+                ->withErrors(['error' => 'That item is not in Deleted Items — it may have been restored or permanently deleted already.']);
+        }
+
         $recipeLinks = \App\Models\MenuItemIngredient::where('inventory_id', $id)->count()
             + \App\Models\MenuOptionIngredient::where('inventory_id', $id)->count();
+        $movementCount = \App\Models\StockMovement::where('inventory_id', $id)->count();
 
         return $this->safelyDelete(
-            function () use ($item, $recipeLinks) {
+            function () use ($item, $recipeLinks, $movementCount) {
                 $name = $item->item_name;
+
+                if ($movementCount > 0) {
+                    \App\Models\StockMovement::where('inventory_id', $item->id)
+                        ->update(['deleted_item_name' => $name]);
+                }
+
                 $item->delete();
 
-                $message = 'Inventory item "' . $name . '" deleted!';
+                $message = 'Inventory item "' . $name . '" was permanently deleted.';
 
                 if ($recipeLinks > 0) {
                     $message .= ' ' . ucfirst($this->countLabel($recipeLinks, 'recipe link'))
                         . ' using it was removed too, so check the affected items still deduct correctly.';
                 }
 
-                return redirect()->route('admin.inventory')
+                if ($movementCount > 0) {
+                    $message .= ' ' . ucfirst($this->countLabel($movementCount, 'past stock movement'))
+                        . ' for it stayed in the Stock Movements Log for history.';
+                }
+
+                return redirect()->route('admin.inventory.deleted')
                     ->with('success', $message);
             },
-            'admin.inventory',
+            'admin.inventory.deleted',
             'the inventory item "' . $item->item_name . '"',
             'Remove it from the recipes that still use it first.'
         );
@@ -3097,6 +3625,11 @@ public function markOrderRefunded(int $id)
                     // Opened from the counter by staff (a dine-in Manual Order)
                     // rather than by a customer scanning the table QR.
                     'staff_opened' => $s->opened_by !== null,
+                    // How many devices are CURRENTLY at this table — see
+                    // TableOccupancy::activeDeviceCount(). Always 0 for a
+                    // staff-opened counter order: no customer browser ever
+                    // claimed it, so there is no device to count.
+                    'device_count' => \App\Services\TableOccupancy::activeDeviceCount($s),
                 ];
             })->values(),
         ]);
@@ -3301,9 +3834,17 @@ public function markOrderRefunded(int $id)
     {
         // Own branch + global only for a supervisor; unchanged (every
         // row) for the owner and for staff's read-only counter list.
+        //
+        // Real server-side pagination (2026-09-14) for the same reason as
+        // Completed Orders: this used to load every voucher ever created —
+        // every code minted by the Spin Wheel and every walk-in issue-code
+        // counts against this table forever, so it only grows.
         $vouchers = $this->scopePromotionListing(
             \App\Models\Voucher::with('branch')
-        )->orderBy('created_at', 'desc')->get();
+        )
+            ->orderBy('created_at', 'desc')
+            ->paginate($this->paginationPerPage($request))
+            ->withQueryString();
 
         // The owner's branch-scope picker on the Create form. A
         // branch-locked viewer never sees the control, so it is not
@@ -3650,8 +4191,10 @@ public function markOrderRefunded(int $id)
         $new = $current === '1' ? '0' : '1';
 
         \Illuminate\Support\Facades\DB::table('settings')
-            ->where('key', 'game_enabled')
-            ->update(['value' => $new]);
+            ->updateOrInsert(
+                ['key' => 'game_enabled', 'branch_id' => null],
+                ['value' => $new, 'group' => 'business', 'label' => 'Spin & Win Enabled', 'type' => 'text']
+            );
 
         $status = $new === '1'
             ? 'enabled'

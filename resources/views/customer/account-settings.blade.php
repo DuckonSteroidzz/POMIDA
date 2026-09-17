@@ -10,19 +10,10 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    @vite(['resources/css/app.css'])
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
             body {
@@ -39,36 +30,6 @@
             select, input, button, a, label { font-family: inherit; }
             [hidden] { display: none !important; }
             button:not(:disabled), [onclick] { cursor: pointer; }
-        }
-
-        @utility card-surface {
-            background-color: #fff;
-            border: 1px solid var(--color-peach-soft);
-            border-radius: 1rem;
-            box-shadow: 0 1px 2px rgb(139 26 26 / 0.04), 0 8px 24px -18px rgb(139 26 26 / 0.35);
-        }
-
-        @utility field-input {
-            width: 100%;
-            border-radius: 0.75rem;
-            border: 1px solid var(--color-peach-soft);
-            background-color: var(--color-peach-cream);
-            padding: 0.625rem 0.875rem;
-            font-size: 0.875rem;
-            color: #3b2320;
-            outline: none;
-            transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
-        }
-        @utility field-input-focus {
-            border-color: var(--color-peach);
-            background-color: #fff;
-            box-shadow: 0 0 0 4px rgb(244 132 95 / 0.2);
-        }
-        .field-input::placeholder { color: rgb(139 26 26 / 0.35); }
-        .field-input:focus {
-            border-color: var(--color-peach);
-            background-color: #fff;
-            box-shadow: 0 0 0 4px rgb(244 132 95 / 0.2);
         }
     </style>
     @include('partials.session-guard')
@@ -252,6 +213,8 @@
             });
         }, 4000);
     </script>
+
+    @include('customer.partials.idle-timeout')
 </body>
 
 </html>

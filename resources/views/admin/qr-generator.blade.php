@@ -35,6 +35,13 @@
     /* Regenerate. Deliberately NOT the red of Clear: the two must never be
        reachable by the same stray click. */
     .btn-regen{background:#6B4A42;}
+
+    /* RWD audit (Batch 2): Clear was 27px tall and Refresh 32px — both built
+       from JS template literals with small inline padding, well under a
+       comfortable tap target on the phone/tablet staff actually use at the
+       counter. min-height leaves the existing padding/font-size (and the
+       desktop look) untouched and only pads out the empty tap space. */
+    .clear-table-btn, #refreshTablesBtn { min-height: 40px; }
 </style>
 
 <div class="content-card">
@@ -145,12 +152,13 @@
                     <th>Branch</th>
                     <th>Table</th>
                     <th>Order</th>
+                    <th>Devices</th>
                     <th>Occupied since</th>
                     <th class="num">Action</th>
                 </tr>
             </thead>
             <tbody id="tablesBody">
-                <tr><td colspan="5" style="padding:0.9rem; color:#888;">Loading…</td></tr>
+                <tr><td colspan="6" style="padding:0.9rem; color:#888;">Loading…</td></tr>
             </tbody>
         </table>
     </div>
@@ -528,7 +536,7 @@
             const data = await res.json();
 
             if (!data.tables.length) {
-                body.innerHTML = '<tr><td colspan="5" style="padding:0.9rem; color:#888;">No tables are occupied right now.</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" style="padding:0.9rem; color:#888;">No tables are occupied right now.</td></tr>';
                 return;
             }
 
@@ -543,10 +551,19 @@
                     ? ' <span style="color:#8A6A61; font-size:0.68rem;">· counter</span>'
                     : '';
 
+                // How many phones are currently sharing this table's session.
+                // A counter order (staff_opened) has none — no customer
+                // browser ever claimed it — so 0 there is normal, not stale.
+                const deviceCount = typeof t.device_count === 'number' ? t.device_count : 0;
+                const devices = deviceCount > 0
+                    ? deviceCount + (deviceCount === 1 ? ' device' : ' devices')
+                    : '<span style="color:#888;">—</span>';
+
                 return '<tr>' +
                     '<td>' + escapeHtml(t.branch_name || '—') + '</td>' +
                     '<td style="font-weight:700;">' + escapeHtml(t.table_number) + '</td>' +
                     '<td>' + order + source + '</td>' +
+                    '<td>' + devices + '</td>' +
                     '<td style="color:#555;">' + sinceLabel(t.since) + '</td>' +
                     '<td class="num">' +
                         '<button class="btn-primary-custom clear-table-btn" style="padding:0.3rem 0.8rem; font-size:0.72rem; background:#C0392B;"' +
@@ -555,7 +572,7 @@
                 '</tr>';
             }).join('');
         } catch (e) {
-            body.innerHTML = '<tr><td colspan="5" style="padding:0.9rem; color:#B3261E;">' + escapeHtml(e.message) + '</td></tr>';
+            body.innerHTML = '<tr><td colspan="6" style="padding:0.9rem; color:#B3261E;">' + escapeHtml(e.message) + '</td></tr>';
         }
     }
 

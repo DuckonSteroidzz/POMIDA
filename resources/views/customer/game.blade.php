@@ -9,20 +9,11 @@
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
+    @include('customer.partials.click-sound')
 
-    <script src="/vendor/tailwindcss-browser-4.js"></script>
+    @vite(['resources/css/app.css'])
 
-    <style type="text/tailwindcss">
-        @theme {
-            --color-peach-deep: #8B1A1A;
-            --color-peach-red: #C0392B;
-            --color-peach: #F4845F;
-            --color-peach-soft: #FDE8DE;
-            --color-peach-cream: #FFFDF9;
-            --font-display: "Fraunces", ui-serif, Georgia, serif;
-            --font-body: "Karla", ui-sans-serif, system-ui, sans-serif;
-        }
-
+    <style>
         @layer base {
             html { -webkit-text-size-adjust: 100%; }
 
@@ -125,6 +116,35 @@
 
         .legend-badge.voucher {
             background: linear-gradient(135deg,#2E7D5B,#1f5c40);
+        }
+
+        /* Timing badge on the voucher-win modal — states plainly when a
+           wheel-won voucher actually becomes usable, since AuthController
+           always mints these with valid_from = tomorrow (see
+           AuthController::addPoints / VoucherClaims::mintForGuest), never
+           usable on the order that won it. */
+        .voucher-timing-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: .35rem;
+            background: linear-gradient(135deg,#2E7D5B,#1f5c40);
+            color: #fff;
+            font-size: .72rem;
+            font-weight: 800;
+            padding: .35rem .75rem;
+            border-radius: 999px;
+            margin: 0 0 .65rem;
+        }
+
+        /* Confetti overlay for a spin win. Fixed, full-viewport, and inert to
+           clicks so it never steals a tap meant for the modal underneath. */
+        #confettiCanvas {
+            position: fixed;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            z-index: 9999;
         }
 
         .legend-text {
@@ -602,6 +622,11 @@
     <div id="voucherWinModal" style="display:none;position:fixed;inset:0;background:rgba(74,59,54,.55);z-index:9998;align-items:center;justify-content:center;padding:1rem;">
         <div style="background:#fff;border-radius:18px;padding:1.5rem 1.25rem;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 50px -20px rgba(139,26,26,.5);">
             <p style="font-family:'Fraunces',Georgia,serif;font-size:1.15rem;font-weight:900;color:#8B1A1A;margin:0 0 .25rem;">🎉 You won a voucher!</p>
+            {{-- States plainly when this can actually be used. The server
+                 always mints wheel-won vouchers as valid starting the next
+                 day (never on the order that won them) — this shows that
+                 exact date rather than leaving it to be assumed. --}}
+            <span id="voucherWinTiming" class="voucher-timing-badge" style="display:none;"></span>
             <p id="voucherWinDesc" style="font-size:.8rem;color:#8A6A61;margin:0 0 .75rem;"></p>
             <div id="voucherWinCode" style="font-size:1.5rem;font-weight:900;letter-spacing:2px;color:#C0392B;background:#FFF7F3;border:2px dashed #F4845F;border-radius:10px;padding:.6rem .5rem;margin:0 0 .6rem;word-break:break-all;"></div>
             <p id="voucherWinNote" style="font-size:.72rem;color:#8A6A61;margin:0 0 1rem;line-height:1.45;"></p>
@@ -622,6 +647,10 @@
             <button type="button" onclick="hideSpinToast()" style="background:linear-gradient(135deg,#F4845F,#C0392B);color:#fff;border:0;border-radius:999px;padding:.55rem 2rem;font-size:.85rem;font-weight:800;cursor:pointer;">Nice!</button>
         </div>
     </div>
+
+    {{-- Confetti burst on a win. One canvas, reused for every celebration
+         instead of spawning DOM nodes per particle. --}}
+    <canvas id="confettiCanvas" aria-hidden="true"></canvas>
 
     {{-- Shared customer navigation --}}
     @include('customer.partials.navbar')
@@ -753,6 +782,11 @@
             document.getElementById('spinBtn').disabled = true;
             hideSpinToast();
 
+            // Create/unlock the celebration AudioContext right on this tap
+            // (a real user gesture) so it is ready to play ~4s later when
+            // the spin lands, instead of being blocked by autoplay policy.
+            if (window.primeCelebrationAudio) window.primeCelebrationAudio();
+
             var extra = (Math.floor(Math.random() * 5) + 5) * 2 * Math.PI;
             var stop = Math.random() * 2 * Math.PI;
             var total = extra + stop;
@@ -859,8 +893,10 @@
                             data.voucher.description || '',
                             isGuestPrize
                                 ? 'You have no account, so this code is the only way to use this voucher. Type it into the voucher box in your cart. It works once.'
-                                : 'Type this 1-time code into the voucher box at checkout. It works once.'
+                                : 'Type this 1-time code into the voucher box at checkout. It works once.',
+                            data.voucher.message || ''
                         );
+                        if (window.celebrateWin) window.celebrateWin();
 
                         setTimeout(releaseSpinButton, 3000);
                     } else if (won.type === 'points') {
@@ -870,6 +906,7 @@
                                 ' more pts to win: ' + esc(data.next_voucher) + '!';
                         }
                         showSpinToast('⭐', '+' + won.points + ' Points!', line);
+                        if (window.celebrateWin) window.celebrateWin();
                         releaseSpinButton();
                     } else {
                         showSpinToast('😅', 'Try Again!', 'Better luck next time!');
@@ -905,12 +942,141 @@
         }
 
         /* Voucher-win modal — the unique 1-time code, shown centre-screen. */
-        function showVoucherWinModal(code, desc, note) {
+        function showVoucherWinModal(code, desc, note, timingMessage) {
             document.getElementById('voucherWinCode').textContent = code || '';
             document.getElementById('voucherWinDesc').textContent = desc || '';
             document.getElementById('voucherWinNote').textContent = note || '';
+
+            var timing = document.getElementById('voucherWinTiming');
+            if (timingMessage) {
+                timing.textContent = '⏳ ' + timingMessage;
+                timing.style.display = 'inline-flex';
+            } else {
+                timing.style.display = 'none';
+            }
+
             document.getElementById('voucherWinModal').style.display = 'flex';
         }
+
+        /* ══════════ Win celebration: confetti + chime ══════════
+           Deliberately dependency-free — a canvas burst and a couple of
+           Web Audio oscillator notes cover this without pulling in a
+           confetti/sound library for two seconds of animation. Fired for
+           every real win (points or voucher); a "Try Again" gets neither. */
+        (function () {
+            var confettiCanvas = document.getElementById('confettiCanvas');
+            var cctx = confettiCanvas ? confettiCanvas.getContext('2d') : null;
+            var confettiColors = ['#F4845F', '#C0392B', '#F6B49B', '#2E7D5B', '#FFD166', '#8B1A1A'];
+            var confettiRAF = null;
+
+            function resizeConfettiCanvas() {
+                if (!confettiCanvas) return;
+                confettiCanvas.width = window.innerWidth;
+                confettiCanvas.height = window.innerHeight;
+            }
+            window.addEventListener('resize', resizeConfettiCanvas);
+            resizeConfettiCanvas();
+
+            window.fireConfetti = function () {
+                if (!cctx) return;
+                resizeConfettiCanvas();
+
+                var count = 70;
+                var particles = [];
+                for (var i = 0; i < count; i++) {
+                    particles.push({
+                        x: confettiCanvas.width / 2,
+                        y: confettiCanvas.height * 0.35,
+                        vx: (Math.random() - 0.5) * 11,
+                        vy: Math.random() * -9 - 3,
+                        size: Math.random() * 6 + 4,
+                        color: confettiColors[Math.floor(Math.random() * confettiColors.length)],
+                        rotation: Math.random() * 360,
+                        spin: (Math.random() - 0.5) * 18,
+                        gravity: 0.32 + Math.random() * 0.12
+                    });
+                }
+
+                var start = performance.now();
+                var duration = 1600;
+
+                if (confettiRAF) cancelAnimationFrame(confettiRAF);
+
+                function step(now) {
+                    var elapsed = now - start;
+                    cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+
+                    for (var i = 0; i < particles.length; i++) {
+                        var p = particles[i];
+                        p.x += p.vx;
+                        p.y += p.vy;
+                        p.vy += p.gravity;
+                        p.rotation += p.spin;
+
+                        cctx.save();
+                        cctx.translate(p.x, p.y);
+                        cctx.rotate(p.rotation * Math.PI / 180);
+                        cctx.globalAlpha = Math.max(0, 1 - elapsed / duration);
+                        cctx.fillStyle = p.color;
+                        cctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+                        cctx.restore();
+                    }
+
+                    if (elapsed < duration) {
+                        confettiRAF = requestAnimationFrame(step);
+                    } else {
+                        cctx.clearRect(0, 0, confettiCanvas.width, confettiCanvas.height);
+                        confettiRAF = null;
+                    }
+                }
+                confettiRAF = requestAnimationFrame(step);
+            };
+
+            /* Short two-note chime via Web Audio — no sound asset to ship or
+               license. The AudioContext is created lazily on the first spin
+               tap (a user gesture) so browsers' autoplay policies don't
+               silently swallow it later inside the async fetch response. */
+            var audioCtx = null;
+
+            window.primeCelebrationAudio = function () {
+                if (audioCtx) return;
+                var Ctx = window.AudioContext || window.webkitAudioContext;
+                if (!Ctx) return;
+                try {
+                    audioCtx = new Ctx();
+                } catch (e) {
+                    audioCtx = null;
+                }
+            };
+
+            window.playCelebrationChime = function () {
+                if (!audioCtx) return;
+                if (audioCtx.state === 'suspended') audioCtx.resume();
+
+                var notes = [880, 1318.5]; // A5 then E6 — a bright little "ta-da"
+                var t = audioCtx.currentTime;
+
+                notes.forEach(function (freq, i) {
+                    var osc = audioCtx.createOscillator();
+                    var gain = audioCtx.createGain();
+                    osc.type = 'triangle';
+                    osc.frequency.value = freq;
+                    var noteStart = t + i * 0.11;
+                    gain.gain.setValueAtTime(0, noteStart);
+                    gain.gain.linearRampToValueAtTime(0.16, noteStart + 0.02);
+                    gain.gain.exponentialRampToValueAtTime(0.001, noteStart + 0.32);
+                    osc.connect(gain);
+                    gain.connect(audioCtx.destination);
+                    osc.start(noteStart);
+                    osc.stop(noteStart + 0.34);
+                });
+            };
+
+            window.celebrateWin = function () {
+                window.fireConfetti();
+                window.playCelebrationChime();
+            };
+        })();
 
         (function () {
             var btn = document.getElementById('voucherWinCopy');
@@ -1012,6 +1178,8 @@
             if (overlay) overlay.remove();
         }
     </script>
+
+    @include('customer.partials.idle-timeout')
 </body>
 
 </html>

@@ -2,8 +2,10 @@
 
 namespace App\Http\Controllers\Customer;
 
+use App\Exceptions\StockUnavailableException;
 use App\Http\Controllers\Controller;
 use App\Models\MenuItem;
+use App\Models\MenuOption;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Models\OrderRating;
@@ -133,8 +135,63 @@ class OrderController extends Controller
             return back()->withErrors(['error' => 'No branch selected. Please select a branch first.']);
         }
 
+        /*
+         * Hard backstop for pick-up orders against a branch that has since
+         * closed (Phase 3 audit, finding #8). Dine-in already refuses a
+         * closed branch at table entry (TableEntry::validate(), Door for
+         * ERR_CLOSED_BRANCH) and the pick-up branch picker already hides
+         * closed branches from the list — but neither of those stops a
+         * stale session (branch closed mid-visit) or a directly-posted
+         * branch_id from reaching here. Scoped to pick_up only: dine-in's
+         * gate already lives upstream, and walk_in is staff-entered at
+         * their own (necessarily open) branch.
+         */
+        if ($validated['order_type'] === 'pick_up') {
+            $branch = \App\Models\Branch::find($branchId);
+            if (!$branch || !$branch->is_active) {
+                return back()->withErrors([
+                    'error' => 'This branch is currently closed and cannot accept pick-up orders. Please choose another branch.',
+                ]);
+            }
+        }
+
         if ($validated['order_type'] === 'dine_in' && empty($tableNumber)) {
             return back()->withErrors(['table_number' => 'Table number is required for dine-in']);
+        }
+
+        /*
+         * THE SERVER HALF OF "staff ended this session".
+         *
+         * The customer's page polls /customer/table-session-status and bounces
+         * itself to the code-entry page when staff clear its table, emptying
+         * the cart on the way out — but that is a courtesy, not a control. It
+         * needs a live tab, a working network and a client that chooses to obey
+         * the answer, and NONE of those are things this endpoint may assume. A
+         * phone that was offline at the moment of the clear, a tab restored
+         * from the background, or a request replayed by hand all arrive here
+         * with a perfectly ordinary-looking dine-in payload for a table the
+         * floor has already handed to somebody else.
+         *
+         * Scoped as narrowly as the bug itself: this refuses a session a staff
+         * member DELIBERATELY ENDED, and nothing else. It deliberately does not
+         * demand a live occupancy in general — a second round placed after the
+         * first order completed has no live lock either, and that is a normal,
+         * supported thing to do. staffClearedSession() matches one release
+         * reason exactly, so only the cancelled case is turned away here.
+         *
+         * Re-scanning the table fixes it, which is the right instruction and
+         * the one the message gives: a fresh scan writes a new session token
+         * and the stale cleared row stops matching.
+         */
+        if ($validated['order_type'] === 'dine_in'
+            && \App\Services\TableOccupancy::staffClearedSession()) {
+            session()->forget([
+                \App\Services\TableOccupancy::SESSION_KEY,
+                'cart',
+            ]);
+
+            return redirect()->route('customer.dineinqr')
+                ->with('error', \App\Services\TableOccupancy::ERR_SESSION_ENDED_BY_STAFF);
         }
 
         /*
@@ -252,7 +309,25 @@ class OrderController extends Controller
          * session) is still the tamper protection it always was. What changed
          * is that the cart page no longer disagrees with it.
          */
-        $priced = \App\Support\CartPricing::price($cart);
+        $priced = \App\Support\CartPricing::price($cart, (int) $branchId);
+
+        /*
+         * Hard backstop (Phase 3 audit, Door C). Branches never share
+         * inventory or stock, and completion deducts by each line's OWN
+         * menu_item.branch_id rather than the order's — so a cart line from
+         * a different branch than $branchId would silently decrement the
+         * wrong branch's stock (reproduced live: orders 115-121, May 2026).
+         * AuthController's switchBranch()/addToCart() close the doors that
+         * used to let such a line reach the cart at all; this refuses the
+         * order outright if one somehow still does, rather than trusting the
+         * cart's contents the way the rest of this method already refuses to
+         * trust its cached prices.
+         */
+        if ($priced['branch_mismatch']) {
+            return back()->withErrors([
+                'items' => 'Your cart contains an item from a different branch. Please review your cart and try again.',
+            ]);
+        }
 
         if ($priced['missing']) {
             return back()->withErrors(['items' => 'Invalid menu item']);
@@ -284,13 +359,50 @@ class OrderController extends Controller
         // the first line's.
         $stockLines = [];
 
+        /*
+         * Branch-aware add-on hard refusal (Phase 3 audit, Finding #3).
+         * Loaded once for every option id across the whole cart, with
+         * ingredients.inventory eager-loaded so isMappedForBranch() below
+         * costs no extra query per line.
+         */
+        $allSelectedOptionIds = collect($itemsData)->pluck('option_ids')->flatten()->unique()->all();
+        $optionModels = $allSelectedOptionIds
+            ? MenuOption::with('ingredients.inventory')->whereIn('id', $allSelectedOptionIds)->get()->keyBy('id')
+            : collect();
+
         foreach ($itemsData as $data) {
-            // Orderability guard, phrased for the customer. Refuses an item with
-            // no recipe set at all, and an item whose recipe the current
-            // inventory cannot cover — each with its own message, before the
-            // more technical per-ingredient shortfall check below.
-            if ($reason = $data['menu_item']->orderBlockedReason((int) $data['quantity'])) {
-                return back()->withErrors(['items' => $reason]);
+            /*
+             * Recipe guard only. Whether there is ENOUGH of the item is now
+             * settled by cartShortfalls() below, which counts the stock open
+             * orders have already committed and can name the true remaining
+             * count — neither of which orderBlockedReason() knows about. An
+             * item with no recipe at all is a different problem (an admin has
+             * to enter one) and still refuses here, in its own words.
+             */
+            if ($data['menu_item']->isMissingRecipe()) {
+                return back()->withErrors([
+                    'items' => $data['menu_item']->orderBlockedReason((int) $data['quantity']),
+                ]);
+            }
+
+            /*
+             * Defense in depth alongside AuthController::showItem() hiding an
+             * unmapped option from the checkbox list, and addToCart()
+             * refusing to add one. A stale item-details tab, a cart that has
+             * sat open since before an admin removed an option's branch
+             * mapping, or a crafted request could still reach here with one
+             * — refused exactly like the branch_mismatch backstop above,
+             * rather than silently dropping the option or deducting the
+             * wrong branch's stock.
+             */
+            foreach ($data['option_ids'] as $optionId) {
+                $optionModel = $optionModels->get($optionId);
+
+                if ($optionModel && !$optionModel->isMappedForBranch((int) $branchId)) {
+                    return back()->withErrors([
+                        'items' => 'Sorry, "' . $optionModel->name . '" is not available for your selected branch. Please review your cart and try again.',
+                    ]);
+                }
             }
 
             $stockLines[] = [
@@ -300,10 +412,22 @@ class OrderController extends Controller
             ];
         }
 
-        $stockErrors = app(InventoryDeductionService::class)->validateCartLines($stockLines);
+        /*
+         * Early, unlocked stock gate — purely so the customer is turned back
+         * before the discount/voucher work below runs, and so they see EVERY
+         * short item at once rather than fixing them one refusal at a time.
+         *
+         * This is NOT the authoritative check: by the time the order is
+         * actually written, another checkout may have taken the stock this one
+         * just measured. The locked re-check inside the order transaction is
+         * what actually decides, and this one exists only to fail fast and
+         * kindly.
+         */
+        $stockErrors = app(InventoryDeductionService::class)
+            ->cartShortfalls($stockLines, (int) $branchId);
 
         if (!empty($stockErrors)) {
-            return back()->withErrors(['items' => $stockErrors[0]]);
+            return back()->withErrors(['items' => $stockErrors]);
         }
 
         // Calculate voucher / PWD / Senior Citizen discount.
@@ -631,6 +755,7 @@ class OrderController extends Controller
             $order = DB::transaction(function () use (
                 $validated,
                 $itemsData,
+                $stockLines,
                 $total,
                 $finalTotal,
                 $discountAmount,
@@ -649,6 +774,24 @@ class OrderController extends Controller
                 $voucherClaim,
                 $discountStatus
             ) {
+                /*
+                 * AUTHORITATIVE stock gate. Must be the first statement in the
+                 * transaction: it takes SELECT … FOR UPDATE on every inventory
+                 * row this cart touches, so a second checkout wanting the same
+                 * rows blocks here until this one has committed its order — and
+                 * then re-counts committed stock WITH this order included,
+                 * instead of both being waved through on the same last unit.
+                 *
+                 * Throwing rolls the whole transaction back, so a refused order
+                 * leaves no order row, no order_items and no spent voucher.
+                 */
+                $lockedShortfalls = app(InventoryDeductionService::class)
+                    ->cartShortfalls($stockLines, (int) $branchId, true);
+
+                if (!empty($lockedShortfalls)) {
+                    throw new StockUnavailableException($lockedShortfalls);
+                }
+
                 $order = Order::create([
                     'user_id' => Auth::guard('customer')->id(),
                     'branch_id' => $branchId,
@@ -781,6 +924,13 @@ if (($validated['payment_method'] ?? 'cash') === 'gcash') {
 // Cash orders continue using the normal order flow.
 return redirect()->route('customer.orders')
     ->with('success', 'Order placed! 🎉 Order #' . $order->order_number);
+        } catch (StockUnavailableException $e) {
+            // Lost the race for the last of something, or stock moved while the
+            // customer was on the confirm screen. Nothing was written — the
+            // transaction rolled back — so this is just a "please adjust your
+            // order", reported under the same key and with the same wording as
+            // the early gate so the cart page renders it identically.
+            return back()->withErrors(['items' => $e->messages()]);
         } catch (\RuntimeException $e) {
             // Deliberate, user-facing refusals thrown inside the transaction
             // (voucher already used, not enough stock). The message is written

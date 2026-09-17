@@ -304,6 +304,7 @@
                         <tr>
                             <th>Subcategory</th>
                             <th>Category</th>
+                            <th>Items</th>
                             <th class="pchy-col-action">Edit</th>
                             <th class="pchy-col-action">Delete</th>
                         </tr>
@@ -314,6 +315,7 @@
                         <tr>
                             <td data-l="Subcategory" class="pchy-name">{{ $sub->name }}</td>
                             <td data-l="Category"><span class="pchy-badge alt">{{ $sub->category->name ?? 'N/A' }}</span></td>
+                            <td data-l="Items"><span class="pchy-badge">{{ $sub->menu_items_count }}</span></td>
                             <td data-l="Edit" class="pchy-col-action">
                                 <button type="button"
                                         class="pchy-edit"
@@ -332,7 +334,7 @@
                         @endforeach
                         @else
                         <tr>
-                            <td colspan="4" class="pchy-empty">No subcategories yet</td>
+                            <td colspan="5" class="pchy-empty">No subcategories yet</td>
                         </tr>
                         @endif
                     </tbody>

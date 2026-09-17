@@ -92,6 +92,18 @@ class DiscountCard extends Model
             return self::ERROR_EXPIRATION_MISSING;
         }
 
+        // PHP's date parser silently rolls an impossible date like
+        // 2026-02-30 forward into 2026-03-02 instead of rejecting it, so a
+        // day/month/year combination has to be checked against the real
+        // calendar before it ever reaches Carbon::parse() below.
+        if (
+            is_string($expiration)
+            && preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $expiration, $matches)
+            && ! checkdate((int) $matches[2], (int) $matches[3], (int) $matches[1])
+        ) {
+            return self::ERROR_EXPIRATION_INVALID;
+        }
+
         try {
             $date = $expiration instanceof \DateTimeInterface
                 ? \Illuminate\Support\Carbon::instance($expiration)

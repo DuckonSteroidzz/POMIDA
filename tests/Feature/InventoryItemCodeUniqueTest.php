@@ -33,10 +33,17 @@ use Tests\TestCase;
  * duplicate found to report, and nothing was deleted, merged, or modified —
  * this file creates and cleans up its own fixtures under DatabaseTransactions.
  *
- * ARCHIVED ITEMS AND THE UNIQUE INDEX: Inventory has no SoftDeletes trait and
- * no deleted_at column — 'archived' here just means is_active = false on the
- * same row. There is no partial/filtered unique index, so an inactive item's
- * code is still fully reserved.
+ * ARCHIVED ITEMS AND THE UNIQUE INDEX — UPDATED by the two-stage-delete pass
+ * (2026-09-16). At the time this file was first written, Inventory had no
+ * archived_at column and 'archived' meant only is_active = false, so an
+ * inactive item's code stayed fully reserved with no way to free it. Inventory
+ * now has archived_at (Inventory::archive(), a local/opt-in scope — NOT
+ * App\Models\Concerns\Archivable's global one, see the model's docblock for
+ * why) but the unique index itself is still unchanged and unfiltered:
+ * archiving instead mangles item_code and parks the original in
+ * archived_item_code, freeing the code for reuse without touching the schema.
+ * See InventoryTwoStageDeleteTest for that behaviour; is_active's meaning
+ * here (a stock-tracking flag, unrelated to archiving) is unchanged.
  *
  * BLANK CODES — NOT WHAT THE ORIGINAL BRIEF ASSUMED. Investigation found
  * `inventory.item_code` is a NOT NULL column (`SHOW COLUMNS` on the live
