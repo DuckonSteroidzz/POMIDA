@@ -75,13 +75,22 @@ class LogHttpErrorsTest extends TestCase
 
         $before = $this->markLogSize();
 
-        // The old POST route for the branch switcher is deliberately gone
-        // (see CsrfExpiryDeadEndTest) — a reliable, deterministic 405 that
-        // needs no form data, proving this captures a normal application-
-        // level refusal, not only a framework exception, and that the actor
-        // line names the real guard/id/role rather than always "guest".
+        // admin.inventory.stock-in is POST-only — GETting it is a reliable,
+        // deterministic 405 that needs no form data, proving this captures a
+        // normal application-level refusal, not only a framework exception,
+        // and that the actor line names the real guard/id/role rather than
+        // always "guest". The id need not exist: a 405 is a ROUTING decision
+        // (wrong verb for this URI pattern), decided before any controller or
+        // model lookup runs.
+        //
+        // Phase 3b F1 (2026-09-20): this used to POST to /admin/branches/select
+        // for the same reliable-405 property — that was actually a side
+        // effect of PUT admin/branches/{id} having no ->whereNumber('id')
+        // constraint (see CsrfExpiryDeadEndTest's matching update), which F1
+        // closed. This route is 405 by deliberate design (POST-only,
+        // whereNumber'd from the start — see routes/web.php), not by accident.
         $this->actingAs($admin, 'admin');
-        $response = $this->post('/admin/branches/select', ['branch_id' => 1]);
+        $response = $this->get('/admin/inventory/stock-in/1');
         $response->assertStatus(405);
 
         $new = $this->newLogLines($before);

@@ -25,6 +25,13 @@ class AdminController extends Controller
     // Ignition stack trace. See the trait for the full reasoning.
     use \App\Http\Controllers\Concerns\HandlesSafeDeletes;
 
+    // The four report endpoints that accept a raw date_from/date_to off the
+    // querystring (analytics, analytics.print, summary, export.orders) all
+    // validate it through this ONE trait, so a date the Analytics page refuses
+    // cannot be the same date the CSV happily crashes on. See the trait for
+    // what each rejected shape used to do.
+    use \App\Http\Controllers\Concerns\ResolvesReportDateRange;
+
     // ══════════ Pages ══════════
 
     public function showAccount()
@@ -133,15 +140,23 @@ class AdminController extends Controller
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
 
-        if ($period === 'custom' && (!$dateFrom || !$dateTo)) {
-            // Custom picked but incomplete — fall back rather than error.
-            $period = 'today';
-        }
         if (!in_array($period, ['today', 'week', 'month', 'custom'], true)) {
             $period = 'today';
         }
 
-        [$start, $end, $prevStart, $prevEnd] = $this->resolveSummaryPeriod($period, $dateFrom, $dateTo);
+        // The "custom but incomplete -> today" fallback that used to live here
+        // now lives inside normaliseCustomRange(), together with the three
+        // failure modes it never covered (unparseable, 0000-00-00, inverted).
+        // resolveSummaryPeriod() does the demotion itself and reports back
+        // through $period, so this method and exportOrders() cannot drift on
+        // what a bad range resolves to.
+        $dateNotice = null;
+        [$start, $end, $prevStart, $prevEnd] = $this->resolveSummaryPeriod(
+            $period,
+            $dateFrom,
+            $dateTo,
+            $dateNotice
+        );
 
         $profit = app(\App\Services\ProfitCalculationService::class);
         $current = $profit->forRange($start, $end, $selectedBranch);
@@ -168,11 +183,23 @@ class AdminController extends Controller
 
         return view('admin.summary', [
             'period'               => $period,
-            'dateFrom'             => $dateFrom,
-            'dateTo'               => $dateTo,
+
+            // Refilled from the range actually reported on whenever the
+            // submitted one had to be corrected or discarded — same reasoning
+            // as showAnalytics(): a rejected string must not sit in the date
+            // box above figures for a different period. Unchanged on an
+            // ordinary valid request.
+            'dateFrom'             => $dateNotice === null ? $dateFrom : $start->toDateString(),
+            'dateTo'               => $dateNotice === null ? $dateTo : $end->toDateString(),
             'periodStart'          => $start,
             'periodEnd'            => $end,
             'selectedBranchName'   => $selectedBranchName,
+
+            // Set only when the submitted custom range had to be corrected or
+            // discarded. The page reports on $start..$end either way, so this
+            // is what stops a fallback period being read as the one that was
+            // asked for. Null on every ordinary request and the view is silent.
+            'dateNotice'           => $dateNotice,
 
             // KPI 1-6: the revenue chain, then COGS, profit and margin.
             // Net Revenue leads because it is the money the till took; Gross
@@ -231,10 +258,35 @@ class AdminController extends Controller
      * This Week vs Last Week, This Month vs Last Month, Custom vs the same
      * number of days immediately before it).
      *
+     * $period is taken BY REFERENCE: a 'custom' range that does not survive
+     * normaliseCustomRange() is demoted to 'today' here, and the caller needs
+     * to see that demotion so the period selector it re-renders agrees with the
+     * figures underneath it. Doing the demotion inside this one method is what
+     * keeps showSummary() and exportOrders() — which must resolve any given
+     * request to the SAME window, or the CSV stops being the report — from
+     * each keeping their own copy of the rule.
+     *
+     * @param  string|null  $notice  plain-language text when the supplied range
+     *                               was corrected or discarded; null otherwise.
      * @return array{0: \Carbon\Carbon, 1: \Carbon\Carbon, 2: \Carbon\Carbon, 3: \Carbon\Carbon}
      */
-    private function resolveSummaryPeriod(string $period, ?string $dateFrom, ?string $dateTo): array
-    {
+    private function resolveSummaryPeriod(
+        string &$period,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?string &$notice = null
+    ): array {
+        if ($period === 'custom') {
+            $range = $this->normaliseCustomRange($dateFrom, $dateTo, $notice);
+
+            if ($range === null) {
+                // Incomplete, unparseable, impossible or out-of-bounds — fall
+                // back to the safe default rather than erroring. $notice is
+                // already set for everything except "still filling the form in".
+                $period = 'today';
+            }
+        }
+
         switch ($period) {
             case 'week':
                 return [
@@ -249,8 +301,16 @@ class AdminController extends Controller
                 ];
 
             case 'custom':
-                $start = \Carbon\Carbon::parse($dateFrom)->startOfDay();
-                $end = \Carbon\Carbon::parse($dateTo)->endOfDay();
+                // $range is guaranteed non-null and guaranteed start <= end by
+                // the block above — a range that failed validation demoted
+                // $period away from 'custom' and never reaches this arm. That
+                // ordering is what makes the arithmetic below safe: Carbon 3's
+                // diffInDays() is SIGNED, so before the swap an inverted range
+                // produced a negative $days, and subDays() on a negative count
+                // ADDS days — the "previous period" the % change badge compares
+                // against used to land in the FUTURE on an inverted input.
+                [$start, $end] = $range;
+
                 // Same length window immediately preceding the custom range.
                 $days = $start->diffInDays($end) + 1;
                 $prevEnd = $start->copy()->subDay()->endOfDay();
@@ -266,7 +326,33 @@ class AdminController extends Controller
         }
     }
 
-    public function showAnalytics(\Illuminate\Http\Request $request)
+    /**
+     * EVERY figure the Analytics module reports, resolved once.
+     *
+     * Phase 2d. The screen, the print sheet and the CSV export are three
+     * renderings of the array this method returns — not three calculations.
+     * Before this existed, showAnalytics() and printAnalytics() each repeated
+     * the same eleven service calls and the export would have been a third
+     * copy; the property that "the CSV matches the screen" was maintained by
+     * two (soon three) code paths happening to stay in step. Now it is
+     * structural: there is one code path, and a divergence would have to be
+     * written deliberately.
+     *
+     * $period is passed by reference all the way down because a custom range
+     * that fails validation is DEMOTED to the default preset, and the caller
+     * re-renders the period selector from that variable — see
+     * resolveAnalyticsPeriod().
+     *
+     * BRANCH SCOPE is taken from getSelectedBranch() here and nowhere else, so
+     * every consumer inherits the one rule. There is no branch, scope or
+     * selected_branch_id parameter anywhere in this method for a request to
+     * tamper with: a branch-locked supervisor is locked by
+     * AdminOrderAccess::lockedBranchId() before the session is consulted, and
+     * a forged querystring has nothing to bind to.
+     *
+     * @return array<string, mixed>
+     */
+    private function analyticsContext(\Illuminate\Http\Request $request, ?string &$period = null, ?string &$dateNotice = null): array
     {
         $selectedBranch = $this->getSelectedBranch();
         $isAllBranches = $selectedBranch === 'all';
@@ -276,37 +362,134 @@ class AdminController extends Controller
             : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
 
         $period = $request->query('period', 'last30');
+        $dateNotice = null;
         [$start, $end] = $this->resolveAnalyticsPeriod(
             $period,
             $request->query('date_from'),
-            $request->query('date_to')
+            $request->query('date_to'),
+            $dateNotice
         );
 
         $analytics = new \App\Services\AnalyticsService($selectedBranch);
 
-        $totalSales    = $analytics->salesForRange($start, $end);
-        $totalOrders   = $analytics->ordersCountForRange($start, $end);
+        $totalSales        = $analytics->salesForRange($start, $end);
+        $totalOrders       = $analytics->ordersCountForRange($start, $end);
         $averageOrderValue = $analytics->averageOrderValueForRange($start, $end);
-        $averageRating = $analytics->averageRatingForRange($start, $end);
+        $averageRating     = $analytics->averageRatingForRange($start, $end);
 
-        $dailySales   = $analytics->dailySalesSeriesForRange($start, $end);
-        $topProducts  = $analytics->topProductsForRange($start, $end, 5);
+        $dailySales = $analytics->dailySalesSeriesForRange($start, $end);
 
-        return view('admin.analytics', [
-            'branchName'        => $branchName,
-            'isAllBranches'     => $isAllBranches,
-            'selectedBranch'    => $selectedBranch,
-            'period'            => $period,
-            'dateFrom'          => $request->query('date_from', $start->toDateString()),
-            'dateTo'            => $request->query('date_to', $end->toDateString()),
-            'periodStart'       => $start,
-            'periodEnd'         => $end,
-            'totalSales'        => $totalSales,
-            'totalOrders'       => $totalOrders,
-            'averageOrderValue' => $averageOrderValue,
-            'averageRating'     => $averageRating,
-            'dailySales'        => $dailySales,
-            'topProducts'       => $topProducts,
+        // Menu Production Capacity (Phase 2b). Deliberately NOT date-scoped:
+        // "how many more of this can we make" is a question about the shelf as
+        // it stands right now, the same way the out-of-stock KPI on Summary is
+        // a live snapshot rather than a figure for the chosen period. The date
+        // filter therefore does not — and must not — move these numbers.
+        $productionCapacity = app(\App\Services\ProductionCapacityService::class)
+            ->forBranchScope($selectedBranch);
+
+        // Demand forecast (Phase 2c). Moving average over the SAME daily series
+        // the chart is already drawing, so the forecast and the history it is
+        // projected from can never be computed from two different queries — and
+        // so the KPI, the chart's forecast segment and the weekday table cost
+        // ZERO additional queries between them. Only the menu-level forecast
+        // goes back to the database, and it does so once for every item.
+        //
+        // Unlike production capacity above, this one IS range-scoped: it is a
+        // projection FROM the selected historical window, and the forecast
+        // period begins the day after $end rather than after today, so the two
+        // periods on the chart meet exactly once.
+        //
+        // UNSLICED, since Phase 2d. The screen's Menu Demand Forecast table
+        // still shows the top MENU_FORECAST_DISPLAY_LIMIT rows, but the risk
+        // join below needs a forecast for EVERY item that sold, not just the
+        // five that happen to rank highest — otherwise the sixth item's risk
+        // would read "Insufficient Data" purely because the display table was
+        // short. Same ONE query either way; only the array slice moved.
+        $forecastService = app(\App\Services\DemandForecastService::class);
+        $forecast        = $forecastService->forDailySeries($dailySales['values'], $start, $end);
+        $weekdayDemand   = $forecastService->byDayOfWeek($dailySales['values'], $start);
+        $menuForecastAll = $forecastService->forMenuItems($selectedBranch, $start, $end, PHP_INT_MAX);
+
+        $menuForecast = $menuForecastAll;
+        $menuForecast['rows'] = array_slice($menuForecastAll['rows'], 0, self::MENU_FORECAST_DISPLAY_LIMIT);
+
+        // The financial chain. ProfitCalculationService is the ONE source of
+        // money in this project — Phase 1 found the old Analytics Top-5 widget
+        // aggregating its own revenue beside a Summary screen that computed a
+        // different one, and this is that finding closed on this page: the
+        // Menu Performance table, the insights and the CSV all read from here.
+        $profit = app(\App\Services\ProfitCalculationService::class)
+            ->forRange($start, $end, $selectedBranch);
+
+        // Phase 2d: the join. No new revenue, forecast, capacity or bottleneck
+        // is calculated here — see the service's class docblock.
+        $intelligence = app(\App\Services\AnalyticsIntelligenceService::class)->build(
+            $selectedBranch,
+            $productionCapacity,
+            $menuForecastAll,
+            $profit,
+            $weekdayDemand,
+            $forecast
+        );
+
+        return [
+            'selectedBranch'       => $selectedBranch,
+            'isAllBranches'        => $isAllBranches,
+            'branchName'           => $branchName,
+            'period'               => $period,
+            'dateNotice'           => $dateNotice,
+            'periodStart'          => $start,
+            'periodEnd'            => $end,
+
+            'totalSales'           => $totalSales,
+            'totalOrders'          => $totalOrders,
+            'averageOrderValue'    => $averageOrderValue,
+            'averageRating'        => $averageRating,
+            'dailySales'           => $dailySales,
+
+            'productionCapacity'   => $productionCapacity,
+            'lowCapacityThreshold' => (int) config('inventory.low_stock_threshold', 3),
+
+            'forecast'             => $forecast,
+            'weekdayDemand'        => $weekdayDemand,
+            'menuForecast'         => $menuForecast,
+
+            'profit'               => $profit,
+            'intel'                => $intelligence,
+        ];
+    }
+
+    /** How many rows the screen's Menu Demand Forecast table shows. */
+    private const MENU_FORECAST_DISPLAY_LIMIT = 5;
+
+    /** How many rows the screen's Menu Performance table shows. */
+    private const MENU_PERFORMANCE_DISPLAY_LIMIT = 5;
+
+    public function showAnalytics(\Illuminate\Http\Request $request)
+    {
+        $period = null;
+        $dateNotice = null;
+        $context = $this->analyticsContext($request, $period, $dateNotice);
+
+        return view('admin.analytics', $context + [
+            // The two date boxes are refilled from the range that was actually
+            // REPORTED ON, not from the raw querystring, whenever the submitted
+            // range had to be corrected or discarded. Echoing the raw value
+            // back would leave "banana" sitting in a date input above figures
+            // for the last 30 days. On an ordinary valid custom request these
+            // are the submitted strings, so the normal UX is unchanged.
+            'dateFrom' => $dateNotice === null
+                ? $request->query('date_from', $context['periodStart']->toDateString())
+                : $context['periodStart']->toDateString(),
+            'dateTo'   => $dateNotice === null
+                ? $request->query('date_to', $context['periodEnd']->toDateString())
+                : $context['periodEnd']->toDateString(),
+
+            'performanceRows' => array_slice(
+                $context['intel']['performance_rows'],
+                0,
+                self::MENU_PERFORMANCE_DISPLAY_LIMIT
+            ),
         ]);
     }
 
@@ -315,48 +498,377 @@ class AdminController extends Controller
      * printCompletedOrders(): re-resolves the SAME branch scope and
      * date range from the querystring, unbounded, and hands it to a
      * print-only view. Nothing here re-derives a figure differently than
-     * showAnalytics() did — same AnalyticsService methods, same arguments.
+     * showAnalytics() did — same AnalyticsService methods, same arguments,
+     * and (Phase 2b.1) the same ProductionCapacityService::forBranchScope()
+     * call for the live capacity snapshot. No calculation is duplicated here.
      */
     public function printAnalytics(\Illuminate\Http\Request $request)
     {
-        $selectedBranch = $this->getSelectedBranch();
-        $isAllBranches = $selectedBranch === 'all';
+        // The SAME analyticsContext() the screen renders from, so "the print
+        // sheet matches the screen" stops being a property anyone has to
+        // maintain and becomes one code path.
+        $context = $this->analyticsContext($request);
 
-        $branchName = $isAllBranches
-            ? 'All Branches'
-            : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
+        return view('admin.analytics-print', $context + [
+            'performanceRows' => array_slice(
+                $context['intel']['performance_rows'],
+                0,
+                self::MENU_PERFORMANCE_DISPLAY_LIMIT
+            ),
 
-        $period = $request->query('period', 'last30');
-        [$start, $end] = $this->resolveAnalyticsPeriod(
-            $period,
-            $request->query('date_from'),
-            $request->query('date_to')
-        );
-
-        $analytics = new \App\Services\AnalyticsService($selectedBranch);
-
-        $totalSales    = $analytics->salesForRange($start, $end);
-        $totalOrders   = $analytics->ordersCountForRange($start, $end);
-        $averageOrderValue = $analytics->averageOrderValueForRange($start, $end);
-        $averageRating = $analytics->averageRatingForRange($start, $end);
-
-        $dailySales  = $analytics->dailySalesSeriesForRange($start, $end);
-        $topProducts = $analytics->topProductsForRange($start, $end, 5);
-
-        return view('admin.analytics-print', [
-            'branchName'        => $branchName,
-            'period'            => $period,
-            'periodStart'       => $start,
-            'periodEnd'         => $end,
-            'totalSales'        => $totalSales,
-            'totalOrders'       => $totalOrders,
-            'averageOrderValue' => $averageOrderValue,
-            'averageRating'     => $averageRating,
-            'dailySales'        => $dailySales,
-            'topProducts'       => $topProducts,
-            'printedBy'         => optional(auth('admin')->user())->name ?? 'Unknown user',
-            'printedAt'         => now(),
+            // A printed sheet outlives the screen it was requested from, so a
+            // range that fell back says so ON THE PAPER rather than only in the
+            // browser the request came from. The Period line beneath the
+            // heading already states the window used; 'dateNotice' (carried in
+            // $context) names the reason.
+            'printedBy' => optional(auth('admin')->user())->name ?? 'Unknown user',
+            'printedAt' => now(),
         ]);
+    }
+
+    /**
+     * "Export CSV" for Analytics — Phase 2d.
+     *
+     * SAME SOURCE OF TRUTH AS THE SCREEN, structurally. This action calls
+     * analyticsContext() and nothing else: the identical branch scope, the
+     * identical date resolution (including the fallback a rubbish custom range
+     * triggers), the identical services, and the identical
+     * AnalyticsIntelligenceService result the page just rendered. There is no
+     * second revenue figure, no second forecast, no second capacity and no
+     * second bottleneck in this method — only formatting.
+     *
+     * The file follows the export convention the Inventory and Sales CSVs
+     * already established: response()->stream(), a UTF-8 BOM so Excel renders
+     * the peso sign, a header block naming the report / branch / period /
+     * basis / who generated it, the data grid, then a summary block. No
+     * generic export framework was introduced for it.
+     *
+     * AUTHORIZATION is the route's, plus getSelectedBranch()'s, and nothing
+     * this method does can widen either. The route sits in the
+     * role:admin,supervisor group alongside admin.analytics itself, so staff
+     * cannot reach it at all; the scope comes from getSelectedBranch(), which
+     * answers a branch-locked supervisor from AdminOrderAccess::lockedBranchId()
+     * BEFORE the session is consulted. There is no branch_id, scope or
+     * selected_branch_id input read anywhere in this path, so there is nothing
+     * for a forged parameter to bind to — the only querystring this action
+     * reads at all is the date range, through the same validator the screen
+     * uses.
+     *
+     * FORMULA INJECTION. Menu item, ingredient and bottleneck names are
+     * user-entered, so every free-text cell goes through App\Support\Csv::cell()
+     * on the way out — see that class for why fputcsv()'s quoting is not
+     * sufficient on its own.
+     */
+    public function exportAnalytics(\Illuminate\Http\Request $request)
+    {
+        $context = $this->analyticsContext($request);
+
+        $intel      = $context['intel'];
+        $start      = $context['periodStart'];
+        $end        = $context['periodEnd'];
+        $branchName = $context['branchName'];
+        $isAll      = $context['isAllBranches'];
+
+        $filenameBranch = Str::slug($branchName) ?: 'all-branches';
+        $filename = "analytics_{$filenameBranch}_" . $start->format('Y-m-d')
+            . '_to_' . $end->format('Y-m-d') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+        ];
+
+        $generatedBy = optional(auth('admin')->user())->name ?? 'Unknown user';
+        $generatedAt = now();
+
+        $callback = function () use ($intel, $branchName, $isAll, $start, $end, $generatedBy, $generatedAt) {
+            $file = fopen('php://output', 'w');
+
+            // Excel opens a CSV as the system codepage unless it finds a BOM;
+            // without this the peso sign and the en dashes arrive as mojibake.
+            fwrite($file, "\xEF\xBB\xBF");
+
+            $safe = fn ($v) => \App\Support\Csv::cell($v);
+
+            // ── header block ──────────────────────────────────────────────
+            fputcsv($file, ['Peachy Cakes & Deli Cafe — Analytics Report']);
+            fputcsv($file, ['Branch', $safe($branchName)]);
+            fputcsv($file, ['Period', $start->format('M d, Y') . ' - ' . $end->format('M d, Y')]);
+            fputcsv($file, ['Sales basis', 'Completed orders, by completion date']);
+            // The one distinction a printed or emailed copy of this file must
+            // not lose: three of its columns are about three different points
+            // in time. Stated here, once, above the grid.
+            fputcsv($file, ['Capacity basis', 'Live stock snapshot as of ' . $generatedAt->format('M d, Y g:i A')
+                . ' — NOT the report period above']);
+            fputcsv($file, ['Forecast basis', 'Moving average of the last '
+                . \App\Services\DemandForecastService::MOVING_AVERAGE_WINDOW_DAYS
+                . ' days of the report period, projected '
+                . $intel['horizon_days'] . ' days ahead. An estimate, not a guaranteed figure.']);
+            fputcsv($file, ['Generated', $generatedAt->format('M d, Y g:i A')]);
+            fputcsv($file, ['Generated by', $safe($generatedBy)]);
+            fputcsv($file, []);
+
+            // ── menu grid ─────────────────────────────────────────────────
+            $columns = ['Menu Item'];
+            if ($isAll) {
+                // Branch distinction, not branch comparison: under All Branches
+                // two branches may carry a menu item of the same name and the
+                // rows would otherwise be indistinguishable. A branch-scoped
+                // viewer already knows which branch they exported.
+                $columns[] = 'Branch';
+            }
+            array_push(
+                $columns,
+                'Quantity Sold',
+                'Revenue (before order discounts)',
+                'COGS',
+                'Gross Profit',
+                'Gross Margin %',
+                'Current Production Capacity',
+                'Forecasted Demand (next ' . $intel['horizon_days'] . ' days)',
+                'Potential Shortage',
+                'Days of Coverage',
+                'Bottleneck Ingredient',
+                'Risk Status'
+            );
+            fputcsv($file, $columns);
+
+            foreach ($intel['rows'] as $row) {
+                $line = [$safe($row['menu_item_name'])];
+
+                if ($isAll) {
+                    $line[] = $safe($row['branch_name'] ?? 'Unassigned');
+                }
+
+                // Money and quantities are only written when the item actually
+                // sold in the period. An item with no sales has no revenue to
+                // report, and a 0.00 there would read as "sold nothing for
+                // nothing" rather than "not sold".
+                if ($row['has_sales']) {
+                    array_push(
+                        $line,
+                        $row['quantity_sold'],
+                        number_format($row['revenue'], 2, '.', ''),
+                        number_format($row['cogs'], 2, '.', ''),
+                        number_format($row['gross_profit'], 2, '.', ''),
+                        $row['margin_percent'] === null
+                            ? 'Not Applicable'
+                            : number_format($row['margin_percent'], 1, '.', '')
+                    );
+                } else {
+                    array_push($line, 'No Sales', 'No Sales', 'No Sales', 'No Sales', 'No Sales');
+                }
+
+                // Capacity. "Unavailable" is not zero — see
+                // AnalyticsIntelligenceService's class docblock.
+                $line[] = ($row['has_capacity_row'] && $row['is_measurable'])
+                    ? $row['capacity']
+                    : 'Unavailable';
+
+                // Forecast, shortage and coverage. Every one of these is an
+                // honest word rather than a fake zero when it cannot be
+                // calculated.
+                $line[] = $row['forecast_sufficient']
+                    ? number_format($row['forecast_qty_next_7_days'], 2, '.', '')
+                    : 'Insufficient Data';
+
+                $line[] = $this->analyticsCsvShortage($row);
+                $line[] = $this->analyticsCsvCoverage($row);
+
+                $line[] = $safe(
+                    ($row['has_capacity_row'] && $row['is_measurable'] && $row['bottleneck_name'] !== null)
+                        ? $row['bottleneck_name']
+                        : 'Not Applicable'
+                );
+
+                $line[] = $row['risk_label'];
+
+                fputcsv($file, $line);
+            }
+
+            // ── inventory intelligence grid ───────────────────────────────
+            fputcsv($file, []);
+            fputcsv($file, ['INVENTORY INTELLIGENCE (live stock snapshot)']);
+
+            $ingredientColumns = ['Ingredient'];
+            if ($isAll) {
+                $ingredientColumns[] = 'Branch';
+            }
+            array_push(
+                $ingredientColumns,
+                'Available Quantity',
+                'Unit',
+                'Average Daily Usage',
+                'Days of Stock',
+                'Menu Items Affected',
+                'Limiting Production For',
+                'Affected Menu Items'
+            );
+            fputcsv($file, $ingredientColumns);
+
+            if (empty($intel['ingredients'])) {
+                fputcsv($file, ['No recipe ingredients are tracked for this branch.']);
+            }
+
+            foreach ($intel['ingredients'] as $ing) {
+                $line = [$safe($ing['name'] ?? 'Ingredient #' . $ing['inventory_id'])];
+
+                if ($isAll) {
+                    $line[] = $safe($ing['branch_name'] ?? 'Unassigned');
+                }
+
+                $line[] = $ing['available'] === null
+                    ? 'Not Tracked'
+                    : rtrim(rtrim(number_format((float) $ing['available'], 3, '.', ''), '0'), '.');
+                $line[] = $safe($ing['unit'] ?? '');
+
+                // Usage is a FLOOR when only some of the menu items that use
+                // this ingredient have a forecast; the file says so in the cell
+                // rather than presenting an understatement as complete.
+                $line[] = $ing['average_daily_usage'] === null
+                    ? 'Insufficient Data'
+                    : rtrim(rtrim(number_format($ing['average_daily_usage'], 3, '.', ''), '0'), '.')
+                        . ($ing['usage_is_partial'] ? ' (partial — some items have no forecast)' : '');
+
+                $line[] = $ing['days_of_stock'] === null
+                    ? ($ing['days_of_stock_reason'] === \App\Services\AnalyticsIntelligenceService::COVERAGE_UNAVAILABLE
+                        ? 'Unavailable'
+                        : 'Insufficient Data')
+                    : number_format($ing['days_of_stock'], 1, '.', '');
+
+                $line[] = $ing['menu_items_affected'];
+                $line[] = $ing['bottleneck_for'];
+                $line[] = $safe(implode('; ', array_map(
+                    fn ($m) => $isAll && $m['branch_name'] !== null
+                        ? $m['menu_item_name'] . ' (' . $m['branch_name'] . ')'
+                        : $m['menu_item_name'],
+                    $ing['affected_menu_items']
+                )));
+
+                fputcsv($file, $line);
+            }
+
+            // ── automated insights ────────────────────────────────────────
+            fputcsv($file, []);
+            fputcsv($file, ['AUTOMATED INSIGHTS & DATA-DRIVEN RECOMMENDATIONS']);
+            fputcsv($file, ['Priority', 'Insight', 'Detail']);
+
+            if (empty($intel['insights'])) {
+                fputcsv($file, ['', 'No insights', 'Nothing in the current data meets an alert condition.']);
+            }
+
+            foreach ($intel['insights'] as $insight) {
+                fputcsv($file, [
+                    ucfirst($insight['level']),
+                    $safe($insight['title']),
+                    $safe($insight['message']),
+                ]);
+            }
+
+            // ── summary block ─────────────────────────────────────────────
+            //
+            // The report's OWN figures, quoted from the one result the grid
+            // above was written from — not a second sum over the rows. The
+            // period totals come straight out of ProfitCalculationService, so
+            // Net Revenue here is net of order-level discounts even though the
+            // per-item Revenue column above cannot be: an order discount
+            // belongs to the order, and the database records no allocation of
+            // it to individual lines. The two column labels say which is which.
+            $summary     = $intel['summary'];
+            $financials  = $intel['financials'];
+            $riskCounts  = $summary['risk_counts'];
+
+            fputcsv($file, []);
+            fputcsv($file, ['SUMMARY']);
+            fputcsv($file, ['Gross Revenue (before discounts)', number_format($financials['gross_revenue'], 2, '.', '')]);
+            fputcsv($file, ['Discounts', number_format($financials['discounts'], 2, '.', '')]);
+            fputcsv($file, ['Net Revenue', number_format($financials['net_revenue'], 2, '.', '')]);
+            fputcsv($file, ['COGS', number_format($financials['cogs'], 2, '.', '')]);
+            fputcsv($file, ['Gross Profit', number_format($financials['gross_profit'], 2, '.', '')]);
+            fputcsv($file, ['Gross Margin % (of Net Revenue)', $financials['margin_percent'] === null
+                ? 'Not Applicable'
+                : number_format($financials['margin_percent'], 1, '.', '')]);
+            fputcsv($file, ['Completed Orders', $financials['order_count']]);
+            fputcsv($file, []);
+            fputcsv($file, ['Menu Items Reported', $summary['menu_items']]);
+            fputcsv($file, ['Items Requiring Attention (Out of Stock + Critical)', $summary['items_requiring_attention']]);
+            fputcsv($file, ['Risk — Out of Stock', $riskCounts[\App\Services\AnalyticsIntelligenceService::RISK_OUT_OF_STOCK]]);
+            fputcsv($file, ['Risk — Critical', $riskCounts[\App\Services\AnalyticsIntelligenceService::RISK_CRITICAL]]);
+            fputcsv($file, ['Risk — Low', $riskCounts[\App\Services\AnalyticsIntelligenceService::RISK_LOW]]);
+            fputcsv($file, ['Risk — Good', $riskCounts[\App\Services\AnalyticsIntelligenceService::RISK_GOOD]]);
+            fputcsv($file, ['Risk — Insufficient Data', $riskCounts[\App\Services\AnalyticsIntelligenceService::RISK_INSUFFICIENT_DATA]]);
+            fputcsv($file, ['Risk — Unavailable', $riskCounts[\App\Services\AnalyticsIntelligenceService::RISK_UNAVAILABLE]]);
+            fputcsv($file, ['Items with a Potential Shortage', $summary['items_with_shortage']]);
+            fputcsv($file, ['Total Potential Shortage (orders)', $summary['total_potential_shortage'] === null
+                ? 'None'
+                : number_format($summary['total_potential_shortage'], 2, '.', '')]);
+            fputcsv($file, ['Ingredients Tracked', $summary['ingredients_tracked']]);
+            fputcsv($file, ['Ingredients Out of Stock', $summary['ingredients_out_of_stock']]);
+            fputcsv($file, ['Ingredients Below 1 Day of Projected Demand', $summary['ingredients_below_one_day']]);
+
+            // ── method + caveats ──────────────────────────────────────────
+            fputcsv($file, []);
+            fputcsv($file, ['METHOD']);
+            fputcsv($file, ['Forecast method', 'Moving average — the mean of the most recent daily'
+                . ' observations in the report period. No machine learning or AI model is used.']);
+            fputcsv($file, ['Risk thresholds', 'Critical below '
+                . \App\Services\AnalyticsIntelligenceService::COVERAGE_CRITICAL_DAYS
+                . ' day of coverage; Low below '
+                . \App\Services\AnalyticsIntelligenceService::COVERAGE_LOW_DAYS
+                . ' days of coverage, or capacity at or below the inventory low-stock threshold of '
+                . $intel['low_capacity_threshold'] . '.']);
+            fputcsv($file, ['Unavailable figures', 'Where a figure could not be calculated it is written as'
+                . ' Insufficient Data, Unavailable, Not Applicable or No Sales. It is never written as 0.']);
+
+            if ($financials['legacy_fallback_count'] > 0) {
+                fputcsv($file, ['Cost note', $financials['legacy_fallback_count'] . ' of '
+                    . $financials['item_count'] . ' sold lines have no recorded cost from the time of sale,'
+                    . ' so they are costed at TODAY\'S ingredient prices. COGS and Gross Profit for those'
+                    . ' lines are an estimate, not a record of what the ingredients cost then.']);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * The Potential Shortage cell.
+     *
+     * Three distinct outcomes, three distinct words — because "0" would have
+     * to stand for all three and a reader could not tell them apart:
+     * the item is not producible or forecastable at all (Unavailable /
+     * Insufficient Data), or it IS both and capacity covers the projection
+     * (None), or there is a genuine shortfall (the number).
+     */
+    private function analyticsCsvShortage(array $row): string
+    {
+        if (!$row['has_capacity_row'] || !$row['is_measurable']) {
+            return 'Unavailable';
+        }
+
+        if (!$row['forecast_sufficient']) {
+            return 'Insufficient Data';
+        }
+
+        return $row['has_shortage']
+            ? number_format($row['potential_shortage'], 2, '.', '')
+            : 'None';
+    }
+
+    /** The Days of Coverage cell, on the same principle as the shortage cell. */
+    private function analyticsCsvCoverage(array $row): string
+    {
+        if ($row['coverage_days'] !== null) {
+            return number_format($row['coverage_days'], 1, '.', '');
+        }
+
+        return match ($row['coverage_reason']) {
+            \App\Services\AnalyticsIntelligenceService::COVERAGE_UNAVAILABLE   => 'Unavailable',
+            \App\Services\AnalyticsIntelligenceService::COVERAGE_NO_DEMAND     => 'No Projected Demand',
+            default                                                            => 'Insufficient Data',
+        };
     }
 
     /**
@@ -364,10 +876,49 @@ class AdminController extends Controller
      * dropdown. Presets are deliberately different from Summary's (Today /
      * Last 7 Days / Last 30 Days / This Month / Custom) — Analytics has no
      * "This Week" or previous-period comparison, so there is nothing to
-     * mirror from resolveSummaryPeriod() beyond the shared 'custom' shape.
+     * mirror from resolveSummaryPeriod() beyond the shared 'custom' shape —
+     * and, since this pass, the shared custom-range VALIDATION in
+     * ResolvesReportDateRange. The presets differ; what counts as a usable
+     * pair of dates must not.
+     *
+     * $period is by reference for the same reason it is in
+     * resolveSummaryPeriod(): a custom range that fails validation is demoted
+     * here, and the caller re-renders the period selector from that variable.
+     *
+     * @param  string|null  $notice  plain-language text when the supplied range
+     *                               was corrected or discarded; null otherwise.
      */
-    private function resolveAnalyticsPeriod(string $period, ?string $dateFrom, ?string $dateTo): array
-    {
+    private function resolveAnalyticsPeriod(
+        string &$period,
+        ?string $dateFrom,
+        ?string $dateTo,
+        ?string &$notice = null
+    ): array {
+        // Whitelist first, the way showSummary() already did for its own
+        // presets. Without this an unrecognised ?period= fell through the
+        // switch to the last30 range but left $period alone, so the page
+        // reported 30 days while the dropdown — which re-renders from $period —
+        // matched none of its options and showed nothing selected. Harmless but
+        // confusing, and the same class of "the selector disagrees with the
+        // figures" problem the demotion below exists to prevent.
+        if (!in_array($period, ['today', 'last7', 'last30', 'month', 'custom'], true)) {
+            $period = 'last30';
+        }
+
+        if ($period === 'custom') {
+            $range = $this->normaliseCustomRange($dateFrom, $dateTo, $notice);
+
+            if ($range !== null) {
+                return $range;
+            }
+
+            // Incomplete, unparseable, impossible or out-of-bounds. Same
+            // reasoning as the unrecognised-period case above: fall back to the
+            // default preset rather than erroring, and demote $period so the
+            // dropdown the view re-renders agrees with the figures beneath it.
+            $period = 'last30';
+        }
+
         switch ($period) {
             case 'today':
                 return [today()->startOfDay(), today()->endOfDay()];
@@ -378,16 +929,10 @@ class AdminController extends Controller
             case 'month':
                 return [now()->startOfMonth(), now()->endOfMonth()];
 
-            case 'custom':
-                if ($dateFrom && $dateTo) {
-                    return [
-                        \Carbon\Carbon::parse($dateFrom)->startOfDay(),
-                        \Carbon\Carbon::parse($dateTo)->endOfDay(),
-                    ];
-                }
-                // Fall through to the last30 default when a custom period is
-                // requested without both bounds — same reasoning as an
-                // unrecognised period string.
+            // No 'custom' arm here any more: a usable custom range returns
+            // early above, and an unusable one has already been demoted to
+            // 'last30'. The old arm called Carbon::parse() on the raw input,
+            // which is what answered 500 to a typo.
             case 'last30':
             default:
                 return [now()->subDays(29)->startOfDay(), now()->endOfDay()];
@@ -419,7 +964,16 @@ class AdminController extends Controller
             'category',
             'subcategory',
             'inventoryItem',
-            'branch'
+            'branch',
+            // Phase 3b F3: without this, breakdownForMany() below and this
+            // page's own per-item "Edit" recipe block (which reads
+            // $mi->recipeIngredients and each row's ->inventory) each pay a
+            // fresh menu_item_ingredients query per item, and every recipe
+            // row an ADDITIONAL single-row inventory lookup — three
+            // uncoordinated N+1s from one missing eager-load. See
+            // MenuItemCosting::breakdownForMany()'s docblock for the query
+            // budget this closes.
+            'recipeIngredients.inventory',
         ])
             ->when($selectedBranch !== 'all', function ($q) use ($selectedBranch) {
                 $q->where('branch_id', $selectedBranch);
@@ -428,9 +982,13 @@ class AdminController extends Controller
             ->orderBy('name')
             ->get();
 
-        $branches = \App\Models\Branch::where('is_active', true)
-            ->orderBy('id')
-            ->get();
+        // One query, two views of it. $branches is the active-only list this
+        // page has always used; $branchNames covers EVERY branch (an item under
+        // "All Branches" can belong to a deactivated one) so the recipe picker
+        // can name each ingredient's branch without an extra lookup per option.
+        $allBranches = \App\Models\Branch::orderBy('id')->get();
+        $branches = $allBranches->where('is_active', true)->values();
+        $branchNames = $allBranches->pluck('name', 'id');
 
         $categories = Category::orderBy('name')->get();
 
@@ -458,6 +1016,7 @@ class AdminController extends Controller
             'subcategories',
             'inventoryItems',
             'branches',
+            'branchNames',
             'selectedBranch',
             'archivedCount',
             'costing'
@@ -963,7 +1522,11 @@ public function addOptionIngredient(Request $request, int $menuOption)
 
     $validated = $request->validate([
         'inventory_id' => 'required|exists:inventory,id',
-        'quantity_used' => 'required|numeric|min:0.001',
+        // max = the largest value menu_option_ingredients.quantity_used
+        // (decimal(10,3)) can hold. Without it an oversized figure passed
+        // validation and died in the INSERT (SQLSTATE 22003) as a 500 with a
+        // logged server error, instead of the 422 the form can show.
+        'quantity_used' => 'required|numeric|min:0.001|max:9999999.999',
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
@@ -1014,6 +1577,15 @@ public function addOptionIngredient(Request $request, int $menuOption)
                 'name' => $inventory->item_name,
                 'quantity_used' => rtrim(rtrim(number_format((float) $ingredient->quantity_used, 3), '0'), '.'),
                 'unit' => $inventory->unit,
+                // Additive keys (branch pass): an option is global but each
+                // link points at ONE branch's inventory, so the row the page
+                // appends has to say which — branch_name for the label,
+                // branch_id so the page can re-derive the per-branch
+                // Mapped/Unmapped badges without a reload. Both are null for
+                // an inventory row with no branch (inventory.branch_id is
+                // nullable, ON DELETE SET NULL).
+                'branch_id' => $inventory->branch_id !== null ? (int) $inventory->branch_id : null,
+                'branch_name' => $inventory->branch?->name,
                 'delete_url' => route('admin.menu-options.ingredients.delete', [$optionModel->id, $ingredient->id]),
             ],
         ]);
@@ -1024,9 +1596,37 @@ public function addOptionIngredient(Request $request, int $menuOption)
 
 public function deleteOptionIngredient(Request $request, int $menuOption, int $ingredient)
 {
-    $ingredientModel = \App\Models\MenuOptionIngredient::where('id', $ingredient)
+    $ingredientModel = \App\Models\MenuOptionIngredient::with('inventory')
+        ->where('id', $ingredient)
         ->where('menu_option_id', $menuOption)
         ->firstOrFail();
+
+    // Phase 3b F6: menu options are global (no branch_id of their own), so
+    // there is no parent record to scope through the way deleteIngredient()
+    // scopes via the menu item's own branch_id. The same rule
+    // addOptionIngredient() already applies on the way IN — a branch-locked
+    // supervisor may only touch a recipe line whose INVENTORY belongs to
+    // their own branch — applies on the way OUT too. Without this, a
+    // supervisor could delete a recipe line linking another branch's
+    // inventory to a company-wide add-on, silently stopping that branch's
+    // stock deduction for it with no visible sign anything changed.
+    $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+    // optional()->branch_id rather than assuming the relation is loaded: a
+    // branch-locked caller must be refused, not waved through, on the
+    // (FK-prevented, but never assumed) chance the linked inventory row is
+    // missing — fail closed, the same way every other branch check in this
+    // file does.
+    if ($lockedBranchId !== null
+        && (int) optional($ingredientModel->inventory)->branch_id !== $lockedBranchId) {
+        $message = "You can only remove ingredients from your own branch's inventory.";
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+
+        return redirect()->back()->withErrors(['inventory_id' => $message]);
+    }
 
     // Same shape as deleteIngredient() above, same reason.
     try {
@@ -1409,14 +2009,38 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
         // Every branch, for the per-branch mapped/unmapped indicator next to
         // each option — keyed by id so the view can look one up by the
-        // option's assigned menu-item branch ids without another query.
+        // option's assigned menu-item branch ids without another query. The
+        // same lookup names the branch on each saved ingredient row, which is
+        // why no `ingredients.inventory.branch` eager-load is needed.
         $branches = \App\Models\Branch::orderBy('id')->get()->keyBy('id');
+
+        // Branches whose mapping is blocked because they have NO active
+        // inventory to link to — the badge shows an "add inventory first"
+        // hint for these. Derived from $inventoryItems (already loaded), so
+        // it costs no query. That list is the actor's VISIBLE inventory: an
+        // admin sees every branch's, so every branch can be judged; a
+        // branch-locked supervisor sees only their own, so only their own
+        // branch can be — another branch showing "none" there would be a
+        // claim this page cannot back, and they could not act on it anyway.
+        $emptyInventoryBranchIds = ($lockedBranchId === null ? $branches->keys() : collect([$lockedBranchId]))
+            ->diff($inventoryItems->pluck('branch_id')->filter()->unique())
+            ->map(fn ($id) => (int) $id)
+            ->values()
+            ->all();
 
         $archivedCount = $this->archivedCatalogueCount();
 
         return view(
             'admin.menu-options',
-            compact('options', 'categories', 'inventoryItems', 'branches', 'archivedCount')
+            compact(
+                'options',
+                'categories',
+                'inventoryItems',
+                'branches',
+                'archivedCount',
+                'lockedBranchId',
+                'emptyInventoryBranchIds'
+            )
         );
     }
 
@@ -1462,14 +2086,11 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
      * PAST ORDERS: order_item_options snapshots option_name and
      * additional_price onto the order line at order time (see that table's
      * migration) specifically so a later edit here cannot change what a
-     * historical order recorded. What it does NOT protect is any view that
-     * reads the option's name back through the live relationship instead of
-     * the snapshot column — confirmed customer/receipt.blade.php does exactly
-     * that (`$option->name`, not `$option->pivot->option_name`), so renaming
-     * an option here will currently change the add-on label shown on past
-     * receipts, even though the schema was built to prevent it. That mismatch
-     * predates this change and is out of scope for this pass — flagged here,
-     * not fixed here.
+     * historical order recorded. Phase 3b F9 (2026-09-20) closed the one gap
+     * in that protection: customer/receipt.blade.php was reading the option's
+     * name back through the live relationship instead of the snapshot column
+     * — it now reads `$option->pivot->option_name`, so renaming an option
+     * here no longer changes the add-on label on past receipts.
      */
     public function updateMenuOption(Request $request, int $id)
     {
@@ -1838,6 +2459,63 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             ]);
         }
 
+        /**
+         * Seconds the storeManualOrder() duplicate-submit lock is held for at
+         * most.
+         *
+         * A ceiling, not the normal hold time: the lock is released in a
+         * finally block the instant the request finishes, which in practice is
+         * well under a second. The ceiling only matters if PHP were killed
+         * mid-request in a way that skips finally (a fatal crash rather than a
+         * thrown exception, which finally still runs for), so it just needs to
+         * be comfortably longer than any real request takes. Same value and
+         * same reasoning as the customer checkout's
+         * OrderController::DUPLICATE_SUBMIT_LOCK_SECONDS, deliberately, so the
+         * two doors into the same pantry behave identically.
+         */
+        private const MANUAL_ORDER_LOCK_SECONDS = 20;
+
+        /**
+         * The cache key the walk-in counter's duplicate-submit mutex is held
+         * on.
+         *
+         * SCOPE: one signed-in staff account IN one browser session — i.e. one
+         * till. Both halves matter and neither is redundant:
+         *
+         *   - the SESSION half is what makes two tills independent. Staff
+         *     commonly share one counter account, so keying on the user alone
+         *     would let till A's in-flight order block till B's unrelated one,
+         *     which is a real refusal of real business. Two browsers are two
+         *     sessions, so they never share a key;
+         *   - the USER half costs nothing (a session belongs to exactly one
+         *     signed-in account; Laravel regenerates the id on login) and
+         *     guarantees two different staff can never land on one key even if
+         *     a session id were ever reused. This path writes
+         *     payment_status = 'paid' immediately, so it is worth the belt.
+         *
+         * Session granularity misses none of the duplicate shapes F8 is about,
+         * because every one of them originates in the SAME browser session:
+         * a double click, two tabs open on the dashboard, and a client or
+         * proxy retrying the POST all carry the same session cookie.
+         *
+         * Deliberately NOT keyed on branch_id (two tills in one branch would
+         * block each other — far too coarse), and deliberately NOT reusing
+         * RateLimitServiceProvider::visitorKey(): that function answers
+         * "which customer/visitor is this" and returns customer:{id} first, so
+         * a staff member who also happened to be signed in as a customer in
+         * the same browser would collide with their own checkout lock.
+         */
+        private function manualOrderLockKey(Request $request): string
+        {
+            $staffId = \Illuminate\Support\Facades\Auth::guard('admin')->id();
+
+            $session = $request->hasSession()
+                ? $request->session()->getId()
+                : 'no-session:' . $request->ip();
+
+            return 'manual-order-inflight:admin:' . $staffId . ':' . $session;
+        }
+
         public function storeManualOrder(Request $request)
         {
             $validated = $request->validate([
@@ -1845,7 +2523,12 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 'order_type' => 'required|in:dine_in,pick_up',
                 'table_number' => 'nullable|string|max:50',
                 'payment_method' => 'required|in:cash,gcash',
-                'amount_paid' => 'required|numeric|min:0',
+                // Upper bound matches the decimal(10,2) the column actually
+                // is. Without it a tampered or fat-fingered amount_paid was
+                // only caught by MySQL strict mode at INSERT time, which
+                // surfaced as the generic "could not be saved" catch plus a
+                // logged QueryException instead of a readable field error.
+                'amount_paid' => 'required|numeric|min:0|max:99999999.99',
                 'items' => 'required|array|min:1',
                 'items.*.menu_item_id' => 'required|exists:menu_items,id',
                 'items.*.quantity' => 'required|integer|min:1',
@@ -1898,6 +2581,70 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             if (! \App\Services\AdminOrderAccess::allowsBranch((int) $validated['branch_id'])) {
                 abort(404);
             }
+
+            /*
+             * DUPLICATE-SUBMIT LOCK FOR THE WALK-IN COUNTER
+             * (Phase 3a audit, Finding F8).
+             *
+             * The customer checkout has had this since 2026-09-01; the counter
+             * — the other door into the same pantry and the one that writes
+             * payment_status = 'paid' on the spot — had neither half of the
+             * guard. The submit handler in admin/home.blade.php now disables
+             * the button synchronously, which is airtight against a literal
+             * double-click on the SAME rendered page and does nothing for a
+             * request that reaches the server twice some OTHER way: two tabs
+             * open on the dashboard, or a flaky connection causing the browser
+             * to retry the POST. That is what this is for.
+             *
+             * WHAT IT IS, AND IS NOT. This is a true mutex held only for the
+             * duration of THIS request and ALWAYS released in the finally
+             * block at the foot of the method — not an idempotency window. So:
+             *
+             *   - it blocks a second request that genuinely OVERLAPS the first
+             *     for the same till, which is the actual shape of a
+             *     double-submit;
+             *   - it does NOT block the next customer's order from the same
+             *     till: by the time that arrives the first request has long
+             *     since finished and released;
+             *   - it does NOT hold through a refusal, so staff who fix a
+             *     rejected field and resubmit immediately are never wrongly
+             *     blocked — every return below, success or refusal, is inside
+             *     the try and releases in finally;
+             *   - it does NOT make the endpoint idempotent AFTER a successful
+             *     order has committed and the lock has been released. A retry
+             *     that arrives then is indistinguishable, with what the
+             *     request carries today, from staff ringing up the next
+             *     customer. Closing that would need a persisted per-submission
+             *     token, which is a schema change and deliberately not part of
+             *     F8. In practice every response from this method is a
+             *     redirect, so the browser's own back button cannot re-POST it.
+             *
+             * Validation failures never reach here at all: $request->validate()
+             * above throws before the lock is taken.
+             */
+            $duplicateSubmitLock = \Illuminate\Support\Facades\Cache::lock(
+                $this->manualOrderLockKey($request),
+                self::MANUAL_ORDER_LOCK_SECONDS
+            );
+
+            if (! $duplicateSubmitLock->get()) {
+                /*
+                 * Lost the race to the request already in flight. Degrade the
+                 * way every other refusal in this method does — back() with a
+                 * readable error and withInput(), which is what makes
+                 * reopenRejectedManualOrder() put the modal back on screen
+                 * with the keyed-in cart intact — never a raw error, never a
+                 * 500, and above all never a second order.
+                 */
+                return back()
+                    ->withErrors([
+                        'error' => 'This order is already being submitted. '
+                            . 'Please wait a moment before trying again.',
+                    ])
+                    ->withInput();
+            }
+
+            try {
 
             $discountType = null;
             $discountAmount = 0.0;
@@ -2362,8 +3109,13 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 // Unexpected failure. The raw message can carry SQL and file
                 // paths, and APP_DEBUG=false does not filter text we echo
                 // ourselves, so it goes to the log and not to the screen.
+                // Auth::id() reads the DEFAULT guard ("web"), which nobody in
+                // this application ever signs into — staff use the "admin"
+                // guard — so this field logged null on every manual-order
+                // failure and the one line that says WHO was at the till was
+                // always blank.
                 Log::error('Manual order creation failed', [
-                    'admin_id'  => Auth::id(),
+                    'admin_id'  => Auth::guard('admin')->id(),
                     'exception' => $e,
                 ]);
 
@@ -2373,6 +3125,19 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                             . 'recorded and no stock was deducted. Please try again.'
                     ])
                     ->withInput();
+            }
+
+            } finally {
+                /*
+                 * Always released here, success or refusal — see the long
+                 * comment on the acquisition above for why this is a
+                 * short-lived mutex and not a hold-after-success debounce
+                 * window. A throwable escaping the inner catch arms releases
+                 * through here too. (The cross-branch abort(404) never needs
+                 * it: that guard sits ABOVE the acquisition, so a refused
+                 * branch takes no lock in the first place.)
+                 */
+                $duplicateSubmitLock->release();
             }
         }
 
@@ -2859,20 +3624,51 @@ public function markOrderRefunded(int $id)
 
     // ══════════ Inventory (CRUD WORKING) ══════════
 
-    public function showInventory()
+    /**
+     * The rows the Inventory page is ABOUT, for one branch scope.
+     *
+     * Three surfaces render this same list — the screen (showInventory()), the
+     * CSV (exportInventory()) and the printed report (printInventory()) — and
+     * all three are meant to be the same list in three formats. They used to
+     * each carry their own copy of this query; the copies agreed, but nothing
+     * made them agree, so the next change to one of them was free to leave the
+     * other two behind.
+     *
+     * notArchived(): a soft-deleted item is not "gone", it is off THIS list —
+     * see Inventory::archive() and the "Deleted Items" page
+     * (showDeletedInventory() below). Nothing here re-decides that rule; it is
+     * the model's, and this is the single place the reports opt into it.
+     */
+    private function inventoryRowsForScope(int|string $selectedBranch)
     {
-        $selectedBranch = $this->getSelectedBranch();
-
-        // notArchived(): a soft-deleted item is not "gone", it is off THIS
-        // list — see Inventory::archive() and the "Deleted Items" page
-        // (showDeletedInventory() below).
-        $inventory = \App\Models\Inventory::notArchived()
+        return \App\Models\Inventory::notArchived()
             ->orderBy('item_name')
             ->when(
                 $selectedBranch !== 'all',
                 fn($q) => $q->where('branch_id', $selectedBranch)
             )
             ->get();
+    }
+
+    /**
+     * "All Branches" or the one branch's name, for a report heading.
+     *
+     * Same expression the CSV header and the Summary/Analytics reports use;
+     * lifted here so the printed inventory sheet cannot name a branch
+     * differently from the CSV of the same scope.
+     */
+    private function branchScopeName(int|string $selectedBranch): string
+    {
+        return $selectedBranch === 'all'
+            ? 'All Branches'
+            : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
+    }
+
+    public function showInventory()
+    {
+        $selectedBranch = $this->getSelectedBranch();
+
+        $inventory = $this->inventoryRowsForScope($selectedBranch);
 
         $categories = Category::orderBy('name')->get();
 
@@ -2914,21 +3710,14 @@ public function markOrderRefunded(int $id)
     {
         $selectedBranch = $this->getSelectedBranch();
 
-        // Same notArchived() filter as the on-screen table (showInventory()
-        // above) — this export is a download of what is already visible, not
-        // a separate report, and that must include staying in sync on which
-        // rows a soft delete removed from both.
-        $inventory = \App\Models\Inventory::notArchived()
-            ->orderBy('item_name')
-            ->when(
-                $selectedBranch !== 'all',
-                fn($q) => $q->where('branch_id', $selectedBranch)
-            )
-            ->get();
+        // Same notArchived() filter as the on-screen table, because it is
+        // literally the same query now — see inventoryRowsForScope(). This
+        // export is a download of what is already visible, not a separate
+        // report, and that must include staying in sync on which rows a soft
+        // delete removed from both.
+        $inventory = $this->inventoryRowsForScope($selectedBranch);
 
-        $branchName = $selectedBranch === 'all'
-            ? 'All Branches'
-            : (optional(\App\Models\Branch::find($selectedBranch))->name ?? 'Unknown Branch');
+        $branchName = $this->branchScopeName($selectedBranch);
 
         $filenameBranch = Str::slug($branchName) ?: 'all-branches';
         $filename = "inventory_{$filenameBranch}_" . now()->format('Y-m-d') . '.csv';
@@ -2946,9 +3735,14 @@ public function markOrderRefunded(int $id)
             fwrite($file, "\xEF\xBB\xBF");
 
             fputcsv($file, ['Peachy Cakes & Deli Cafe — Inventory']);
-            fputcsv($file, ['Branch', $branchName]);
+            // Branch name and account name are both user-entered free text
+            // (storeBranch / storeUser), so they go through the same
+            // formula-injection guard as every data row below — see
+            // App\Support\Csv. This header block was the one place in this
+            // export that had been missed.
+            fputcsv($file, ['Branch', \App\Support\Csv::cell($branchName)]);
             fputcsv($file, ['Generated', now()->format('M d, Y g:i A')]);
-            fputcsv($file, ['Generated by', optional(auth('admin')->user())->name ?? 'Unknown user']);
+            fputcsv($file, ['Generated by', \App\Support\Csv::cell(optional(auth('admin')->user())->name ?? 'Unknown user')]);
             fputcsv($file, []);
 
             fputcsv($file, [
@@ -2982,12 +3776,16 @@ public function markOrderRefunded(int $id)
                 $totalStockValue += (float) $item->quantity * (float) $item->unit_cost;
 
                 fputcsv($file, [
-                    $item->item_name,
+                    // User-entered free text, so it goes through the
+                    // formula-injection guard on the way out: an item saved as
+                    // "=cmd|..." must arrive in the spreadsheet as a label, not as
+                    // something the spreadsheet evaluates. See App\Support\Csv.
+                    \App\Support\Csv::cell($item->item_name),
                     // 3 decimals to match the column (decimal(12,3)) and the
                     // on-screen table — exporting at 2 rounded fractional
                     // stock away, same as the page used to.
                     rtrim(rtrim(number_format($item->quantity, 3, '.', ''), '0'), '.'),
-                    $item->unit,
+                    \App\Support\Csv::cell($item->unit),
                     rtrim(rtrim(number_format($item->low_stock_alert, 3, '.', ''), '0'), '.'),
                     number_format($item->quantity * $item->unit_cost, 2, '.', ''),
                     $status,
@@ -3008,6 +3806,44 @@ public function markOrderRefunded(int $id)
         };
 
         return response()->stream($callback, 200, $headers);
+    }
+
+    /**
+     * "Print" for Inventory — the printInFrame() shape already established by
+     * printAnalytics() and printCompletedOrders().
+     *
+     * Deliberately NOT a second reporting architecture. It reuses, in order:
+     *
+     *  - the same branch scope, from getSelectedBranch(), so a branch-locked
+     *    supervisor prints their own branch and has no request they can make
+     *    that widens it — the scope is never read from the querystring;
+     *  - the same ROWS as the screen and the CSV, through
+     *    inventoryRowsForScope(), which is where notArchived() is applied. The
+     *    printed sheet therefore lists exactly the rows the Inventory page
+     *    lists, and a soft delete removes an item from all three at once;
+     *  - the same STATUS RULE as the screen and the CSV — quantity <= 0 is Out
+     *    of Stock, then quantity <= low_stock_alert is Low — computed in the
+     *    view from the same two columns, in the same out-before-low order, so
+     *    a row lands in exactly one bucket. No second rule is invented here,
+     *    and no Inventory business logic was changed to make this printable;
+     *  - the same print-only view shape and visual language as
+     *    admin.analytics-print.
+     *
+     * The totals are computed in the Blade from this same collection, exactly
+     * as admin.inventory's own @php block computes the on-screen stat strip —
+     * one pass, accumulated alongside the rows, so the summary cannot disagree
+     * with the list above it.
+     */
+    public function printInventory()
+    {
+        $selectedBranch = $this->getSelectedBranch();
+
+        return view('admin.inventory-print', [
+            'inventory'  => $this->inventoryRowsForScope($selectedBranch),
+            'branchName' => $this->branchScopeName($selectedBranch),
+            'printedBy'  => optional(auth('admin')->user())->name ?? 'Unknown user',
+            'printedAt'  => now(),
+        ]);
     }
 
     public function storeInventory(Request $request)
@@ -4615,16 +5451,17 @@ public function markOrderRefunded(int $id)
     {
         $selectedBranch = $this->getSelectedBranch();
 
-        // Same normalisation as showSummary(), including the "custom but
-        // incomplete" fallback, so the two can never resolve a request to
-        // different windows.
+        // Same normalisation as showSummary(), through the same
+        // resolveSummaryPeriod(), so the two can never resolve a request to
+        // different windows — including when the range is rubbish. A CSV has
+        // nowhere to render a notice, but it does not need one: the "Period"
+        // line it already writes into its own header block states the window
+        // that was actually reported on, so a file that fell back still says
+        // what it is a report of.
         $period = $request->input('period', 'custom');
         $dateFrom = $request->input('date_from');
         $dateTo = $request->input('date_to');
 
-        if ($period === 'custom' && (!$dateFrom || !$dateTo)) {
-            $period = 'today';
-        }
         if (!in_array($period, ['today', 'week', 'month', 'custom'], true)) {
             $period = 'today';
         }
@@ -4655,11 +5492,16 @@ public function markOrderRefunded(int $id)
             fwrite($file, "\xEF\xBB\xBF");
 
             fputcsv($file, ['Peachy Cakes & Deli Cafe — Sales & Profit Report']);
-            fputcsv($file, ['Branch', $branchName]);
+            // Branch name and account name are both user-entered free text
+            // (storeBranch / storeUser), so they go through the same
+            // formula-injection guard as every data row below — see
+            // App\Support\Csv. This header block was the one place in this
+            // export that had been missed.
+            fputcsv($file, ['Branch', \App\Support\Csv::cell($branchName)]);
             fputcsv($file, ['Period', $start->format('M d, Y') . ' - ' . $end->format('M d, Y')]);
             fputcsv($file, ['Basis', 'Completed orders, by completion date']);
             fputcsv($file, ['Generated', now()->format('M d, Y g:i A')]);
-            fputcsv($file, ['Generated by', optional(auth('admin')->user())->name ?? 'Unknown user']);
+            fputcsv($file, ['Generated by', \App\Support\Csv::cell(optional(auth('admin')->user())->name ?? 'Unknown user')]);
             fputcsv($file, []);
 
             fputcsv($file, [
@@ -4684,8 +5526,11 @@ public function markOrderRefunded(int $id)
                     $row['order_number'],
                     optional($row['completed_at'])->format('Y-m-d H:i') ?? '',
                     $row['type'],
-                    $row['table_number'] ?? '-',
-                    $row['items'],
+                    // Menu item names ride along inside the Items cell, and a
+                    // table label is whatever the admin typed, so both pass the
+                    // formula-injection guard. See App\Support\Csv.
+                    $row['table_number'] !== null ? \App\Support\Csv::cell($row['table_number']) : '-',
+                    \App\Support\Csv::cell($row['items']),
                     number_format($row['gross_revenue'], 2, '.', ''),
                     number_format($row['discount'], 2, '.', ''),
                     number_format($row['net_revenue'], 2, '.', ''),

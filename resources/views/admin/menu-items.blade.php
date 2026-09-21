@@ -379,6 +379,7 @@
                         'recipe' => collect(),
                         'draftRows' => $addDraftRows,
                         'inventoryItems' => $inventoryItems ?? collect(),
+                        'branchNames' => $branchNames ?? collect(),
                         'addUrl' => null,
                         'costLine' => ['cost' => $addDraftCost, 'is_fallback' => false],
                     ])
@@ -393,6 +394,11 @@
                                 'recipe' => $mi->recipeIngredients,
                                 'draftRows' => [],
                                 'inventoryItems' => $inventoryItems ?? collect(),
+                                // Under "All Branches" $inventoryItems is every
+                                // branch's stock; each item's picker narrows to
+                                // ITS branch (see recipe-ingredients.blade.php).
+                                'branchId' => $mi->branch_id,
+                                'branchNames' => $branchNames ?? collect(),
                                 'addUrl' => route('admin.menu-items.ingredients.add', $mi->id),
                                 'costLine' => $costing[$mi->id] ?? ['cost' => 0, 'is_fallback' => true],
                             ])
@@ -832,8 +838,9 @@
             ? !!(dupTbody && dupTbody.querySelector('tr[data-inventory-id="' + select.value + '"]'))
             : !!(dupTbody && dupTbody.querySelector('input[name$="[inventory_id]"][value="' + select.value + '"]'));
         if (alreadyListed) {
-            var dupName = (select.options[select.selectedIndex].textContent || 'That ingredient')
-                .replace(/\s*\([^)]*\)\s*$/, '').trim();
+            var dupOpt = select.options[select.selectedIndex];
+            var dupName = (dupOpt.dataset.name
+                || (dupOpt.textContent || 'That ingredient').replace(/\s*\([^)]*\)\s*$/, '')).trim();
             recipeIngredientError(blockId, dupName + ' is already in the recipe.');
             return;
         }
@@ -853,7 +860,11 @@
             // values riding along as hidden inputs inside it.
             var opt = select.options[select.selectedIndex];
             var unit = opt.dataset.unit || '';
-            var name = opt.textContent.replace(/\s*\([^)]*\)\s*$/, '').trim();
+            // data-name, not the option's text: the text now ends in the branch
+            // label ("Cheese (kg) — Main Branch"), which the old strip-a-
+            // trailing-"(unit)" regex would have carried into the row name.
+            var name = (opt.dataset.name
+                || opt.textContent.replace(/\s*\([^)]*\)\s*$/, '')).trim();
             var idx = addModeNextIndex++;
 
             var row = document.createElement('tr');
@@ -867,11 +878,27 @@
                 '<button type="button" class="recipe-ing-delete-btn" data-draft="1" ' +
                 'style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">' +
                 '<i class="bi bi-trash3"></i></button>' +
-                '<input type="hidden" name="ingredients[' + idx + '][inventory_id]" value="' + select.value + '">' +
-                '<input type="hidden" name="ingredients[' + idx + '][quantity_used]" value="' + qtyInput.value + '">' +
                 '</td>';
             row.children[0].textContent = name;
             row.children[1].textContent = qtyInput.value + (unit ? ' ' + unit : '');
+
+            // Phase 3b F11: built via createElement + .value, like the two
+            // cells above, rather than concatenated into the innerHTML string
+            // — select.value / qtyInput.value are numeric-only in practice
+            // (a <select> of inventory ids, a <input type="number">), but
+            // interpolating them into value="..." was still a self-XSS
+            // attribute-breakout for anyone editing their own DOM.
+            var inventoryIdInput = document.createElement('input');
+            inventoryIdInput.type = 'hidden';
+            inventoryIdInput.name = 'ingredients[' + idx + '][inventory_id]';
+            inventoryIdInput.value = select.value;
+            row.children[2].appendChild(inventoryIdInput);
+
+            var quantityUsedInput = document.createElement('input');
+            quantityUsedInput.type = 'hidden';
+            quantityUsedInput.name = 'ingredients[' + idx + '][quantity_used]';
+            quantityUsedInput.value = qtyInput.value;
+            row.children[2].appendChild(quantityUsedInput);
 
             document.getElementById('recipe-tbody-add').appendChild(row);
             toggleAddModeTableVisibility();
@@ -925,11 +952,14 @@
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
                     '<td style="padding:0.35rem 0.4rem; text-align:right;">' +
-                    '<button type="button" class="recipe-ing-delete-btn" data-url="' + ing.delete_url + '" ' +
+                    '<button type="button" class="recipe-ing-delete-btn" ' +
                     'style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">' +
                     '<i class="bi bi-trash3"></i></button></td>';
                 row.children[0].textContent = ing.name;
                 row.children[1].textContent = ing.quantity_used + (ing.unit ? ' ' + ing.unit : '');
+                // Property, not string-concatenated markup — as the draft-row
+                // inputs above already are (Phase 3b F11).
+                row.querySelector('.recipe-ing-delete-btn').dataset.url = ing.delete_url;
                 tbody.appendChild(row);
 
                 document.getElementById('recipe-empty-' + blockId).style.display = 'none';

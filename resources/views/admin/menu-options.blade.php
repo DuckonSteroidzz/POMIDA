@@ -79,8 +79,15 @@
     .pchy-ing-hd{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin:0 0 .55rem;font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--p5)}
     .pchy-ing-note{text-transform:none;letter-spacing:0;font-weight:500;color:#9a837b;font-size:.7rem}
     .pchy-ing-list{display:flex;flex-direction:column;gap:.3rem;margin-bottom:.55rem}
-    .pchy-ing-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:.5rem;background:#fffaf6;border:1px solid rgba(246,180,155,.4);border-radius:9px;padding:.4rem .55rem}
+    .pchy-ing-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:.5rem;background:#fffaf6;border:1px solid rgba(246,180,155,.4);border-radius:9px;padding:.4rem .55rem}
     .pchy-ing-name{font-size:.78rem;font-weight:600;color:#463430;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    /* Which branch's stock this link deducts from — an option is global, its
+       links are not. */
+    .pchy-ing-branch{font-size:.66rem;font-weight:700;color:#7a5f55;background:rgba(248,215,176,.45);border-radius:999px;padding:.12rem .45rem;white-space:nowrap}
+    /* Stands in for the remove button on another branch's link when the viewer
+       is a branch-locked supervisor. The server refuses that delete regardless
+       (deleteOptionIngredient(), F6); this only stops offering a dead button. */
+    .pchy-ing-lock{color:#b3a099;font-size:.7rem;padding:.15rem .25rem}
     .pchy-ing-qty{font-size:.74rem;font-weight:700;color:var(--p4);white-space:nowrap}
     .pchy-ing-del{background:none;border:0;color:var(--p5);cursor:pointer;font-size:.7rem;padding:.15rem .25rem;border-radius:6px}
     .pchy-ing-del:hover{background:var(--p5);color:#fff}
@@ -96,6 +103,12 @@
     .pchy-branch-badge{display:inline-flex;align-items:center;gap:.3rem;font-size:.68rem;font-weight:700;border-radius:999px;padding:.22rem .55rem}
     .pchy-branch-ok{background:#E6F4EC;color:#2E7D5B;border:1px solid #C6E6D5}
     .pchy-branch-off{background:#FBE7E4;color:#C0392B;border:1px solid #F6C9C1}
+    .pchy-branch-group{display:inline-flex;align-items:center;flex-wrap:wrap;gap:.3rem}
+    /* Amber, not red: an empty branch is a setup step, not an error. The
+       explicit [hidden] rule is needed because display:inline-flex would
+       otherwise beat the browser's own [hidden]{display:none}. */
+    .pchy-branch-hint{display:inline-flex;align-items:center;gap:.3rem;font-size:.66rem;font-weight:600;color:#8a5a00;background:#fff8e1;border:1px solid #f1dc9c;border-radius:999px;padding:.2rem .5rem}
+    .pchy-branch-hint[hidden]{display:none}
     @media(max-width:640px){
         .pchy-ing-form{grid-template-columns:1fr}
     }
@@ -354,17 +367,59 @@
                                 menu, so this is where the admin sees the gap
                                 before a customer would have hit it.
                             --}}
+                            {{--
+                                LIVE, not render-once: the badges are re-derived
+                                from the ingredient rows on screen after every
+                                add/remove (optSyncBranchBadges() in the script
+                                below), so they never need a page reload to
+                                match reality. The two titles ride on the
+                                container as data-* so the script and this
+                                markup share one wording.
+
+                                The amber hint ("add inventory first") is
+                                rendered for every listed branch that has NO
+                                active inventory at all — nothing to link to,
+                                so the badge can never turn green until stock is
+                                added on the Inventory page. It stays in the
+                                markup, `hidden`, while the branch is Mapped, so
+                                the script can bring it back if the last link is
+                                removed. $emptyInventoryBranchIds is computed by
+                                showMenuOptions() from the actor's visible
+                                inventory (see the note there).
+                            --}}
                             @php
                                 $optionBranchIds = $option->menuItems->pluck('branch_id')->filter()->unique()->sort()->values();
+                                $badgeTitleOk = 'Has an ingredient link for this branch.';
+                                $badgeTitleOff = 'No ingredient link for this branch yet — hidden from this branch\'s customer menu.';
                             @endphp
                             @if($optionBranchIds->isNotEmpty())
-                            <div class="pchy-branch-status">
+                            <div class="pchy-branch-status"
+                                 id="opt-branch-status-{{ $option->id }}"
+                                 data-title-ok="{{ $badgeTitleOk }}"
+                                 data-title-off="{{ $badgeTitleOff }}">
                                 @foreach($optionBranchIds as $bid)
-                                    @php $mapped = $option->isMappedForBranch((int) $bid); @endphp
-                                    <span class="pchy-branch-badge {{ $mapped ? 'pchy-branch-ok' : 'pchy-branch-off' }}"
-                                          title="{{ $mapped ? 'Has an ingredient link for this branch.' : 'No ingredient link for this branch yet — hidden from this branch\'s customer menu.' }}">
-                                        <i class="bi {{ $mapped ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' }}"></i>
-                                        {{ $branches[$bid]->name ?? ('Branch #' . $bid) }}: {{ $mapped ? 'Mapped' : 'Unmapped' }}
+                                    @php
+                                        $mapped = $option->isMappedForBranch((int) $bid);
+                                        $bidName = $branches[$bid]->name ?? ('Branch #' . $bid);
+                                        $bidHasNoInventory = in_array((int) $bid, $emptyInventoryBranchIds ?? [], true);
+                                    @endphp
+                                    <span class="pchy-branch-group">
+                                        <span class="pchy-branch-badge {{ $mapped ? 'pchy-branch-ok' : 'pchy-branch-off' }}"
+                                              data-branch-id="{{ $bid }}"
+                                              data-branch-name="{{ $bidName }}"
+                                              title="{{ $mapped ? $badgeTitleOk : $badgeTitleOff }}">
+                                            <i class="bi {{ $mapped ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill' }}"></i>
+                                            <span class="pchy-branch-badge-text">{{ $bidName }}: {{ $mapped ? 'Mapped' : 'Unmapped' }}</span>
+                                        </span>
+                                        @if($bidHasNoInventory)
+                                            <span class="pchy-branch-hint"
+                                                  data-branch-id="{{ $bid }}"
+                                                  title="{{ $bidName }} has no active inventory yet, so there is nothing here to link. Add inventory items for that branch first."
+                                                  @if($mapped) hidden @endif>
+                                                <i class="bi bi-info-circle"></i>
+                                                No active inventory — add inventory first
+                                            </span>
+                                        @endif
                                     </span>
                                 @endforeach
                             </div>
@@ -440,23 +495,59 @@
 
                                     @foreach($option->ingredients as $ing)
 
-                                        <div class="pchy-ing-row" data-ingredient-id="{{ $ing->id }}">
+                                        @php
+                                            // Which branch's stock this link deducts from. The name
+                                            // comes from $branches (already loaded), not from the
+                                            // inventory->branch relation, so no query per row.
+                                            $ingBranchId = $ing->inventory?->branch_id;
+                                            $ingBranchName = $ingBranchId !== null
+                                                ? ($branches[$ingBranchId]->name ?? ('Branch #' . $ingBranchId))
+                                                : null;
+
+                                            // Offer the remove button only where
+                                            // deleteOptionIngredient() (F6) would honour it: an
+                                            // admin ($lockedBranchId null) may remove any link, a
+                                            // branch-locked supervisor only their own branch's.
+                                            // $lockedBranchId is AdminOrderAccess::lockedBranchId(),
+                                            // passed down by showMenuOptions() — the role rule is
+                                            // not restated here. Same fail-closed reading as the
+                                            // endpoint: a link with no inventory row is (int) 0,
+                                            // never the locked branch, so it is withheld too.
+                                            // Cosmetic only — the endpoint refuses regardless.
+                                            $canRemoveLink = ($lockedBranchId ?? null) === null
+                                                || (int) $ingBranchId === (int) $lockedBranchId;
+                                        @endphp
+
+                                        <div class="pchy-ing-row"
+                                             data-ingredient-id="{{ $ing->id }}"
+                                             @if($ingBranchId !== null) data-branch-id="{{ $ingBranchId }}" @endif>
 
                                             <span class="pchy-ing-name">
                                                 {{ $ing->inventory->item_name ?? 'Deleted item' }}
                                             </span>
+
+                                            @if($ingBranchName !== null)
+                                                <span class="pchy-ing-branch">{{ $ingBranchName }}</span>
+                                            @endif
 
                                             <span class="pchy-ing-qty">
                                                 {{ rtrim(rtrim(number_format($ing->quantity_used, 3), '0'), '.') }}
                                                 {{ $ing->inventory->unit ?? '' }}
                                             </span>
 
-                                            <button type="button"
-                                                    class="pchy-ing-del opt-ing-delete-btn"
-                                                    data-url="{{ route('admin.menu-options.ingredients.delete', [$option->id, $ing->id]) }}"
-                                                    title="Remove ingredient">
-                                                <i class="bi bi-x-lg"></i>
-                                            </button>
+                                            @if($canRemoveLink)
+                                                <button type="button"
+                                                        class="pchy-ing-del opt-ing-delete-btn"
+                                                        data-url="{{ route('admin.menu-options.ingredients.delete', [$option->id, $ing->id]) }}"
+                                                        title="Remove ingredient">
+                                                    <i class="bi bi-x-lg"></i>
+                                                </button>
+                                            @else
+                                                <span class="pchy-ing-lock"
+                                                      title="This link deducts from another branch's stock. Only that branch's supervisor or an admin can remove it.">
+                                                    <i class="bi bi-lock-fill"></i>
+                                                </span>
+                                            @endif
 
                                         </div>
 
@@ -1043,6 +1134,43 @@
         if (box) box.style.display = 'none';
     }
 
+    // Re-derive one option's per-branch Mapped/Unmapped badges (and the amber
+    // "add inventory first" hints) from the ingredient rows currently on
+    // screen. Called after every add and remove, so the badges never wait for a
+    // page reload. "Mapped" means what MenuOption::isMappedForBranch() means on
+    // the server — at least one link whose inventory belongs to that branch —
+    // and a row only exists here once the server has confirmed it (added) or
+    // been told to drop it (removed), so the two cannot disagree. Recomputing
+    // every badge from the rows, rather than flipping just the one that
+    // changed, keeps this idempotent.
+    function optSyncBranchBadges(optionId) {
+        const status = document.getElementById('opt-branch-status-' + optionId);
+        const list = document.getElementById('opt-ing-list-' + optionId);
+        if (!status || !list) return;
+
+        const linked = {};
+        list.querySelectorAll('.pchy-ing-row[data-branch-id]').forEach(function (r) {
+            linked[r.dataset.branchId] = true;
+        });
+
+        status.querySelectorAll('.pchy-branch-badge').forEach(function (badge) {
+            const mapped = !!linked[badge.dataset.branchId];
+            badge.classList.toggle('pchy-branch-ok', mapped);
+            badge.classList.toggle('pchy-branch-off', !mapped);
+            badge.title = mapped ? status.dataset.titleOk : status.dataset.titleOff;
+
+            const icon = badge.querySelector('i');
+            if (icon) icon.className = 'bi ' + (mapped ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill');
+
+            const text = badge.querySelector('.pchy-branch-badge-text');
+            if (text) text.textContent = badge.dataset.branchName + ': ' + (mapped ? 'Mapped' : 'Unmapped');
+        });
+
+        status.querySelectorAll('.pchy-branch-hint').forEach(function (hint) {
+            hint.hidden = !!linked[hint.dataset.branchId];
+        });
+    }
+
     document.addEventListener('submit', function (e) {
         if (!e.target.classList || !e.target.classList.contains('opt-ing-add-form')) return;
         e.preventDefault();
@@ -1079,17 +1207,34 @@
                 const row = document.createElement('div');
                 row.className = 'pchy-ing-row';
                 row.dataset.ingredientId = ing.id;
+                if (ing.branch_id !== null && ing.branch_id !== undefined) {
+                    row.dataset.branchId = ing.branch_id;
+                }
                 row.innerHTML =
                     '<span class="pchy-ing-name"></span>' +
+                    '<span class="pchy-ing-branch"></span>' +
                     '<span class="pchy-ing-qty"></span>' +
-                    '<button type="button" class="pchy-ing-del opt-ing-delete-btn" data-url="' + ing.delete_url + '" title="Remove ingredient">' +
+                    '<button type="button" class="pchy-ing-del opt-ing-delete-btn" title="Remove ingredient">' +
                     '<i class="bi bi-x-lg"></i></button>';
                 row.querySelector('.pchy-ing-name').textContent = ing.name;
                 row.querySelector('.pchy-ing-qty').textContent = ing.quantity_used + (ing.unit ? ' ' + ing.unit : '');
 
+                // Values that come back in the response are set as properties,
+                // never concatenated into the markup string above — the same
+                // rule the recipe editor on menu-items.blade.php follows
+                // (Phase 3b F11). An inventory row with no branch has no chip.
+                const branchEl = row.querySelector('.pchy-ing-branch');
+                if (ing.branch_name) {
+                    branchEl.textContent = ing.branch_name;
+                } else {
+                    branchEl.remove();
+                }
+                row.querySelector('.opt-ing-delete-btn').dataset.url = ing.delete_url;
+
                 document.getElementById('opt-ing-list-' + optionId).appendChild(row);
                 document.getElementById('opt-ing-list-' + optionId).style.display = '';
                 document.getElementById('opt-ing-empty-' + optionId).style.display = 'none';
+                optSyncBranchBadges(optionId);
 
                 const countEl = form.closest('.pchy-option').querySelector('.pchy-ing-count');
                 if (countEl) countEl.textContent = String(Number(countEl.textContent) + 1);
@@ -1139,6 +1284,8 @@
                     const optionRow = document.getElementById('opt-' + optionId);
                     const countEl = optionRow ? optionRow.querySelector('.pchy-ing-count') : null;
                     if (countEl) countEl.textContent = String(Math.max(0, Number(countEl.textContent) - 1));
+
+                    optSyncBranchBadges(optionId);
                 }
             });
     });

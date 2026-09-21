@@ -7,6 +7,11 @@
 
     <title>Create Account | Peachy Cakes & Deli Cafe</title>
 
+    {{-- Phase 3b F7: a registration form can sit open for a while before it
+         is submitted, so it needs the same live-token override and 419
+         recovery every other page that talks to the server already has. See
+         partials/session-guard for why. --}}
+    @include('partials.session-guard')
 
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')

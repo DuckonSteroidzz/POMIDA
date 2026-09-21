@@ -81,6 +81,12 @@
     <hr class="print-rule">
 </div>
 
+{{-- Silent unless showSummary() had to correct or discard the submitted custom
+     range. Above the filter bar so it reads as feedback on what was just
+     submitted, and .no-print so it never reaches the printed report — the
+     print letterhead above already states the period actually used. --}}
+@include('admin.partials.date-range-notice')
+
 {{-- ── Period Filter Bar ── --}}
 <div class="content-card no-print" style="margin-bottom:1rem;">
     <form method="GET" action="{{ route('admin.summary') }}" id="summary-filter-form"

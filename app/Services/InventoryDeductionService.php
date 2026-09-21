@@ -204,6 +204,17 @@ class InventoryDeductionService
     public const COMMITTED_ORDER_STATUSES = ['pending', 'preparing', 'serving'];
 
     /**
+     * The two UNMEASURABLE verdicts availabilityBreakdownFor() can report in
+     * its $reason. Named here, where they are produced, so the analytics layer
+     * that reads them (App\Services\ProductionCapacityService, whose own
+     * constants alias these) cannot drift from a bare string typed twice.
+     */
+    public const UNMEASURABLE_NO_RECIPE = 'no_recipe';
+
+    /** Recipe exists, but every line is zero-quantity or points at a vanished row. */
+    public const UNMEASURABLE_NO_INGREDIENT = 'no_measurable_ingredient';
+
+    /**
      * How much of each inventory row is already spoken for by orders that have
      * been placed but not yet completed.
      *
@@ -273,33 +284,132 @@ class InventoryDeductionService
         array $selectedOptionIds = [],
         ?array $committed = null
     ): ?int {
+        return $this->availabilityBreakdownFor($menuItem, $branchId, $selectedOptionIds, $committed)['units'];
+    }
+
+    /**
+     * unitsAvailableFor() with its working shown: the same MIN, plus the
+     * ARGMIN it was already computing and throwing away.
+     *
+     * Added Phase 2b (production capacity). unitsAvailableFor() above is now a
+     * one-line wrapper over this, deliberately — the capacity analytics needed
+     * to know WHICH ingredient decides the minimum, and the one thing that
+     * must not happen is a second copy of this arithmetic drifting from the
+     * copy the checkout gate depends on. The ?int contract and every value
+     * that method can return are unchanged; its three call sites did not move.
+     *
+     * Equivalence note on the clamp. The old body clamped once at the end,
+     * max(0, min(every row)); this one clamps per row, min(every max(0, row)).
+     * max(0, ·) is monotonic, so min-of-clamped IS clamp-of-min — identical
+     * output, and per-row capacities that are never negative in the UI.
+     *
+     * "Unmeasurable" (units === null) is a different fact from "can make
+     * zero", exactly as in MenuItem::isMissingRecipe() / remainingServings().
+     * $reason says which of the two unmeasurable cases applied.
+     *
+     * @param  array<int,float>|null  $committed  Map from committedQuantities(), to
+     *                                            avoid recomputing it per item.
+     * @param  \Illuminate\Support\Collection|null  $inventoryById  Inventory rows already
+     *                                            loaded and keyed by id. Supply it when
+     *                                            walking many menu items and this method
+     *                                            issues no query at all; omit it and one
+     *                                            whereIn per call is taken, as before.
+     * @return array{
+     *     units: int|null,
+     *     reason: string|null,
+     *     bottleneck: array{inventory_id:int, name:string, unit:string, capacity:int}|null,
+     *     ingredients: array<int, array{inventory_id:int, name:string|null, unit:string|null,
+     *                                   branch_id:int|null, required_per_unit:float,
+     *                                   available:float|null, capacity:int|null, is_missing:bool}>
+     * }
+     */
+    public function availabilityBreakdownFor(
+        MenuItem $menuItem,
+        ?int $branchId = null,
+        array $selectedOptionIds = [],
+        ?array $committed = null,
+        $inventoryById = null
+    ): array {
         $perUnit = $this->requirementsForLine($menuItem, 1, $selectedOptionIds, $branchId);
 
         if (empty($perUnit)) {
-            return null;
+            return ['units' => null, 'reason' => self::UNMEASURABLE_NO_RECIPE, 'bottleneck' => null, 'ingredients' => []];
         }
 
+        // Deterministic walk, so a tie between two equally limiting ingredients
+        // always names the same one instead of whichever the recipe happened to
+        // list first.
+        ksort($perUnit);
+
         $committed = $committed ?? $this->committedQuantities();
-        $inventory = Inventory::whereIn('id', array_keys($perUnit))->get()->keyBy('id');
+        $inventory = $inventoryById ?? Inventory::whereIn('id', array_keys($perUnit))->get()->keyBy('id');
 
         $max = null;
+        $bottleneck = null;
+        $rows = [];
 
         foreach ($perUnit as $invId => $amount) {
-            if ($amount <= 0) {
+            $inv = $inventory->get($invId);
+
+            if ($amount <= 0 || !$inv) {
+                // Neither constrains production: a zero-quantity recipe line
+                // needs nothing, and a missing inventory row has never blocked
+                // anything on any path in this class. Both are still LISTED, so
+                // the detail view can show why they carry no number.
+                $rows[] = [
+                    'inventory_id'      => (int) $invId,
+                    'name'              => $inv ? $inv->item_name : null,
+                    'unit'              => $inv ? $inv->unit : null,
+                    'branch_id'         => ($inv && $inv->branch_id !== null) ? (int) $inv->branch_id : null,
+                    'required_per_unit' => (float) $amount,
+                    'available'         => null,
+                    'capacity'          => null,
+                    'is_missing'        => !$inv,
+                ];
                 continue;
             }
 
-            $inv = $inventory->get($invId);
-            if (!$inv) {
-                continue; // Missing row — never blocks, same as the checks above.
-            }
-
             $free = (float) $inv->quantity - (float) ($committed[$invId] ?? 0);
-            $canMake = (int) floor($free / $amount);
-            $max = $max === null ? $canMake : min($max, $canMake);
+            $canMake = max(0, (int) floor($free / $amount));
+
+            $rows[] = [
+                'inventory_id'      => (int) $invId,
+                'name'              => $inv->item_name,
+                'unit'              => $inv->unit,
+                'branch_id'         => $inv->branch_id !== null ? (int) $inv->branch_id : null,
+                'required_per_unit' => (float) $amount,
+                'available'         => $free,
+                'capacity'          => $canMake,
+                'is_missing'        => false,
+            ];
+
+            // Strict <, so the FIRST ingredient sitting at the minimum keeps the
+            // title on a tie — with the ksort() above that is the lowest
+            // inventory id, which is stable from one request to the next.
+            if ($max === null || $canMake < $max) {
+                $max = $canMake;
+                $bottleneck = [
+                    'inventory_id' => (int) $invId,
+                    'name'         => (string) $inv->item_name,
+                    'unit'         => (string) $inv->unit,
+                    'capacity'     => $canMake,
+                ];
+            }
         }
 
-        return $max === null ? null : max(0, $max);
+        if ($max === null) {
+            // Every requirement was a zero-quantity line or a vanished inventory
+            // row. Nothing measurable to divide by — say so rather than call it
+            // zero, which would read as "sold out".
+            return [
+                'units'       => null,
+                'reason'      => self::UNMEASURABLE_NO_INGREDIENT,
+                'bottleneck'  => null,
+                'ingredients' => $rows,
+            ];
+        }
+
+        return ['units' => $max, 'reason' => null, 'bottleneck' => $bottleneck, 'ingredients' => $rows];
     }
 
     /**

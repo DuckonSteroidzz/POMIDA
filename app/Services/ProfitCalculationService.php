@@ -75,7 +75,7 @@ class ProfitCalculationService
     public function forRange(CarbonInterface $start, CarbonInterface $end, $branchScope = 'all'): array
     {
         $items = $this->lineItemsQuery($start, $end, $branchScope)
-            ->with('menuItem')
+            ->with('menuItem.recipeIngredients')
             ->get();
 
         return $this->summarize($items, $start, $end);
@@ -149,10 +149,11 @@ class ProfitCalculationService
     public function ordersForRange(CarbonInterface $start, CarbonInterface $end, $branchScope = 'all'): array
     {
         $items = $this->lineItemsQuery($start, $end, $branchScope)
-            ->with(['menuItem', 'order'])
+            ->with(['menuItem.recipeIngredients', 'order'])
             ->get();
 
         $legacyFallbackCount = 0;
+        $fallbackCosts = $this->fallbackCostMap($items);
         $orders = [];
 
         foreach ($items as $item) {
@@ -184,7 +185,7 @@ class ProfitCalculationService
 
             $orders[$id]['lines'][] = (int) $item->quantity . 'x ' . $item->item_name;
             $orders[$id]['gross_revenue'] += (float) $item->subtotal;
-            $orders[$id]['cogs'] += $this->unitIngredientCost($item, $legacyFallbackCount)
+            $orders[$id]['cogs'] += $this->unitIngredientCost($item, $legacyFallbackCount, $fallbackCosts)
                 * (int) $item->quantity;
         }
 
@@ -276,9 +277,14 @@ class ProfitCalculationService
         // to exactly one row here as well.
         $rows = [];
 
+        // One pass over the distinct menu items that might need a
+        // today's-prices fallback, priced in a FIXED number of queries
+        // rather than two per sold line — see MenuItemCosting::costForMany().
+        $fallbackCosts = $this->fallbackCostMap($items);
+
         foreach ($items as $item) {
             $lineRevenue = (float) $item->subtotal;
-            $unitCost = $this->unitIngredientCost($item, $legacyFallbackCount);
+            $unitCost = $this->unitIngredientCost($item, $legacyFallbackCount, $fallbackCosts);
             $lineCost = $unitCost * (int) $item->quantity;
 
             $grossRevenue += $lineRevenue;
@@ -360,6 +366,36 @@ class ProfitCalculationService
     }
 
     /**
+     * Today's-prices cost for every distinct menu item behind these lines,
+     * keyed by menu item id — computed ONCE, in a fixed number of queries.
+     *
+     * The fallback path below used to call MenuItemCosting::costFor() per
+     * order LINE, and that method takes one recipe query plus one inventory
+     * query each time. On a wide date range with legacy rows that measured at
+     * 112 queries for a single Analytics page view, rising with the range —
+     * the per-row shape this module has spent three phases removing. The lines
+     * arrive here with menuItem.recipeIngredients eager-loaded, so this walk
+     * issues exactly one further query (the inventory prices) whatever the
+     * number of lines.
+     *
+     * The figures are identical to what costFor() returned line by line; see
+     * MenuItemCosting::costForMany(), which is the same arithmetic batched.
+     *
+     * @param  Collection<int, OrderItem>  $items
+     * @return array<int, float>
+     */
+    private function fallbackCostMap(Collection $items): array
+    {
+        $menuItems = $items
+            ->pluck('menuItem')
+            ->filter()
+            ->unique('id')
+            ->values();
+
+        return $menuItems->isEmpty() ? [] : $this->costing->costForMany($menuItems);
+    }
+
+    /**
      * Single-unit ingredient cost for one order line.
      *
      * Prefers the historical snapshot (order_items.ingredient_cost). Falls
@@ -368,8 +404,14 @@ class ProfitCalculationService
      * resolvable — a genuinely free/zero-cost recipe and "we never recorded
      * a cost" are indistinguishable once the value is 0, so we accept that
      * ambiguity in favour of never treating a real line as free-of-charge.
+     *
+     * $fallbackCosts is the pre-computed map from fallbackCostMap(). It is
+     * optional only so the method stays callable on its own; every caller in
+     * this class passes it, and without it the per-line costFor() N+1 returns.
+     *
+     * @param  array<int, float>  $fallbackCosts
      */
-    private function unitIngredientCost(OrderItem $item, int &$legacyFallbackCount): float
+    private function unitIngredientCost(OrderItem $item, int &$legacyFallbackCount, array $fallbackCosts = []): float
     {
         $snapshot = $item->ingredient_cost;
 
@@ -379,7 +421,9 @@ class ProfitCalculationService
 
         if ($item->menuItem) {
             $legacyFallbackCount++;
-            return $this->costing->costFor($item->menuItem);
+
+            return $fallbackCosts[$item->menuItem->id]
+                ?? $this->costing->costFor($item->menuItem);
         }
 
         // No snapshot and the menu item is gone too (hard-deleted, not just

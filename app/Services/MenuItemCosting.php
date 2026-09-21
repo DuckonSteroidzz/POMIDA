@@ -88,15 +88,144 @@ class MenuItemCosting
      * Breakdowns for a collection of items, keyed by menu item id — what the
      * Menu Items list needs.
      *
+     * Phase 3b F3: this used to loop breakdownFor() per item, which is fine
+     * for one item and was an N+1 the moment a caller had a list — measured
+     * at 48 queries for 10 menu items, 128 for 30 (~4 per item), because
+     * breakdownFor() takes its own Inventory::whereIn() every time it runs.
+     * Now batched exactly like costForMany() below: one collect-then-whereIn
+     * pass over every item's requirements, then each item's full breakdown is
+     * assembled from that single shared map. The arithmetic is unchanged —
+     * same requirementsForLine() walk, same quantity x unit_cost, same
+     * fallback to menu_items.cost when there is no recipe — so a caller
+     * switching to this method gets identical figures, not approximations.
+     *
+     * EAGER-LOAD recipeIngredients on the collection you pass, same rule as
+     * costForMany() — without it this trades the Inventory N+1 above for a
+     * menu_item_ingredients one instead.
+     *
      * @param  iterable<MenuItem>  $menuItems
      * @return array<int, array>
      */
     public function breakdownForMany(iterable $menuItems): array
     {
-        $out = [];
+        $needsByItem = [];
+        $inventoryIds = [];
+
         foreach ($menuItems as $menuItem) {
-            $out[$menuItem->id] = $this->breakdownFor($menuItem);
+            if (isset($needsByItem[$menuItem->id])) {
+                continue;
+            }
+
+            $needs = $this->deduction->requirementsForLine($menuItem, 1, []);
+            $needsByItem[$menuItem->id] = $needs;
+
+            foreach (array_keys($needs) as $inventoryId) {
+                $inventoryIds[$inventoryId] = true;
+            }
         }
+
+        $unitCosts = empty($inventoryIds)
+            ? collect()
+            : Inventory::whereIn('id', array_keys($inventoryIds))->pluck('unit_cost', 'id');
+
+        $out = [];
+
+        foreach ($menuItems as $menuItem) {
+            if (isset($out[$menuItem->id])) {
+                continue;
+            }
+
+            $needs = $needsByItem[$menuItem->id] ?? [];
+            $price = (float) $menuItem->price;
+
+            if (empty($needs)) {
+                // No recipe and no legacy link — fall back to the typed-in
+                // number, exactly as breakdownFor() falls back.
+                $out[$menuItem->id] = $this->assemble($price, (float) $menuItem->cost, true, 0);
+                continue;
+            }
+
+            $cost = 0.0;
+            foreach ($needs as $inventoryId => $amount) {
+                // A deleted inventory row contributes nothing rather than
+                // crashing, matching breakdownFor() and the deduction service.
+                $cost += (float) $amount * (float) ($unitCosts[$inventoryId] ?? 0);
+            }
+
+            $out[$menuItem->id] = $this->assemble($price, $cost, false, count($needs));
+        }
+
+        return $out;
+    }
+
+    /**
+     * costFor() for many menu items at once, in a FIXED number of queries.
+     *
+     * breakdownFor() takes ONE Inventory::whereIn per item, which is fine for
+     * a single item and is an N+1 the moment a caller has a list. The obvious
+     * caller is ProfitCalculationService, which prices every sold line whose
+     * historical cost snapshot is missing — over a wide date range that was
+     * measured at 112 queries for one Analytics page view, growing with the
+     * range rather than staying fixed.
+     *
+     * This collects every ingredient id all the items between them need, takes
+     * ONE whereIn over the lot, and prices each item from that single map. The
+     * arithmetic per item is byte-for-byte what breakdownFor() does — same
+     * requirementsForLine() walk, same quantity x unit_cost, same fallback to
+     * the typed-in menu_items.cost when there is no recipe — so a caller
+     * switching to this method gets identical figures, not approximations.
+     *
+     * EAGER-LOAD recipeIngredients on the collection you pass. requirementsForLine()
+     * reuses a loaded relation and queries only when it is not, so without that
+     * this trades one N+1 for another.
+     *
+     * @param  iterable<MenuItem>  $menuItems
+     * @return array<int, float>  menu_item_id => cost to make one
+     */
+    public function costForMany(iterable $menuItems): array
+    {
+        $needsByItem = [];
+        $inventoryIds = [];
+
+        foreach ($menuItems as $menuItem) {
+            if (isset($needsByItem[$menuItem->id])) {
+                continue;
+            }
+
+            $needs = $this->deduction->requirementsForLine($menuItem, 1, []);
+            $needsByItem[$menuItem->id] = $needs;
+
+            foreach (array_keys($needs) as $inventoryId) {
+                $inventoryIds[$inventoryId] = true;
+            }
+        }
+
+        $unitCosts = empty($inventoryIds)
+            ? collect()
+            : Inventory::whereIn('id', array_keys($inventoryIds))->pluck('unit_cost', 'id');
+
+        $out = [];
+
+        foreach ($menuItems as $menuItem) {
+            $needs = $needsByItem[$menuItem->id] ?? [];
+
+            if (empty($needs)) {
+                // No recipe and no legacy link — the typed-in number, exactly
+                // as breakdownFor() falls back.
+                $out[$menuItem->id] = round((float) $menuItem->cost, 2);
+                continue;
+            }
+
+            $cost = 0.0;
+            foreach ($needs as $inventoryId => $amount) {
+                // A deleted inventory row contributes nothing rather than
+                // crashing, matching breakdownFor() and the deduction service.
+                $cost += (float) $amount * (float) ($unitCosts[$inventoryId] ?? 0);
+            }
+
+            $out[$menuItem->id] = round($cost, 2);
+        }
+
         return $out;
     }
 

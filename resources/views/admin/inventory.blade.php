@@ -91,6 +91,15 @@
         <a href="{{ route('admin.inventory.export') }}" class="iv-btn iv-btn-ghost">
             <i class="bi bi-download"></i> Export CSV
         </a>
+        {{-- Print is VIEW-ONLY, exactly like Export CSV beside it: the sheet
+             lists the rows already on screen, for the branch already in scope,
+             so all three tiers get it for the same reason they get the CSV.
+             Prints through the shared printInFrame() helper (admin.layout)
+             rather than window.print(), so what comes out is the dedicated
+             print view rather than this page with its controls hidden. --}}
+        <button type="button" class="iv-btn iv-btn-ghost" onclick="printInventory()">
+            <i class="bi bi-printer"></i> Print
+        </button>
         {{-- Deleted Items is the second half of the two-stage delete: an item
              "Delete" moves here first, recoverable, rather than being gone
              outright. Owner-only, matching "Delete Inventory Records"
@@ -946,6 +955,21 @@
     function ivReset() {
         document.getElementById('searchInput').value = '';
         ivSetStatus('');
+    }
+
+    function printInventory() {
+        // Prints in-page via the shared printInFrame() helper (admin.layout),
+        // the same way Analytics and Completed Orders print — re-runs the
+        // current branch scope through the dedicated print view inside a hidden
+        // iframe, instead of opening a new tab.
+        //
+        // Deliberately sends NO querystring, unlike printAnalytics(): the
+        // search box and the status tiles on this page are client-side filters
+        // over already-rendered rows, and the printed sheet is the branch's
+        // stock list, not a snapshot of whatever someone had typed. The server
+        // decides the scope from the session either way — see printInventory()
+        // in AdminController — so nothing here could widen it.
+        printInFrame('{{ route('admin.inventory.print') }}');
     }
 
     function ivRender() {

@@ -83,11 +83,20 @@ use Illuminate\Support\ServiceProvider;
  * login attempt shared its counter with the 6-second notification poll, so
  * background polling alone could 429 an unrelated action.
  *
- * The admin routes NOT in this pass's scope (admin.verification.post,
- * admin.forgot-password.post, admin.new-password.post, admin.verification.resend,
- * admin.tables.occupancy, admin.tables.clear, admin.notifications.*) are still
- * raw and still listed in docs/SECURITY_TESTING_SUMMARY.md. Anything added here
- * in future should be a named limiter.
+ * Phase 3b F2 (2026-09-20): the routes named above as out of scope for Pass 13
+ * — admin.verification.post, admin.forgot-password.post, admin.new-password.post,
+ * admin.verification.resend, admin.tables.occupancy, admin.tables.clear,
+ * admin.notifications.* — are now converted too, along with two more raw
+ * throttles that were never called out by name: admin.qr-generator.regenerate-code
+ * and admin.users.destroy. Same shared-counter bug as Pass 13 described, proven
+ * live: 30 polls of admin.notifications.unread-count (raw throttle:120,1) then
+ * one admin.forgot-password POST (raw throttle:6,1) 429s the password reset,
+ * because the poll's traffic already spent the lower ceiling's shared bucket.
+ * Every value below is unchanged from the raw throttle it replaces — only the
+ * counter isolation changed, exactly as with the routes above.
+ *
+ * That closes out every raw `throttle:N,M` admin route. Anything added here in
+ * future should be a named limiter from the start.
  */
 class RateLimitServiceProvider extends ServiceProvider
 {
@@ -183,6 +192,55 @@ class RateLimitServiceProvider extends ServiceProvider
     public const ADMIN_BOOTSTRAP_PER_IP = 5;
 
     /**
+     * Admin password-reset flow — Phase 3b F2. Same limits as the matching
+     * customer-side limiters above, kept pure per-IP for the same reason as
+     * admin-login: "one address, many attempts" is the attack these guard
+     * against.
+     */
+    public const ADMIN_FORGOT_PASSWORD_PER_IP = 6;
+    public const ADMIN_VERIFICATION_PER_IP = 10;
+    public const ADMIN_VERIFICATION_RESEND_PER_IP = 3;
+    public const ADMIN_NEW_PASSWORD_PER_IP = 6;
+
+    /**
+     * Regenerating a table's permanent QR code — Phase 3b F2. A legitimate
+     * rotation is one table, occasionally; unchanged from the raw
+     * throttle:20,1 it replaces.
+     */
+    public const ADMIN_QR_REGENERATE_CODE_PER_IP = 20;
+
+    /**
+     * The Occupied Tables panel — Phase 3b F2. Polled every 5s by one open
+     * counter screen; several terminals in a shop share one NAT'd IP, which
+     * is exactly the isolation problem this whole pass exists to fix.
+     * Unchanged from the raw throttle:300,1 it replaces.
+     */
+    public const ADMIN_TABLES_OCCUPANCY_PER_IP = 300;
+
+    /**
+     * Freeing a table by hand — Phase 3b F2. Unchanged from the raw
+     * throttle:60,1 it replaces.
+     */
+    public const ADMIN_TABLES_CLEAR_PER_IP = 60;
+
+    /**
+     * The admin notification bell — index, unread-count, read-all, and the
+     * per-card dismiss — Phase 3b F2. One shared limiter for all four, same
+     * as customer-notifications above: they are one feature (the bell), and
+     * every counter screen, the manager's laptop and the kitchen display all
+     * poll it from the shop's one NAT'd IP. Unchanged from the raw
+     * throttle:120,1 they replaced.
+     */
+    public const ADMIN_NOTIFICATIONS_PER_IP = 120;
+
+    /**
+     * Deleting a portal account outright — Phase 3b F2. Irreversible and
+     * there is no legitimate bulk use, so this stays tight. Unchanged from
+     * the raw throttle:20,1 it replaces.
+     */
+    public const ADMIN_USERS_DESTROY_PER_IP = 20;
+
+    /**
      * Customer-facing endpoints — Pass 13.
      *
      * Each value is the exact limit the route carried as a raw `throttle:N,M`
@@ -259,6 +317,19 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('admin-staff-password', self::ADMIN_STAFF_PASSWORD_PER_IP);
         $this->perIp('admin-issue-voucher-code', self::ADMIN_ISSUE_VOUCHER_CODE_PER_IP);
         $this->perIp('admin-bootstrap', self::ADMIN_BOOTSTRAP_PER_IP);
+
+        /*
+         * Phase 3b F2 — the rest of the raw admin throttles, same treatment.
+         */
+        $this->perIp('admin-forgot-password', self::ADMIN_FORGOT_PASSWORD_PER_IP);
+        $this->perIp('admin-verification', self::ADMIN_VERIFICATION_PER_IP);
+        $this->perIp('admin-verification-resend', self::ADMIN_VERIFICATION_RESEND_PER_IP);
+        $this->perIp('admin-new-password', self::ADMIN_NEW_PASSWORD_PER_IP);
+        $this->perIp('admin-qr-regenerate-code', self::ADMIN_QR_REGENERATE_CODE_PER_IP);
+        $this->perIp('admin-tables-occupancy', self::ADMIN_TABLES_OCCUPANCY_PER_IP);
+        $this->perIp('admin-tables-clear', self::ADMIN_TABLES_CLEAR_PER_IP);
+        $this->perIp('admin-notifications', self::ADMIN_NOTIFICATIONS_PER_IP);
+        $this->perIp('admin-users-destroy', self::ADMIN_USERS_DESTROY_PER_IP);
 
         /*
          * Customer-facing routes — Pass 13. Same treatment as the admin auth

@@ -401,6 +401,28 @@
             box-shadow: var(--pc-shadow);
         }
 
+        /* ── Rejected/corrected date range notice ──
+           Drawn by admin.partials.date-range-notice on Analytics and Summary
+           when a submitted custom range had to be swapped or discarded. Lives
+           in the layout rather than in either page because both render the same
+           partial and a second copy of these rules is how the two drift apart.
+           Amber, not red: the page below it is showing real figures for a real
+           period, so this is "not what you asked for", not "something broke". */
+        .date-range-notice {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.5rem;
+            background: #FFF8E6;
+            border: 1px solid #F2D89B;
+            border-radius: var(--pc-radius);
+            padding: 0.7rem 0.9rem;
+            margin-bottom: 1rem;
+            font-size: 0.8rem;
+            line-height: 1.45;
+            color: #7A5B12;
+        }
+        .date-range-notice i { flex-shrink: 0; margin-top: 0.1rem; color: #C99A2E; }
+
         /* ── Top line: branch bar + notification bell, laid out together ── */
         .pc-topline {
             display: flex;

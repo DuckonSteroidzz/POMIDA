@@ -83,11 +83,16 @@ class AdminTableScrollWrapperTest extends TestCase
         }
     }
 
-    // ══════════ Analytics — one table (Top 5 Products) since the Sept 2026
-    //             redesign to a simplified dashboard (Finding #7) removed
-    //             Best/Least Sellers, Branch Performance and Sales per Branch ══════════
+    // ══════════ Analytics — the Sept 2026 redesign to a simplified dashboard
+    //             (Finding #7) removed Best/Least Sellers, Branch Performance
+    //             and Sales per Branch, leaving one plain table. Phase 2d
+    //             replaced that table's contents — "Top 5 Products (by quantity
+    //             sold)" became "Menu Performance", with the money columns
+    //             sourced from ProfitCalculationService rather than aggregated
+    //             on the page — but not its markup, so the wrapper this suite
+    //             guards is the same one. ══════════
 
-    public function test_analytics_top_products_table_is_wrapped_for_horizontal_scroll(): void
+    public function test_analytics_menu_performance_table_is_wrapped_for_horizontal_scroll(): void
     {
         $html = $this->actingAs($this->admin(), 'admin')
             ->get('/admin/analytics')
@@ -97,16 +102,20 @@ class AdminTableScrollWrapperTest extends TestCase
         $this->assertTableIsWrappedForScroll(
             $html,
             '<table style="width:100%; font-size:0.78rem; border-collapse:collapse;">',
-            'Analytics Top 5 Products'
+            'Analytics Menu Performance'
         );
     }
 
-    public function test_analytics_top_products_table_still_has_its_original_columns(): void
+    public function test_analytics_menu_performance_table_has_its_expected_columns(): void
     {
         $html = $this->actingAs($this->admin(), 'admin')->get('/admin/analytics')->getContent();
 
+        // Qty Sold survived the Phase 2d rename; the financial columns are new
+        // and are what the rename was for.
         $this->assertStringContainsString('Qty Sold', $html);
-        $this->assertStringContainsString('Top 5 Products', $html);
+        $this->assertStringContainsString('Menu Performance', $html);
+        $this->assertStringContainsString('Gross Profit', $html);
+        $this->assertStringContainsString('COGS', $html);
     }
 
     // ══════════ the recipe sub-tables ══════════

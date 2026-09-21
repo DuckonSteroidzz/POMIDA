@@ -230,6 +230,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // ══════════ GCASH PAYMENT ══════════
 
     Route::get('/gcash-payment/{id}', [OrderController::class, 'showGcashPayment'])
+        ->whereNumber('id')
         ->name('gcash-payment');
 
     // Pushes an order into the staff GCash-verification queue. Same
@@ -237,6 +238,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // endpoint, and it was flagged for an IDOR fix in the same
     // SECURITY_TESTING_SUMMARY.md pass without also getting a rate limit.
     Route::post('/gcash-payment/{id}/paid', [OrderController::class, 'markGcashAsPaid'])
+        ->whereNumber('id')
         ->middleware([
             'throttle.friendly:We could not record that payment just now because it was '
                 . 'submitted too quickly. Please wait a moment and tap "I have paid" again.',
@@ -245,6 +247,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
         ->name('gcash-payment.paid');
 
     Route::get('/gcash-payment/{id}/status', [OrderController::class, 'gcashPaymentStatus'])
+        ->whereNumber('id')
         ->name('gcash-payment.status');
 
     // Lightweight endpoint used while the customer waits for discount verification.
@@ -259,10 +262,12 @@ Route::prefix('customer')->name('customer.')->group(function () {
 
     // Customer may cancel a still-pending order after a discount card is rejected.
     Route::post('/orders/{id}/cancel', [OrderController::class, 'cancelCustomerOrder'])
+        ->whereNumber('id')
         ->name('orders.cancel');
 
     // Customer may continue a rejected-discount order at the regular price.
     Route::post('/orders/{id}/continue-without-discount', [OrderController::class, 'continueWithoutDiscount'])
+        ->whereNumber('id')
         ->name('continue-without-discount');
 
     // Customer submits a star rating for a completed dine-in/pick-up order.
@@ -271,6 +276,7 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // are throttled for elsewhere in this file, just added in a later round
     // than the original security pass and never covered.
     Route::post('/orders/{id}/rating', [OrderController::class, 'submitRating'])
+        ->whereNumber('id')
         ->middleware(['throttle.friendly', 'throttle:order-rating'])
         ->name('orders.rating');
 
@@ -279,10 +285,12 @@ Route::prefix('customer')->name('customer.')->group(function () {
     // POST above; a higher ceiling because this is read-only and may
     // legitimately be polled a few times as the popup opens.
     Route::get('/orders/{id}/rating', [OrderController::class, 'orderRating'])
+        ->whereNumber('id')
         ->middleware(['throttle.friendly', 'throttle:order-rating-read'])
         ->name('orders.rating.show');
 
     Route::get('/receipt/{id}', [OrderController::class, 'showReceipt'])
+        ->whereNumber('id')
         ->name('receipt');
 
 
@@ -486,25 +494,25 @@ Route::prefix('admin')->name('admin.')->group(function () {
         ->name('forgot-password');
 
     Route::post('/forgot-password', [AdminAuthController::class, 'forgotPassword'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:admin-forgot-password')
         ->name('forgot-password.post');
 
     Route::get('/verification', [AdminAuthController::class, 'showVerification'])
         ->name('verification');
 
     Route::post('/verification', [AdminAuthController::class, 'verifyCode'])
-        ->middleware('throttle:10,1')
+        ->middleware('throttle:admin-verification')
         ->name('verification.post');
 
     Route::get('/verification/resend', [AdminAuthController::class, 'resendCode'])
-        ->middleware('throttle:3,1')
+        ->middleware('throttle:admin-verification-resend')
         ->name('verification.resend');
 
     Route::get('/new-password', [AdminAuthController::class, 'showNewPassword'])
         ->name('new-password');
 
     Route::post('/new-password', [AdminAuthController::class, 'updatePassword'])
-        ->middleware('throttle:6,1')
+        ->middleware('throttle:admin-new-password')
         ->name('new-password.post');
 
 });
@@ -673,7 +681,7 @@ Route::prefix('admin')
             // Throttled low because a legitimate rotation is one table,
             // occasionally.
             Route::post('/qr-generator/regenerate-code', [AdminController::class, 'regenerateTableCode'])
-                ->middleware(['role:admin,supervisor', 'throttle:20,1'])
+                ->middleware(['role:admin,supervisor', 'throttle:admin-qr-regenerate-code'])
                 ->name('qr-generator.regenerate-code');
 
 
@@ -693,11 +701,11 @@ Route::prefix('admin')
             // meant ten open screens hit the old ceiling with nobody doing
             // anything. Read-only, branch-scoped server-side.
             Route::get('/tables/occupancy', [AdminController::class, 'tableOccupancy'])
-                ->middleware('throttle:300,1')
+                ->middleware('throttle:admin-tables-occupancy')
                 ->name('tables.occupancy');
 
             Route::post('/tables/clear', [AdminController::class, 'clearTableOccupancy'])
-                ->middleware('throttle:60,1')
+                ->middleware('throttle:admin-tables-clear')
                 ->name('tables.clear');
 
 
@@ -742,6 +750,19 @@ Route::prefix('admin')
             // exporting it as CSV discloses nothing the table does not.
             Route::get('/inventory/export', [AdminController::class, 'exportInventory'])
                 ->name('inventory.export');
+
+            // "Print" — the printInFrame() shape admin.analytics.print and
+            // admin.completed-orders.print already use: a dedicated print-only
+            // view, re-running the SAME branch scope and the SAME
+            // inventoryRowsForScope() rows the page and the CSV use.
+            //
+            // Same role group as the page and the CSV for the same reason: it
+            // is a rendering of the list the viewer is already allowed to read,
+            // and the scope comes from getSelectedBranch() rather than from the
+            // request, so a branch-locked account prints its own branch and has
+            // no way to ask for another one.
+            Route::get('/inventory/print', [AdminController::class, 'printInventory'])
+                ->name('inventory.print');
 
             // whereNumber('id') so a non-numeric id is a clean 404 from the
             // router rather than a TypeError 500 inside stockIn(int $id).
@@ -816,37 +837,40 @@ Route::prefix('admin')
             // re-renders the bell on each reload on top of that.
 
             Route::get('/notifications', [AdminNotificationController::class, 'index'])
-                ->middleware('throttle:120,1')
+                ->middleware('throttle:admin-notifications')
                 ->name('notifications.index');
 
             Route::get('/notifications/unread-count', [AdminNotificationController::class, 'unreadCount'])
-                ->middleware('throttle:120,1')
+                ->middleware('throttle:admin-notifications')
                 ->name('notifications.unread-count');
 
             Route::post('/notifications/read', [AdminNotificationController::class, 'markAllRead'])
-                ->middleware('throttle:120,1')
+                ->middleware('throttle:admin-notifications')
                 ->name('notifications.read');
 
             // The X on a single tray card — soft dismiss, scoped to the caller's
             // own branch. Same 120/min ceiling as the rest of the bell traffic.
             Route::post('/notifications/{notification}/dismiss', [AdminNotificationController::class, 'dismiss'])
                 ->whereNumber('notification')
-                ->middleware('throttle:120,1')
+                ->middleware('throttle:admin-notifications')
                 ->name('notifications.dismiss');
 
 
             // ══════════ RECEIPT ══════════
 
             Route::get('/receipt/{id}', [AdminController::class, 'showReceipt'])
+                ->whereNumber('id')
                 ->name('receipt');
 
 
             // ══════════ HELP REQUESTS ══════════
 
             Route::put('/help-requests/{id}/assist', [AdminController::class, 'assistHelpRequest'])
+                ->whereNumber('id')
                 ->name('help-requests.assist');
 
             Route::put('/help-requests/{id}/resolve', [AdminController::class, 'resolveHelpRequest'])
+                ->whereNumber('id')
                 ->name('help-requests.resolve');
 
 
@@ -873,6 +897,7 @@ Route::prefix('admin')
             // max_uses, so a stuck finger on the button should not empty a
             // promotion's supply. 30/min is far more than a counter needs.
             Route::post('/vouchers/{id}/issue-code', [AdminController::class, 'issueVoucherCode'])
+                ->whereNumber('id')
                 ->middleware('throttle:admin-issue-voucher-code')
                 ->name('vouchers.issue-code');
 
@@ -930,6 +955,17 @@ Route::prefix('admin')
             // hold on screen.
             Route::get('/analytics/print', [AdminController::class, 'printAnalytics'])
                 ->name('analytics.print');
+
+            // "Export CSV" (Phase 2d) — the same shape as admin.export.orders
+            // and admin.inventory.export, and deliberately in THIS group: an
+            // export of the Analytics page is the Analytics page, so it is
+            // gated by exactly the middleware the page itself is gated by, and
+            // staff cannot reach it. The branch scope it reports on comes from
+            // getSelectedBranch() inside the controller, never from the
+            // request, so there is no querystring by which this route could be
+            // made to export a branch the caller may not see.
+            Route::get('/analytics/export', [AdminController::class, 'exportAnalytics'])
+                ->name('analytics.export');
 
             Route::get('/export/orders', [AdminController::class, 'exportOrders'])
                 ->name('export.orders');
@@ -991,7 +1027,7 @@ Route::prefix('admin')
             // Throttled: it is irreversible and there is no bulk use for it.
             Route::delete('/users/{id}', [AdminController::class, 'destroyUser'])
                 ->whereNumber('id')
-                ->middleware('throttle:20,1')
+                ->middleware('throttle:admin-users-destroy')
                 ->name('users.destroy');
 
 
@@ -1006,12 +1042,15 @@ Route::prefix('admin')
             // any more, so only the actions that WRITE are routed.
 
             Route::put('/menu-items/toggle/{id}', [AdminController::class, 'toggleMenuItem'])
+                ->whereNumber('id')
                 ->name('menu-items.toggle');
 
             Route::put('/menu-items/{id}', [AdminController::class, 'updateMenuItem'])
+                ->whereNumber('id')
                 ->name('menu-items.update');
 
             Route::delete('/menu-items/{id}', [AdminController::class, 'deleteMenuItem'])
+                ->whereNumber('id')
                 ->name('menu-items.delete');
 
             Route::post('/new-menu-item', [AdminController::class, 'storeNewMenuItem'])
@@ -1024,9 +1063,11 @@ Route::prefix('admin')
             // "Edit Menu Items" (Y | Y | N) rather than the inventory rows.
 
             Route::post('/menu-items/{menuItem}/ingredients', [AdminController::class, 'addIngredient'])
+                ->whereNumber('menuItem')
                 ->name('menu-items.ingredients.add');
 
             Route::delete('/menu-items/{menuItem}/ingredients/{ingredient}', [AdminController::class, 'deleteIngredient'])
+                ->whereNumber(['menuItem', 'ingredient'])
                 ->name('menu-items.ingredients.delete');
 
 
@@ -1044,12 +1085,15 @@ Route::prefix('admin')
                 ->name('add-category.post');
 
             Route::get('/add-category/edit/{id}', [AdminController::class, 'editCategory'])
+                ->whereNumber('id')
                 ->name('add-category.edit');
 
             Route::put('/add-category/{id}', [AdminController::class, 'updateCategory'])
+                ->whereNumber('id')
                 ->name('add-category.update');
 
             Route::delete('/add-category/{id}', [AdminController::class, 'deleteCategory'])
+                ->whereNumber('id')
                 ->name('add-category.delete');
 
 
@@ -1066,9 +1110,11 @@ Route::prefix('admin')
             // moving to a new parent also updates the category_id of every
             // menu item already filed under this subcategory.
             Route::put('/add-subcategory/{id}', [AdminController::class, 'updateSubcategory'])
+                ->whereNumber('id')
                 ->name('add-subcategory.update');
 
             Route::delete('/add-subcategory/{id}', [AdminController::class, 'deleteSubcategory'])
+                ->whereNumber('id')
                 ->name('add-subcategory.delete');
 
 
@@ -1084,20 +1130,25 @@ Route::prefix('admin')
 
             // Name/price only — assignments (menu_item_options) are untouched.
             Route::put('/menu-options/{id}', [AdminController::class, 'updateMenuOption'])
+                ->whereNumber('id')
                 ->name('menu-options.update');
 
             Route::delete('/menu-options/{id}', [AdminController::class, 'deleteMenuOption'])
+                ->whereNumber('id')
                 ->name('menu-options.delete');
 
             Route::post('/menu-options/assign/{menuItemId}', [AdminController::class, 'assignOptions'])
+                ->whereNumber('menuItemId')
                 ->name('menu-options.assign');
 
             // Recipe ingredients for an add-on option (MenuOptionIngredient).
             // Mirrors the menu-items ingredient routes above.
             Route::post('/menu-options/{menuOption}/ingredients', [AdminController::class, 'addOptionIngredient'])
+                ->whereNumber('menuOption')
                 ->name('menu-options.ingredients.add');
 
             Route::delete('/menu-options/{menuOption}/ingredients/{ingredient}', [AdminController::class, 'deleteOptionIngredient'])
+                ->whereNumber(['menuOption', 'ingredient'])
                 ->name('menu-options.ingredients.delete');
 
 
@@ -1126,9 +1177,11 @@ Route::prefix('admin')
                 ->name('inventory.store');
 
             Route::get('/inventory/edit/{id}', [AdminController::class, 'editInventory'])
+                ->whereNumber('id')
                 ->name('inventory.edit');
 
             Route::put('/inventory/{id}', [AdminController::class, 'updateInventory'])
+                ->whereNumber('id')
                 ->name('inventory.update');
 
 
@@ -1164,9 +1217,11 @@ Route::prefix('admin')
                 ->name('vouchers.store');
 
             Route::put('/vouchers/{id}', [AdminController::class, 'updateVoucher'])
+                ->whereNumber('id')
                 ->name('vouchers.update');
 
             Route::put('/vouchers/{id}/toggle', [AdminController::class, 'toggleVoucher'])
+                ->whereNumber('id')
                 ->name('vouchers.toggle');
 
 
@@ -1189,12 +1244,15 @@ Route::prefix('admin')
                 ->name('ads.store');
 
             Route::put('/ads/{id}', [AdminController::class, 'updateAd'])
+                ->whereNumber('id')
                 ->name('ads.update');
 
             Route::put('/ads/{id}/toggle', [AdminController::class, 'toggleAd'])
+                ->whereNumber('id')
                 ->name('ads.toggle');
 
             Route::delete('/ads/{id}', [AdminController::class, 'deleteAd'])
+                ->whereNumber('id')
                 ->name('ads.delete');
 
         });
@@ -1278,9 +1336,11 @@ Route::prefix('admin')
             // only the destructive half.
 
             Route::put('/archived/{type}/{id}/restore', [AdminController::class, 'restoreArchivedCatalogue'])
+                ->whereNumber('id')
                 ->name('archived.restore');
 
             Route::delete('/inventory/{id}', [AdminController::class, 'deleteInventory'])
+                ->whereNumber('id')
                 ->name('inventory.delete');
 
             // ══════════ DELETED INVENTORY — two-stage delete, owner only ══════════
@@ -1296,9 +1356,11 @@ Route::prefix('admin')
                 ->name('inventory.deleted');
 
             Route::put('/inventory/{id}/restore', [AdminController::class, 'restoreInventory'])
+                ->whereNumber('id')
                 ->name('inventory.restore');
 
             Route::delete('/inventory/{id}/force', [AdminController::class, 'forceDeleteInventory'])
+                ->whereNumber('id')
                 ->name('inventory.force-delete');
 
 
@@ -1318,6 +1380,7 @@ Route::prefix('admin')
             // refused outright by this group, exactly as before.
 
             Route::delete('/vouchers/{id}', [AdminController::class, 'deleteVoucher'])
+                ->whereNumber('id')
                 ->name('vouchers.delete');
 
             // The bearer-code issuance route (vouchers.issue-code) moved to the
@@ -1330,6 +1393,7 @@ Route::prefix('admin')
             // claim rows against a voucher's max_uses, which is the thing the
             // limit protects.
             Route::post('/vouchers/{id}/issue-reward', [AdminController::class, 'issueRewardCode'])
+                ->whereNumber('id')
                 ->middleware('throttle:admin-issue-voucher-code')
                 ->name('vouchers.issue-reward');
 
@@ -1355,9 +1419,11 @@ Route::prefix('admin')
                 ->name('branches.store');
 
             Route::put('/branches/{id}', [AdminController::class, 'updateBranch'])
+                ->whereNumber('id')
                 ->name('branches.update');
 
             Route::put('/branches/{id}/toggle', [AdminController::class, 'toggleBranch'])
+                ->whereNumber('id')
                 ->name('branches.toggle');
 
             // The branch bar's "Viewing:" picker. A GET on purpose: it only

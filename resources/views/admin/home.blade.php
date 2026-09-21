@@ -2729,6 +2729,35 @@ document.addEventListener('DOMContentLoaded', function() {
 
     document.getElementById('manualOrderForm')
         .addEventListener('submit', function(event) {
+            const submitButton = document.getElementById('manualSubmitButton');
+
+            /*
+             * THE DOUBLE-SUBMIT GUARD (Phase 3a audit, Finding F8).
+             *
+             * Mirrors confirmOrderNow() on the customer cart. `disabled` is
+             * read and written synchronously, before the form is allowed to
+             * submit, so a second submission from THIS page — a second click,
+             * or Enter pressed in a field while the first POST is still on the
+             * wire, which fires submit even though the button is disabled —
+             * sees the button already disabled and is stopped here. JS is
+             * single-threaded, so there is no window in which two can both
+             * pass this check.
+             *
+             * Checked FIRST, before the two validations below, because those
+             * deliberately leave the button enabled: a refused submission is
+             * not an in-flight one, and staff must be able to fix the amount
+             * and submit again immediately.
+             *
+             * This covers only this rendered page. A retry that reaches the
+             * server some other way (a second dashboard tab, a client or proxy
+             * resending the POST) is caught server-side by the matching
+             * duplicate-submit mutex in AdminController::storeManualOrder().
+             */
+            if (submitButton && submitButton.disabled) {
+                event.preventDefault();
+                return;
+            }
+
             const itemCount = Object.keys(manualCart).length;
 
             if (itemCount === 0) {
@@ -2754,8 +2783,50 @@ document.addEventListener('DOMContentLoaded', function() {
                     'Amount paid must be at least ₱' +
                     total.toFixed(2)
                 );
+
+                return;
+            }
+
+            /*
+             * Only now — the submission is going through. Nothing re-enables
+             * the button on this page load on purpose: every outcome of
+             * storeManualOrder() is a redirect (success to the dashboard,
+             * refusal back() here), so a definitive failure arrives as a fresh
+             * page with a fresh, enabled button and the modal reopened by
+             * reopenRejectedManualOrder(). Re-enabling on a timer would only
+             * re-open the window this closes.
+             *
+             * The button carries no name attribute, so disabling it here
+             * removes nothing from the payload the browser has already
+             * serialised.
+             */
+            if (submitButton) {
+                submitButton.disabled = true;
+                submitButton.innerHTML =
+                    '<i class="bi bi-hourglass-split"></i> Placing Order...';
             }
         });
+
+    /*
+     * The one case where the button must come back without a fresh page load:
+     * the back/forward cache. Navigating away and returning restores this page
+     * from memory with the DOM exactly as it was left — button still disabled —
+     * and DOMContentLoaded does not fire again, so the till would be stuck on a
+     * dead button. event.persisted is true only for that restore.
+     */
+    window.addEventListener('pageshow', function(event) {
+        if (!event.persisted) {
+            return;
+        }
+
+        const submitButton = document.getElementById('manualSubmitButton');
+
+        if (submitButton) {
+            submitButton.disabled = false;
+            submitButton.innerHTML =
+                '<i class="bi bi-check-circle"></i> Place Order';
+        }
+    });
 
     /*
      * Reopen the Manual Order modal when the server rejected the submission.

@@ -437,6 +437,26 @@ class AnalyticsBranchScopeAndRedesignTest extends TestCase
             ->assertOk()
             ->getContent();
 
+        // WHAT STAYS REMOVED, and why each one is still here.
+        //
+        // 'Branch Performance' and 'Sales per Branch' are the load-bearing two:
+        // they are the cross-branch comparison the Phase 3 audit removed as a
+        // disclosure risk, and nothing added since — Phase 2d's insights
+        // included — may bring either back. The rest are the Sept 2026
+        // redesign's own removals.
+        //
+        // 'Inventory Risk' LEFT this list in Phase 2d, deliberately. What was
+        // removed in the redesign was a widget of that name; what exists now is
+        // a KPI tile counting the Out of Stock + Critical rows of
+        // AnalyticsIntelligenceService, computed from the branch-scoped result
+        // the rest of the page renders. The name came back because the phase
+        // specified it; the old implementation did not, and 'Branch
+        // Performance' / 'Sales per Branch' above are what actually guard
+        // against the leak the original removal was about.
+        //
+        // 'Analytics-Based Recommendations' stays forbidden and still passes:
+        // Phase 2d's card is "Analytics Insights & Recommendations", a
+        // different section built on different data.
         foreach ([
             'Analytics-Based Recommendations',
             'Sales Forecast',
@@ -444,7 +464,6 @@ class AnalyticsBranchScopeAndRedesignTest extends TestCase
             'Branch Performance',
             'Least Sellers',
             'Sales per Branch',
-            'Inventory Risk',
         ] as $removed) {
             $this->assertStringNotContainsString($removed, $html, "\"{$removed}\" should have been removed from the redesigned page.");
         }
@@ -454,8 +473,26 @@ class AnalyticsBranchScopeAndRedesignTest extends TestCase
         $this->assertStringContainsString('Total Orders', $html);
         $this->assertStringContainsString('Average Order Value', $html);
         $this->assertStringContainsString('Average Rating', $html);
-        $this->assertStringContainsString('Sales per Day', $html);
-        $this->assertStringContainsString('Top 5 Products', $html);
+        // Phase 2c renamed this card: the "Sales per Day" bar chart became the
+        // "Sales Trend & Forecast" line chart, actual history solid and the
+        // moving-average projection dashed. Still exactly ONE main graph — the
+        // property this block guards — so the assertion moves to the new title
+        // rather than being dropped.
+        //
+        // Note this does NOT relax the 'Sales Forecast' removal asserted above:
+        // that was the old Simple Linear Regression card, which remains gone.
+        $this->assertStringContainsString('Sales Trend &amp; Forecast', $html);
+        $this->assertStringNotContainsString('salesPerDayChart', $html);
+        $this->assertSame(1, substr_count($html, '<canvas'), 'Analytics must have exactly one graph.');
+        // Phase 2d replaced the "Top 5 Products (by quantity sold)" card with
+        // "Menu Performance". The old card aggregated its own revenue out of
+        // order_items.subtotal while Summary reported revenue net of discounts
+        // — the Phase 1 "two screens, two revenues" finding. Every money column
+        // in its replacement comes from ProfitCalculationService instead. One
+        // table, not two: a second menu table beside it would be exactly the
+        // overcrowding the redesign exists to prevent.
+        $this->assertStringContainsString('Menu Performance', $html);
+        $this->assertStringNotContainsString('Top 5 Products', $html);
         $this->assertStringContainsString('Print', $html);
     }
 }

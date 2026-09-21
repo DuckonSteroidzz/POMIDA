@@ -313,10 +313,16 @@ class OrderController extends Controller
 
         /*
          * Hard backstop (Phase 3 audit, Door C). Branches never share
-         * inventory or stock, and completion deducts by each line's OWN
-         * menu_item.branch_id rather than the order's — so a cart line from
-         * a different branch than $branchId would silently decrement the
-         * wrong branch's stock (reproduced live: orders 115-121, May 2026).
+         * inventory or stock, and completion never consults a menu item's own
+         * branch_id at all — it deducts inventory rows. An add-on's ingredient
+         * links are filtered to inventory whose branch_id matches THIS
+         * ORDER's branch_id (InventoryDeductionService::requirementsForLine()),
+         * but a menu item's base-recipe rows deduct whichever inventory rows
+         * the recipe points at (each belonging to the item's own branch by the
+         * write-time rule inventoryIsSelectableForBranch()). So a cart line
+         * from a different branch than $branchId would still silently
+         * decrement THAT other branch's stock through its recipe
+         * (reproduced live: orders 115-121, May 2026).
          * AuthController's switchBranch()/addToCart() close the doors that
          * used to let such a line reach the cart at all; this refuses the
          * order outright if one somehow still does, rather than trusting the

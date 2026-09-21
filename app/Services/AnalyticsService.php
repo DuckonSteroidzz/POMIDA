@@ -196,6 +196,16 @@ class AnalyticsService
      * can't block something that isn't tracked against inventory.
      *
      * @return \Illuminate\Support\Collection<int, MenuItem>
+     *
+     * Phase 3b F4: this used to query Inventory::whereIn() once PER ITEM
+     * inside the loop, on top of one uncached menu_item_ingredients query per
+     * item from requirementsForLine() — measured at +2 queries per available
+     * menu item (25 empty, 68 at 30 items), scaling with the catalogue rather
+     * than the order count. Now eager-loads recipeIngredients and hoists the
+     * inventory lookup to a single whereIn outside the loop, same
+     * collect-then-whereIn shape MenuItemCosting::breakdownForMany() uses.
+     * The short-detection logic itself — an item is short if ANY of its
+     * needed ingredients has too little quantity on hand — is unchanged.
      */
     public function menuItemsOutOfStock()
     {
@@ -204,9 +214,11 @@ class AnalyticsService
         $menuItems = MenuItem::query()
             ->where('is_available', true)
             ->when($this->branchScope !== 'all', fn ($q) => $q->where('branch_id', $this->branchScope))
+            ->with('recipeIngredients')
             ->get();
 
-        $short = collect();
+        $needsByItem = [];
+        $inventoryIds = [];
 
         foreach ($menuItems as $menuItem) {
             $needs = $deduction->requirementsForLine($menuItem, 1, []);
@@ -214,7 +226,24 @@ class AnalyticsService
                 continue;
             }
 
-            $inventory = Inventory::whereIn('id', array_keys($needs))->get()->keyBy('id');
+            $needsByItem[$menuItem->id] = $needs;
+
+            foreach (array_keys($needs) as $inventoryId) {
+                $inventoryIds[$inventoryId] = true;
+            }
+        }
+
+        $inventory = empty($inventoryIds)
+            ? collect()
+            : Inventory::whereIn('id', array_keys($inventoryIds))->get()->keyBy('id');
+
+        $short = collect();
+
+        foreach ($menuItems as $menuItem) {
+            $needs = $needsByItem[$menuItem->id] ?? null;
+            if ($needs === null) {
+                continue;
+            }
 
             foreach ($needs as $inventoryId => $amount) {
                 $inv = $inventory->get($inventoryId);
@@ -350,20 +379,61 @@ class AnalyticsService
         return $avg !== null ? round((float) $avg, 2) : null;
     }
 
-    /** One bar per calendar day spanned by [start, end], inclusive. */
+    /**
+     * One bar per calendar day spanned by [start, end], inclusive.
+     *
+     * ONE query, regardless of how wide the range is.
+     *
+     * This method used to run the loop below with a `whereDate(...)->sum()`
+     * INSIDE it — one round trip per calendar day. That is invisible on the
+     * Last 30 Days default (30 queries) and ruinous on a custom range: a
+     * measured 11-year range issued 4,289 queries for a single page view, and
+     * an unvalidated "0000-00-00" start date (which Carbon parses as year -1)
+     * spanned 740,277 days, turning one querystring into an authenticated
+     * denial-of-service. The querystring half is now closed by
+     * AdminController's ResolvesReportDateRange; this is the half that stops
+     * range WIDTH from costing anything at all.
+     *
+     * Aggregate in SQL, zero-fill in PHP: the grouped query returns only the
+     * days that actually had completed orders, and the loop below walks every
+     * calendar day so a day with no sales still gets its labelled zero bar
+     * rather than being missing from the chart.
+     *
+     * EXACT-VALUE PARITY with the old loop is not an accident of two similar
+     * queries — it is why the bounds below are `$start->startOfDay()` and
+     * `$end->endOfDay()` rather than the raw $start/$end. The old
+     * `whereDate('completed_at', $day)` matched the WHOLE of each calendar day
+     * the cursor landed on, including a mid-day $start's earlier hours. Using
+     * the raw bounds here would silently drop those, which is the one way this
+     * rewrite could have changed a figure. AnalyticsDailySeriesParityTest
+     * keeps a reference copy of the original per-day loop and asserts the two
+     * agree, so the equivalence is a live regression test rather than a claim
+     * in a comment.
+     */
     public function dailySalesSeriesForRange(\Carbon\Carbon $start, \Carbon\Carbon $end): array
     {
-        $labels = [];
-        $values = [];
-
         $cursor = $start->copy()->startOfDay();
         $last = $end->copy()->startOfDay();
 
+        $totals = $this->applyOrderBranchScope(
+            Order::where('status', 'completed')
+                ->whereBetween('completed_at', [
+                    $cursor->copy(),
+                    $end->copy()->endOfDay(),
+                ])
+        )
+            ->groupBy(DB::raw('DATE(completed_at)'))
+            ->pluck(
+                DB::raw('SUM(total) as day_total'),
+                DB::raw('DATE(completed_at) as day')
+            );
+
+        $labels = [];
+        $values = [];
+
         while ($cursor->lte($last)) {
             $labels[] = $cursor->format('M d');
-            $values[] = (float) $this->applyOrderBranchScope(
-                Order::where('status', 'completed')->whereDate('completed_at', $cursor->toDateString())
-            )->sum('total');
+            $values[] = (float) ($totals[$cursor->toDateString()] ?? 0);
             $cursor->addDay();
         }
 
@@ -419,7 +489,22 @@ class AnalyticsService
      *
      * x = sequential day index (0..n-1) within the lookback window,
      * y = that day's completed-order total. See
-     * docs/ANALYTICS_METHODOLOGY.md §11 for the formula and rationale.
+     * docs/ANALYTICS_METHODOLOGY.md §9.5 for the formula and rationale.
+     * (That cross-reference read "§11" until Phase 2c; the document has never
+     * had a §11, and the methodology has always been at §9.5.)
+     *
+     * DORMANT, DELIBERATELY. As of Phase 2c the user-facing forecast on the
+     * Analytics page is a MOVING AVERAGE, in DemandForecastService — chosen
+     * because an owner can check it by hand and because a straight line fitted
+     * to this much sparse history mostly models noise. This method is left
+     * intact rather than deleted: it has no caller to break, its documented
+     * methodology is worth preserving, and its two constants above are live —
+     * DemoSalesTopUp and DemoSalesSeeder both measure themselves against
+     * FORECAST_MIN_DAYS_WITH_SALES, and DemandForecastService now aliases it
+     * so "enough data to forecast" means one thing across the module.
+     *
+     * It must NOT be rendered alongside the moving average. Two forecasts on
+     * one page is two different numbers with nothing to choose between them.
      */
     public function salesForecast(?int $lookbackDays = null, int $forecastDays = 7): array
     {

@@ -21,20 +21,21 @@ use Tests\TestCase;
  * WHAT WAS FOUND, BY MEASUREMENT NOT BY READING
  * ---------------------------------------------
  * Both portals throttle the verification submit at 10 a minute, keyed on the
- * IP. The admin side is still the raw `throttle:10,1`; the customer side is the
- * named per-IP limiter `customer-verification` as of Pass 13 (2026-09-09), same
- * 10/min. This matters here in two ways:
+ * IP. Both sides are now named per-IP limiters — customer-verification as of
+ * Pass 13 (2026-09-09), admin-verification as of Phase 3b F2 (2026-09-20) —
+ * same 10/min each, each with its own counter. This matters here in two ways:
  *
  *   a) The limit is per IP ADDRESS. Not per session, not per code, not per
  *      account.
- *   b) On the admin side, the empty-prefix raw throttle still means every plain
- *      `throttle:X,Y` route shares one counter per IP — so the POST to
- *      /admin/forgot-password that starts the flow spends one of the same 10
- *      slots the verification step then uses (first 429 on the 10th attempt,
- *      not the 11th). On the customer side the named limiter now has its own
- *      counter, so /customer/verification gets its full 10 regardless of the
- *      forgot-password POST. Either way one IP is capped well under 100 guesses
- *      inside the code's 10-minute life.
+ *   b) Before Phase 3b F2, admin.verification.post was a raw `throttle:10,1`,
+ *      and Laravel's unnamed throttle shares one counter per IP across every
+ *      plain `throttle:X,Y` route — so the POST to /admin/forgot-password
+ *      that starts the flow spent one of the same 10 slots the verification
+ *      step then used (first 429 on the 10th attempt, not the 11th). Both
+ *      portals now behave identically: neither verification endpoint's
+ *      budget can be spent by an unrelated route on the same address. Either
+ *      way one IP is capped well under 100 guesses inside the code's
+ *      10-minute life.
  *
  * From a single IP that is a hard ceiling of well under 100 guesses inside the
  * code's 10-minute life. Against 1,000,000 that is nothing.
@@ -135,16 +136,18 @@ class ResetCodeBruteForceTest extends TestCase
      */
     public function test_both_verification_endpoints_are_throttled_at_ten_per_minute(): void
     {
-        // admin.verification.post is still a raw throttle:10,1 (not in Pass 13's
-        // scope). customer.verification.post moved to the named per-IP limiter
-        // `customer-verification` in Pass 13 — same 10/min, its own counter — so
-        // it is pinned by resolving the limiter to a number instead.
+        // Both moved to a named per-IP limiter — customer.verification.post in
+        // Pass 13 (`customer-verification`), admin.verification.post in Phase
+        // 3b F2 (`admin-verification`, closing the same shared-raw-counter bug
+        // for the admin side — see RateLimitServiceProvider). Same 10/min for
+        // both, each its own counter, so each is pinned by resolving its named
+        // limiter to a number rather than matching a raw throttle:N,M string.
         $adminRoute = Route::getRoutes()->getByName('admin.verification.post');
         $this->assertNotNull($adminRoute, 'route admin.verification.post should exist');
         $this->assertContains(
-            'throttle:10,1',
+            'throttle:admin-verification',
             $adminRoute->gatherMiddleware(),
-            'admin.verification.post must stay throttled at 10 requests per minute'
+            'admin.verification.post must go through the named admin-verification limiter'
         );
 
         $customerRoute = Route::getRoutes()->getByName('customer.verification.post');
@@ -154,6 +157,13 @@ class ResetCodeBruteForceTest extends TestCase
             $customerRoute->gatherMiddleware(),
             'customer.verification.post must go through the named customer-verification limiter'
         );
+
+        $adminRequest = \Illuminate\Http\Request::create('http://127.0.0.1/admin/verification', 'POST');
+        $adminRequest->server->set('REMOTE_ADDR', '127.0.0.1');
+        $adminLimit = app(\Illuminate\Cache\RateLimiter::class)->limiter('admin-verification')($adminRequest);
+        $adminLimit = is_array($adminLimit) ? $adminLimit[0] : $adminLimit;
+        $this->assertSame(10, $adminLimit->maxAttempts, 'admin verification must stay at 10 a minute');
+        $this->assertSame(60, $adminLimit->decaySeconds, 'the window must stay one minute');
 
         $request = \Illuminate\Http\Request::create('http://127.0.0.1/customer/verification', 'POST');
         $request->server->set('REMOTE_ADDR', '127.0.0.1');

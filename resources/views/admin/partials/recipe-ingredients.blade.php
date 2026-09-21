@@ -14,7 +14,22 @@
                        rows (with their hidden inputs) after a failed submit, so
                        nothing typed is lost. Always [] for Edit.
     $inventoryItems   Selectable rows for the entry-row dropdown (already
-                       scoped to branch + is_active by the controller).
+                       scoped to branch + is_active by the controller — but
+                       under "All Branches" that is EVERY branch's stock).
+    $branchId         Edit mode: the menu item's own branch_id, so the picker
+                       offers only that branch's inventory instead of every
+                       branch's. This is a UX narrowing, not the security
+                       boundary — addIngredient() /
+                       inventoryIsSelectableForBranch() still refuse a
+                       mismatched row server-side. Add mode passes nothing.
+                       KNOWN EDGE, currently unreachable (branch-aware
+                       option/recipe investigation, Sept 2026): a legacy
+                       shared item with a NULL branch_id has no branch to
+                       narrow to, and addIngredient() skips its branch check
+                       for exactly that case — so the picker deliberately keeps
+                       its full (labeled) list for it, unchanged. 0 such items
+                       exist and the UI can no longer create one.
+    $branchNames      [branch id => name], every branch. Labels each option.
     $addUrl           Edit mode: route to POST a new ingredient to.
                        Add mode: null — the entry row's data-url stays empty,
                        which is exactly what tells the JS to append client-side.
@@ -40,6 +55,13 @@
 --}}
 @php
     $recipeEmpty = $recipe->isEmpty() && empty($draftRows);
+
+    // What the entry-row dropdown offers. Only $pickerItems is narrowed — the
+    // draft-row redraw below still looks rows up in the full $inventoryItems,
+    // so a row typed before a failed submit never loses its name.
+    $pickerItems = ($branchId ?? null) !== null
+        ? collect($inventoryItems ?? [])->where('branch_id', (int) $branchId)
+        : collect($inventoryItems ?? []);
 @endphp
 
 <div class="recipe-empty-notice" id="recipe-empty-{{ $blockId }}" style="background:#fff8e1; color:#6B4E00; font-weight:500; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.74rem; margin-bottom:0.5rem; {{ $recipeEmpty ? '' : 'display:none;' }}">
@@ -112,8 +134,12 @@
         <label class="form-label-custom">Ingredient</label>
         <select class="form-control-custom recipe-ing-select" style="margin-bottom:0;">
             <option value="">-- Select --</option>
-            @foreach(($inventoryItems ?? []) as $invItem)
-                @include('admin.partials.recipe-ingredient-option', ['invItem' => $invItem, 'selected' => null])
+            @foreach($pickerItems as $invItem)
+                @include('admin.partials.recipe-ingredient-option', [
+                    'invItem' => $invItem,
+                    'selected' => null,
+                    'branchName' => ($branchNames ?? collect())[$invItem->branch_id] ?? null,
+                ])
             @endforeach
         </select>
     </div>

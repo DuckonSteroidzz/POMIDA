@@ -19,6 +19,17 @@
 
     <title>First-Time Setup | Peachy Cakes &amp; Deli Cafe</title>
 
+    {{-- Phase 3b F7: this is the live "create the first admin" form — a
+         standalone page like customer/register.blade.php, not one of the
+         auth-layout children — and it can sit open for a while before being
+         submitted, so it needs the same live-token override and 419 recovery
+         every other page that talks to the server already has. See
+         partials/session-guard for why. (AdminAuthController::showRegister()
+         / admin/register.blade.php is a DIFFERENT, unrouted leftover from a
+         removed self-service-signup feature — this is the page an operator
+         actually reaches at GET /admin/bootstrap.) --}}
+    @include('partials.session-guard')
+
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">

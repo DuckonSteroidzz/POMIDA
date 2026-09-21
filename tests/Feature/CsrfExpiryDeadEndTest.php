@@ -130,9 +130,21 @@ class CsrfExpiryDeadEndTest extends TestCase
         $res = $this->actingAs($this->admin(), 'admin')
             ->post('/admin/branches/select', ['branch_id' => $firstBranch->id]);
 
-        // 405 (method not allowed) — NOT 419. The dead end is structurally
-        // impossible now, not merely handled.
-        $this->assertSame(405, $res->getStatusCode());
+        // 404, not 419 — the dead end is structurally impossible now, not
+        // merely handled.
+        //
+        // Phase 3b F1 (2026-09-20): this used to assert 405, which was never
+        // actually about THIS route — it was a side effect of PUT
+        // admin/branches/{id} having no ->whereNumber('id') constraint, so
+        // the literal string "select" satisfied {id} and Laravel matched
+        // /admin/branches/select against that route's URI pattern for the
+        // WRONG verb, producing a "method not allowed". Now that {id} is
+        // numeric-only (closing the non-numeric-id-500 finding for this
+        // route, same as every other `int $id` route), "select" no longer
+        // matches any route pattern for any verb, so this is a plain,
+        // correct 404 — still not a 419 dead end, which is all this test
+        // was ever really pinning.
+        $this->assertSame(404, $res->getStatusCode());
     }
 
     public function test_switched_scope_renders_cleanly_on_several_admin_views(): void

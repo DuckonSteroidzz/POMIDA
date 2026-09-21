@@ -383,7 +383,12 @@
                                         @if($item->options && $item->options->count() > 0)
                                         <div class="mt-1.5 flex flex-wrap gap-1">
                                             @foreach($item->options as $option)
-                                            <span class="rounded-full bg-white px-2 py-0.5 text-[0.64rem] font-semibold text-peach-red/85 ring-1 ring-peach-soft">{{ $option->name }}</span>
+                                            {{-- Phase 3b F9: the sale-time snapshot, not the live relationship —
+                                                 order_item_options.option_name is frozen at order time (NOT NULL
+                                                 since the table's creation migration, always written by
+                                                 OrderController::placeOrder()) precisely so renaming an add-on
+                                                 later cannot rewrite what a past receipt says was sold. --}}
+                                            <span class="rounded-full bg-white px-2 py-0.5 text-[0.64rem] font-semibold text-peach-red/85 ring-1 ring-peach-soft">{{ $option->pivot->option_name }}</span>
                                             @endforeach
                                         </div>
                                         @endif

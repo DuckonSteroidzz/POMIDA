@@ -110,15 +110,22 @@ final class CartPricing
             /*
              * Branch re-check (Phase 3 audit, Door C — defense in depth).
              *
-             * Branches never share inventory or stock: completing an order
-             * deducts by each line's OWN menu_item.branch_id, not the
-             * order's, so a cart line from a different branch than the order
-             * silently decrements the wrong branch's stock (reproduced live
-             * — orders 115-121, May 2026). Doors A and B stop a mismatched
-             * line from ever reaching the cart; this is the hard backstop in
-             * case a future regression or an edge case neither of them
-             * caught still lets one through. A shared item (branch_id NULL)
-             * is exempt, same as everywhere else branch scoping applies.
+             * Branches never share inventory or stock, and completing an order
+             * never consults a menu item's own branch_id — it deducts
+             * inventory rows. An add-on's ingredient links are filtered to
+             * inventory whose branch_id matches the ORDER's branch_id
+             * (InventoryDeductionService::requirementsForLine()), but a menu
+             * item's base-recipe rows deduct whichever inventory rows the
+             * recipe points at (each in the item's own branch by the
+             * write-time rule inventoryIsSelectableForBranch()). So a cart
+             * line from a different branch than the order would still
+             * silently decrement that other branch's stock through its
+             * recipe (reproduced live — orders 115-121, May 2026). Doors A
+             * and B stop a mismatched line from ever reaching the cart; this
+             * is the hard backstop in case a future regression or an edge
+             * case neither of them caught still lets one through. A shared
+             * item (branch_id NULL) is exempt, same as everywhere else branch
+             * scoping applies.
              *
              * Opt-in via $branchId so callers that are not pricing towards a
              * specific order (the cart page's own display, the AJAX quantity
