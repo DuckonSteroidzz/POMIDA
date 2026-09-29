@@ -149,10 +149,19 @@ class DiscountIdAccessTest extends TestCase
     // ══════════════════════════════════════════════════════════════════
 
     /**
-     * Uploads must land on the non-public disk. If this regresses, every other
-     * assertion in this file keeps passing while the file is once again
+     * Uploads must never land on the public disk. If this regresses, every
+     * other assertion in this file keeps passing while the file is once again
      * readable by anyone — the route would be fine and the symlink would be
      * serving the file around it.
+     *
+     * September 2026: checkout stopped collecting an ID photo at all (it now
+     * records each PWD/Senior ID's number and full name, and staff check the
+     * physical ID in person). The second assertion here used to require the
+     * upload to be stored on the `local` disk; it now requires that checkout
+     * stores no ID document ANYWHERE — the stronger form of the same privacy
+     * guarantee. PwdSeniorMultiIdCheckoutTest proves it behaviourally: a
+     * checkout that still posts a file writes nothing to either disk. The
+     * route and the rules in this file keep serving photos on older orders.
      */
     public function test_uploads_go_to_the_non_public_local_disk(): void
     {
@@ -163,10 +172,15 @@ class DiscountIdAccessTest extends TestCase
             $source,
             'discount IDs must not be written to the public disk — that is the whole finding'
         );
-        $this->assertStringContainsString(
-            "store('discount_ids', 'local')",
+        $this->assertStringNotContainsString(
+            "->store('discount_ids'",
             $source,
-            'discount IDs should be stored on the local (non-web-reachable) disk'
+            'checkout must not store an ID document on any disk — it records ID number + full name only'
+        );
+        $this->assertStringNotContainsString(
+            "file('discount_beneficiary_image')",
+            $source,
+            'checkout must not read an uploaded ID photo at all any more'
         );
     }
 

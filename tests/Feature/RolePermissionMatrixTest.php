@@ -134,6 +134,18 @@ class RolePermissionMatrixTest extends TestCase
         ]);
     }
 
+    /**
+     * Already archived (Delete always archives a menu item), for the
+     * permanent-delete row — which acts only on the archive.
+     */
+    private function archivedMenuItemIn(?int $branchId): MenuItem
+    {
+        $item = $this->menuItemIn($branchId);
+        $item->archive();
+
+        return $item;
+    }
+
     private function inventoryIn(int $branchId): Inventory
     {
         return Inventory::create([
@@ -281,6 +293,7 @@ class RolePermissionMatrixTest extends TestCase
             'rotate table code'      => ['POST',   'admin.qr-generator.regenerate-code', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'view vouchers'          => ['GET',    'admin.vouchers',            ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'restore archived'       => ['PUT',    'admin.archived.restore',    ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            'permanently delete archived menu item' => ['DELETE', 'admin.archived.menu-item.force-delete', ['admin' => self::ALLOW, 'supervisor' => self::DENY, 'staff' => self::DENY]],
         ];
     }
 
@@ -415,6 +428,7 @@ class RolePermissionMatrixTest extends TestCase
                 ],
             ],
             'admin.archived.restore' => [['menu-item', $this->menuItemIn($branch)->id], []],
+            'admin.archived.menu-item.force-delete' => [[$this->archivedMenuItemIn($branch)->id], []],
             'admin.qr-generator.regenerate-code' => [[], ['branch_id' => $branch, 'table_number' => 1]],
             'admin.customization.update' => [[], ['primary_color' => '#F4845F']],
             'admin.game.toggle' => [[], []],
@@ -966,7 +980,14 @@ class RolePermissionMatrixTest extends TestCase
         ];
     }
 
-    /** The owner is not narrowed — including on shared items. */
+    /**
+     * The owner is not narrowed — including on shared items.
+     *
+     * "Delete" means ARCHIVE for every menu item since 2026-09-24 (it used to
+     * hard-delete an unsold one), so the owner's delete is proven by the item
+     * leaving the live list and sitting in the archive, not by the row
+     * vanishing. The irreversible step is admin.archived.menu-item.force-delete.
+     */
     public function test_the_owner_can_still_delete_a_shared_menu_item(): void
     {
         $item = $this->menuItemIn(null);
@@ -976,8 +997,12 @@ class RolePermissionMatrixTest extends TestCase
             ->assertRedirect(route('admin.menu-items'));
 
         $this->assertNull(
-            MenuItem::withArchived()->find($item->id),
+            MenuItem::find($item->id),
             'The owner could not delete a shared menu item.'
+        );
+        $this->assertTrue(
+            MenuItem::withArchived()->find($item->id)->isArchived(),
+            'The owner\'s delete of a shared menu item must archive it, not destroy it.'
         );
     }
 

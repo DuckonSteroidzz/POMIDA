@@ -73,6 +73,8 @@ class AdminBootstrapSeeder extends Seeder
                 'password'  => Hash::make($password),
                 'role'      => 'admin',
                 'is_active' => true,
+                // No confirmation-email loop for portal accounts.
+                'email_verified_at' => now(),
             ]
         );
 

@@ -106,7 +106,9 @@ class BiggerDiscountWinsTest extends TestCase
             'discount_type'                   => 'pwd',
             'discount_beneficiary_name'       => 'Juan Dela Cruz',
             'discount_beneficiary_id'         => 'PWD-123',
-            'discount_beneficiary_expiration' => now()->addYear()->toDateString(),
+            // The cart's expiration field is customer-typed M/D/Y text, not
+            // Y-m-d (see DiscountCard::normalizeTypedExpiration()).
+            'discount_beneficiary_expiration' => now()->addYear()->format('n/j/Y'),
             'discount_beneficiary_image'      => $this->idImage(),
         ];
     }

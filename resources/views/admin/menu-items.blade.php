@@ -23,6 +23,11 @@
     $canManageMenu  = $adminUser && $adminUser->isManager();
     $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
 
+    // Restoring an archived size is owner-only (role:admin on
+    // admin.menu-items.sizes.restore, like every catalogue Restore). Hide,
+    // never disable: a supervisor is told who can, not shown a dead button.
+    $canRestoreSize = $adminUser && $adminUser->isAdmin();
+
     $canDeleteItem = function ($item) use ($canManageMenu, $lockedBranchId) {
         if (! $canManageMenu) {
             return false;
@@ -129,6 +134,95 @@
         .recipe-ing-add-row { flex-wrap: wrap; }
         .recipe-ing-add-row > div { flex: 1 1 100% !important; min-width: 0 !important; }
     }
+
+    /* ── Branch group headers, one per section of the table ──
+       Reuses the page's own "which branch" visual language — the icon,
+       label and bold serif value the top-of-page .pc-branchbar (layout.
+       blade.php) already uses for "Viewing: <branch>" — as an in-table
+       section divider, rather than inventing a new banner style. Not
+       .pc-branchbar itself: that bar also carries the branch-switcher
+       select, which has no place inside a table row. */
+    .menu-branch-group {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: var(--pc-blush);
+        border: 1px solid rgba(192, 57, 43, 0.16);
+        border-radius: 10px;
+        padding: 0.55rem 0.9rem;
+        color: var(--pc-maroon);
+    }
+    .menu-branch-group .value {
+        font-family: 'Fraunces', Georgia, serif;
+        font-weight: 700;
+        color: var(--pc-maroon);
+        font-size: 0.95rem;
+    }
+    .menu-branch-group .count {
+        margin-left: auto;
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: var(--pc-mute);
+        background: #fff;
+        border-radius: 999px;
+        padding: 0.15rem 0.55rem;
+        white-space: nowrap;
+    }
+    #menuTable tbody tr.menu-branch-group-row { background: transparent; }
+    #menuTable tbody tr.menu-branch-group-row:hover { background: transparent; }
+    #menuTable tbody tr.menu-branch-group-row td {
+        padding: 0.9rem 0.4rem 0.4rem;
+        border: 0 !important;
+    }
+    #menuTable tbody tr.menu-branch-group-row:first-child td { padding-top: 0; }
+
+    @media (max-width: 640px) {
+        #menuTable tbody tr.menu-branch-group-row {
+            border: none; padding: 0; margin-bottom: 0.4rem; background: transparent;
+        }
+        #menuTable tbody tr.menu-branch-group-row td {
+            display: block !important; text-align: left !important; padding: 0.6rem 0 0.2rem;
+        }
+        #menuTable tbody tr.menu-branch-group-row td::before { content: none; }
+    }
+
+    /* ── Menu Item Sizes (Phase 1) ──
+       Same frame as the Recipe Ingredients box, and the page's existing pill
+       colours: green = fine, amber = needs attention (the "No recipe" badge),
+       red = off, grey = archived. */
+    .size-section { border: 2px solid #F4845F; border-radius: 10px; padding: 0.65rem 0.75rem; margin-bottom: 0.85rem; }
+    .size-section-title { font-size: 0.85rem; font-weight: 700; color: #C0392B; margin: 0 0 0.5rem; }
+    .size-hint { font-size: 0.74rem; color: #374151; font-weight: 500; margin: 0 0 0.55rem; }
+    .size-enable-row, .size-edit-row { display: flex; gap: 0.5rem; align-items: flex-end; flex-wrap: wrap; }
+    .size-enable-row > div, .size-price-field { flex: 1 1 140px; min-width: 0; }
+    .size-card { border: 1px solid #f0d9cf; border-radius: 8px; padding: 0.55rem 0.65rem; margin-bottom: 0.55rem; background: #fffaf6; min-width: 0; }
+    .size-card.is-archived { background: #f4f4f4; border-color: #e5e7eb; }
+    .size-card-head { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; margin-bottom: 0.45rem; }
+    .size-name { font-family: 'Fraunces', Georgia, serif; color: var(--pc-maroon); font-size: 0.95rem; }
+    .size-chip { padding: 0.12rem 0.5rem; border-radius: 10px; font-size: 0.68rem; font-weight: 600; white-space: nowrap; }
+    .size-chip-on { background: #d4edda; color: #155724; }
+    .size-chip-off { background: #f8d7da; color: #721c24; }
+    .size-chip-warn { background: #fff3cd; color: #856404; }
+    .size-chip-muted { background: #e5e7eb; color: #374151; }
+    .size-active-toggle { display: inline-flex; align-items: center; gap: 0.35rem; font-size: 0.8rem; font-weight: 600; color: #374151; padding: 0.5rem 0.2rem; cursor: pointer; margin: 0; }
+    .size-active-toggle input[type="checkbox"] { width: 16px; height: 16px; accent-color: #F4845F; cursor: pointer; }
+    .size-btn { padding: 0.5rem 0.9rem; white-space: nowrap; }
+    .size-archive-btn { background: #fff; color: #C0392B; border: 1px solid #F6B49B; border-radius: 8px; padding: 0.5rem 0.8rem; font-size: 0.8rem; font-weight: 600; cursor: pointer; white-space: nowrap; }
+    .size-recipe-block { border-top: 1px dashed #f0d9cf; margin-top: 0.55rem; padding-top: 0.5rem; }
+    .size-recipe-title { font-size: 0.76rem; font-weight: 700; color: #1F2937; margin: 0 0 0.35rem; }
+    .size-recipe-title span { font-weight: 500; color: #4B5563; }
+    .menu-price-cell { display: inline-flex; flex-direction: column; align-items: inherit; gap: 0.1rem; }
+    .menu-price-from { font-size: 0.7rem; font-weight: 600; color: #4B5563; }
+    .menu-size-summary { display: flex; flex-direction: column; font-size: 0.7rem; font-weight: 600; color: #4B5563; white-space: nowrap; }
+    .menu-size-summary .is-off { text-decoration: line-through; color: #6B7280; }
+
+    @media (max-width: 768px) {
+        .size-enable-row > div, .size-price-field { flex: 1 1 100%; }
+        .size-edit-row .size-btn, .size-edit-row .size-archive-btn, .size-enable-row .size-btn { flex: 1 1 auto; }
+    }
+    @media (max-width: 640px) {
+        .menu-price-cell { align-items: flex-end; }
+    }
 </style>
 <div class="content-card" style="overflow-x: auto;">
     <table class="table-custom" id="menuTable">
@@ -152,8 +246,49 @@
         </thead>
         <tbody>
             @if(isset($menuItems) && count($menuItems) > 0)
+            @php
+                /*
+                 * Branch-grouped table.
+                 *
+                 * The controller (showMenuItems()) now orders $menuItems with
+                 * non-null branches first (by id) and any shared/"All
+                 * Branches" (branch_id IS NULL) items last, so a single pass
+                 * here can print a section header the moment the branch
+                 * changes rather than needing a second, pre-grouped
+                 * structure. $menuTableColspan/$branchGroupCounts are the
+                 * only things worked out ahead of the loop, both from the
+                 * already-fetched collection — no extra query.
+                 *
+                 * A NULL branch_id gets its OWN section labelled "All
+                 * Branches", the same wording the per-row Branch badge
+                 * already uses two columns over, rather than being dropped
+                 * or crashing on a missing ->branch relation.
+                 */
+                $menuTableColspan = $canManageMenu ? 12 : 10;
+                $branchGroupCounts = $menuItems->groupBy(fn ($mi) => $mi->branch_id ?? 'unassigned')->map->count();
+                $currentBranchGroup = null;
+            @endphp
             @foreach($menuItems as $item)
-            <tr>
+                @php $branchGroupKey = $item->branch_id ?? 'unassigned'; @endphp
+                @if($branchGroupKey !== $currentBranchGroup)
+                    @php
+                        $currentBranchGroup = $branchGroupKey;
+                        $branchGroupLabel = $item->branch_id === null
+                            ? 'All Branches'
+                            : ($item->branch->name ?? 'Branch #'.$item->branch_id);
+                        $branchGroupCount = $branchGroupCounts[$branchGroupKey];
+                    @endphp
+                    <tr class="menu-branch-group-row" data-branch-group="{{ $branchGroupKey }}">
+                        <td colspan="{{ $menuTableColspan }}">
+                            <div class="menu-branch-group">
+                                <i class="bi bi-building"></i>
+                                <span class="value">{{ $branchGroupLabel }}</span>
+                                <span class="count">{{ $branchGroupCount }} item{{ $branchGroupCount === 1 ? '' : 's' }}</span>
+                            </div>
+                        </td>
+                    </tr>
+                @endif
+            <tr data-branch-group="{{ $branchGroupKey }}">
                 <td data-label="Image">
                     @if($item->image)
                     <img src="{{ \App\Support\Img::url($item->image) }}" style="width:45px; height:45px; border-radius:6px; object-fit:cover;">
@@ -167,7 +302,25 @@
                 <td data-label="Description" style="max-width: 200px; color: #374151; font-size: 0.78rem; font-weight: 500;">{{ $item->description ?? '-' }}</td>
                 <td data-label="Category">{{ $item->category->name ?? '-' }}</td>
                 <td data-label="Subcategory">{{ $item->subcategory->name ?? '-' }}</td>
-                <td data-label="Price" style="font-weight: 600;">₱{{ number_format($item->price, 2) }}</td>
+                {{-- A sized item's price column is its "starting from" figure
+                     (menu_items.price = lowest ACTIVE size), with each size's
+                     own price under it; an inactive/archived size is struck
+                     through. One wrapper element so the phone card layout's
+                     label/value flex row gets exactly one value. --}}
+                <td data-label="Price" style="font-weight: 600;">
+                    @if($item->allSizes->isNotEmpty())
+                    <span class="menu-price-cell">
+                        <span><span class="menu-price-from">from</span> ₱{{ number_format($item->price, 2) }}</span>
+                        <span class="menu-size-summary">
+                            @foreach($item->allSizes as $listSize)
+                            <span class="{{ $listSize->isLive() ? '' : 'is-off' }}">{{ $listSize->name }} ₱{{ number_format($listSize->price, 2) }}</span>
+                            @endforeach
+                        </span>
+                    </span>
+                    @else
+                    ₱{{ number_format($item->price, 2) }}
+                    @endif
+                </td>
                 {{-- Cost + Gross Profit come from App\Services\MenuItemCosting, which
                      sums quantity_used x unit_cost over the item's recipe. When the item
                      has no recipe at all the number is the typed-in guess, and it is
@@ -244,6 +397,8 @@
                         data-category="{{ $item->category_id }}"
                         data-subcategory="{{ $item->subcategory_id }}"
                         data-price="{{ $item->price }}"
+                        {{-- Sized: the Price box turns read-only (starting-from figure). --}}
+                        data-has-sizes="{{ $item->allSizes->isNotEmpty() ? '1' : '0' }}"
                         data-cost="{{ $item->cost }}"
                         {{-- Recipe-derived cost. When set, the Cost box in the modal
                              goes read-only: the recipe is the source of truth. --}}
@@ -276,7 +431,7 @@
             @endforeach
             @else
             <tr>
-                <td colspan="11" style="text-align: center; color: #4B5563; font-weight: 500; padding: 2rem;">No menu items yet. Click "Add New Item" to get started!</td>
+                <td colspan="{{ $canManageMenu ? 12 : 10 }}" style="text-align: center; color: #4B5563; font-weight: 500; padding: 2rem;">No menu items yet. Click "Add New Item" to get started!</td>
             </tr>
             @endif
         </tbody>
@@ -424,6 +579,9 @@
                 <div style="flex: 1;">
                     <label class="form-label-custom">Price (₱)</label>
                     <input type="number" name="price" id="itemPrice" class="form-control-custom" step="0.01" min="0" value="{{ old('price') }}" required style="margin-bottom:0;">
+                    <small id="itemPriceNote" style="font-size:0.72rem;color:#4B5563;font-weight:500;display:none;">
+                        Starting-from price: the lowest active size. Set prices in Sizes.
+                    </small>
                 </div>
                 <div style="flex: 1;">
                     <label class="form-label-custom">Cost (₱)</label>
@@ -436,6 +594,129 @@
                         Cost is calculated from the Recipe Ingredients.
                     </small>
                 </div>
+            </div>
+
+            {{-- ══════════ SIZES (Menu Item Sizes, Phase 1) ══════════
+                 Regular and Large only — the names are fixed labels, never a
+                 text box, and the server/database refuse anything else. Right
+                 under Price because, once an item is sized, THIS is where its
+                 prices live and the Price box above becomes the read-only
+                 "starting from" figure (lowest active size).
+
+                 Same shape as Recipe Ingredients above: one hidden block per
+                 menu item, openEditModal() shows the matching one. Size price /
+                 active / archive / restore / set-up are separate saves, so
+                 their controls carry form="…" and belong to small forms
+                 rendered OUTSIDE #itemForm (after the modal) — a nested <form>
+                 would be dropped by the parser, the exact bug the recipe editor
+                 comment above describes. Each size's recipe reuses the recipe
+                 partial and its fetch() editor unchanged. --}}
+            <div class="size-section" id="sizesSection" style="display:none;">
+                <p class="size-section-title"><i class="bi bi-cup-hot"></i> Sizes</p>
+
+                <div class="size-block" id="sizes-add" style="display:none;">
+                    <p class="size-hint" style="margin:0;">Save the item first — Regular and Large sizes are set up from <strong>Edit</strong>.</p>
+                </div>
+
+                @if(isset($menuItems))
+                    @foreach($menuItems as $mi)
+                    <div class="size-block" id="sizes-{{ $mi->id }}" style="display:none;">
+                        @if($mi->allSizes->isEmpty())
+                            <p class="size-hint">This item has one price and one recipe. To sell it as <strong>Regular</strong> and <strong>Large</strong> instead, enter both prices — each size then gets its own price and its own recipe.</p>
+                            <div class="size-enable-row">
+                                <div>
+                                    <label class="form-label-custom" for="sizeEnableRegular-{{ $mi->id }}">Regular price (₱)</label>
+                                    <input type="number" id="sizeEnableRegular-{{ $mi->id }}" name="regular_price" form="sizeEnable-{{ $mi->id }}" class="form-control-custom" step="0.01" min="0.01" max="99999999.99" required autocomplete="off" style="margin-bottom:0;">
+                                </div>
+                                <div>
+                                    <label class="form-label-custom" for="sizeEnableLarge-{{ $mi->id }}">Large price (₱)</label>
+                                    <input type="number" id="sizeEnableLarge-{{ $mi->id }}" name="large_price" form="sizeEnable-{{ $mi->id }}" class="form-control-custom" step="0.01" min="0.01" max="99999999.99" required autocomplete="off" style="margin-bottom:0;">
+                                </div>
+                                <button type="submit" form="sizeEnable-{{ $mi->id }}" class="btn-primary-custom size-btn">
+                                    <i class="bi bi-plus-circle"></i> Set up sizes
+                                </button>
+                            </div>
+                        @else
+                            @php $liveSizeCount = $mi->allSizes->filter->isLive()->count(); @endphp
+                            <p class="size-hint">
+                                @if($liveSizeCount > 0)
+                                    Starting from <strong>₱{{ number_format($mi->price, 2) }}</strong> — the lowest active size. A size needs its own recipe before it can be ordered.
+                                @else
+                                    <span class="size-chip size-chip-warn">No active size</span>
+                                    Neither size can be ordered. The list keeps showing ₱{{ number_format($mi->price, 2) }} until a size is active again.
+                                @endif
+                            </p>
+
+                            @foreach($mi->allSizes as $size)
+                                @php $sizeLineCount = $size->ingredients->count(); @endphp
+                                <div class="size-card {{ $size->isArchived() ? 'is-archived' : '' }}" id="size-card-{{ $size->id }}">
+                                    <div class="size-card-head">
+                                        <strong class="size-name">{{ $size->name }}</strong>
+                                        @if($size->isArchived())
+                                            <span class="size-chip size-chip-muted">Archived</span>
+                                        @elseif(! $size->is_active)
+                                            <span class="size-chip size-chip-off">Inactive</span>
+                                        @else
+                                            <span class="size-chip size-chip-on">Active</span>
+                                        @endif
+                                        <span class="size-chip {{ $sizeLineCount === 0 ? 'size-chip-warn' : 'size-chip-on' }}" id="size-recipe-chip-{{ $size->id }}">
+                                            {{ $sizeLineCount === 0 ? 'No Recipe Set' : $sizeLineCount . ' ' . ($sizeLineCount === 1 ? 'ingredient' : 'ingredients') }}
+                                        </span>
+                                    </div>
+
+                                    @if(! $size->isArchived())
+                                        <div class="size-edit-row">
+                                            <div class="size-price-field">
+                                                <label class="form-label-custom" for="sizePrice-{{ $size->id }}">{{ $size->name }} price (₱)</label>
+                                                <input type="number" id="sizePrice-{{ $size->id }}" name="price" form="sizeUpdate-{{ $size->id }}" class="form-control-custom" step="0.01" min="0.01" max="99999999.99" value="{{ $size->price }}" required autocomplete="off" style="margin-bottom:0;">
+                                            </div>
+                                            <label class="size-active-toggle" for="sizeActive-{{ $size->id }}">
+                                                <input type="hidden" name="is_active" value="0" form="sizeUpdate-{{ $size->id }}">
+                                                <input type="checkbox" id="sizeActive-{{ $size->id }}" name="is_active" value="1" form="sizeUpdate-{{ $size->id }}" {{ $size->is_active ? 'checked' : '' }}>
+                                                Active
+                                            </label>
+                                            <button type="submit" form="sizeUpdate-{{ $size->id }}" class="btn-primary-custom size-btn">Save {{ $size->name }}</button>
+                                            <button type="submit" form="sizeArchive-{{ $size->id }}" class="size-archive-btn"
+                                                onclick="return confirm('Archive the {{ $size->name }} size? Its recipe is kept and it can be restored.');">
+                                                <i class="bi bi-archive"></i> Archive
+                                            </button>
+                                        </div>
+
+                                        <div class="size-recipe-block" id="recipe-size-{{ $size->id }}">
+                                            <p class="size-recipe-title">{{ $size->name }} recipe <span>— used instead of the base recipe for this size</span></p>
+                                            @include('admin.partials.recipe-ingredients', [
+                                                'blockId' => 'size-' . $size->id,
+                                                'recipe' => $size->ingredients,
+                                                'draftRows' => [],
+                                                'inventoryItems' => $inventoryItems ?? collect(),
+                                                // Narrowed to the PARENT item's branch — a size
+                                                // has no branch of its own.
+                                                'branchId' => $mi->branch_id,
+                                                'branchNames' => $branchNames ?? collect(),
+                                                'addUrl' => route('admin.menu-items.sizes.ingredients.add', [$mi->id, $size->id]),
+                                                'qtyAttribute' => 'quantity',
+                                                'deleteUrlFor' => fn ($row) => route('admin.menu-items.sizes.ingredients.delete', [$mi->id, $size->id, $row->id]),
+                                                'costLine' => $sizeCosting[$size->id] ?? ['cost' => 0, 'is_fallback' => true],
+                                            ])
+                                        </div>
+                                    @else
+                                        <p class="size-hint" style="margin:0 0 0.4rem;">
+                                            Archived {{ $size->archived_at->format('M j, Y') }}. Its price (₱{{ number_format($size->price, 2) }}) and recipe ({{ $sizeLineCount }} {{ $sizeLineCount === 1 ? 'ingredient' : 'ingredients' }}) are kept.
+                                        </p>
+                                        @if($canRestoreSize)
+                                            <button type="submit" form="sizeRestore-{{ $size->id }}" class="btn-primary-custom size-btn">
+                                                <i class="bi bi-arrow-counterclockwise"></i> Restore {{ $size->name }}
+                                            </button>
+                                        @else
+                                            <p class="size-hint" style="margin:0;">Only the owner can restore an archived size.</p>
+                                        @endif
+                                    @endif
+                                </div>
+                            @endforeach
+                        @endif
+                    </div>
+                    @endforeach
+                @endif
             </div>
 
             {{-- Branch Assignment --}}
@@ -509,10 +790,36 @@
     </div>
 </div>
 
+{{-- Size forms (Menu Item Sizes, Phase 1). Empty on purpose: their fields live
+     in the Sizes section inside #itemForm and join these by form="…". One
+     small form per record action, so a size's inputs can only ever post to
+     that size's own endpoint. Outside #itemForm because nested forms are
+     invalid HTML. --}}
+<div hidden>
+    @if(isset($menuItems))
+        @foreach($menuItems as $mi)
+            @if($mi->allSizes->isEmpty())
+                <form id="sizeEnable-{{ $mi->id }}" method="POST" action="{{ route('admin.menu-items.sizes.enable', $mi->id) }}">@csrf</form>
+            @else
+                @foreach($mi->allSizes as $size)
+                    @if(! $size->isArchived())
+                        <form id="sizeUpdate-{{ $size->id }}" method="POST" action="{{ route('admin.menu-items.sizes.update', [$mi->id, $size->id]) }}">@csrf @method('PUT')</form>
+                        <form id="sizeArchive-{{ $size->id }}" method="POST" action="{{ route('admin.menu-items.sizes.archive', [$mi->id, $size->id]) }}">@csrf @method('DELETE')</form>
+                    @elseif($canRestoreSize)
+                        <form id="sizeRestore-{{ $size->id }}" method="POST" action="{{ route('admin.menu-items.sizes.restore', [$mi->id, $size->id]) }}">@csrf</form>
+                    @endif
+                @endforeach
+            @endif
+        @endforeach
+    @endif
+</div>
+
 {{-- Delete Confirmation Modal --}}
 <div id="deleteModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:999; align-items:center; justify-content:center;">
     <div style="background:white; border-radius:12px; padding:2rem; max-width:320px; width:90%; text-align:center;">
-        <p style="font-size:0.88rem; font-weight:600; color:#333; margin-bottom:1.5rem;">Are you sure you want to delete this menu item?</p>
+        <p style="font-size:0.88rem; font-weight:600; color:#333; margin-bottom:0.5rem;">Are you sure you want to delete this menu item?</p>
+        {{-- Delete always archives now (CatalogueLifecycle::removeMenuItem()). --}}
+        <p style="font-size:0.78rem; color:#6b7280; margin-bottom:1.5rem;">It moves to Archived Items, where it can be restored.</p>
         <div style="display:flex; gap:0.75rem; justify-content:center;">
             <form id="deleteForm" method="POST">
                 @csrf @method('DELETE')
@@ -568,6 +875,8 @@
         document.getElementById('itemForm').action = `{{ route('admin.new-menu-item.post') }}`;
         document.getElementById('formMethod').value = 'POST';
         showRecipeBlock('add');
+        applyPriceLock(false);
+        showSizeBlock('add');
     }
 
     // Open Edit Modal
@@ -582,6 +891,7 @@
         document.getElementById('itemSubcategory').value = btn.dataset.subcategory || '';
         document.getElementById('itemDescription').value = btn.dataset.description || '';
         document.getElementById('itemPrice').value = btn.dataset.price;
+        applyPriceLock(btn.dataset.hasSizes === '1');
         document.getElementById('itemCost').value = btn.dataset.cost || '';
         applyCostLock(btn.dataset.hasRecipe === '1', btn.dataset.computedCost || '');
         document.getElementById('itemInventory').value = btn.dataset.inventory || '';
@@ -597,6 +907,7 @@
             document.getElementById('imageLabel').innerText = 'Item Image (Optional)';
         }
         showRecipeBlock(id);
+        showSizeBlock(id);
         document.getElementById('itemModal').style.display = 'flex';
     }
 
@@ -628,6 +939,60 @@
         var block = document.getElementById('recipe-' + id);
         if (block) block.style.display = 'block';
     }
+
+    // ══════════ SIZES (Menu Item Sizes, Phase 1) ══════════
+    // Same one-block-per-item scheme as the recipe blocks: 'add' shows the
+    // "save first" hint, an id shows that item's Regular/Large cards. Each
+    // size recipe inside is a .size-recipe-block (NOT .recipe-block, so
+    // showRecipeBlock() never hides it); its cost/profit line is filled in
+    // from the rows on screen as it is shown.
+    function showSizeBlock(id) {
+        document.querySelectorAll('.size-block').forEach(function (b) { b.style.display = 'none'; });
+        var section = document.getElementById('sizesSection');
+        var block = document.getElementById('sizes-' + id);
+        if (section) section.style.display = block ? 'block' : 'none';
+        if (!block) return;
+        block.style.display = 'block';
+        block.querySelectorAll('.size-recipe-block').forEach(function (r) {
+            recalcRecipeCost(r.id.replace('recipe-', ''));
+        });
+    }
+
+    // A sized item's Price box is the derived "starting from" figure (lowest
+    // active size). Read-only, like the Cost box under a recipe; the server
+    // ignores whatever it posts for a sized item anyway (updateMenuItem()).
+    function applyPriceLock(isSized) {
+        var input = document.getElementById('itemPrice');
+        var note = document.getElementById('itemPriceNote');
+        if (!input) return;
+        input.readOnly = isSized;
+        input.style.background = isSized ? '#f0f0f0' : '';
+        if (note) note.style.display = isSized ? 'block' : 'none';
+    }
+
+    // Keeps a size card's recipe badge in step with its rows after an
+    // ingredient is added or removed without a reload — the badge is the
+    // "No Recipe Set" signal, so it must never go stale.
+    function syncSizeRecipeChip(blockId) {
+        var sizeId = String(blockId).slice(5);
+        var chip = document.getElementById('size-recipe-chip-' + sizeId);
+        var tbody = document.getElementById('recipe-tbody-' + blockId);
+        if (!chip || !tbody) return;
+        var n = tbody.querySelectorAll('tr[data-ingredient-id]').length;
+        chip.textContent = n === 0 ? 'No Recipe Set' : n + (n === 1 ? ' ingredient' : ' ingredients');
+        chip.className = 'size-chip ' + (n === 0 ? 'size-chip-warn' : 'size-chip-on');
+    }
+
+    document.addEventListener('input', function (e) {
+        if (e.target.matches && e.target.matches('input[id^="sizePrice-"]')) {
+            recalcRecipeCost('size-' + e.target.id.slice('sizePrice-'.length));
+        }
+    });
+
+    // After any size save/archive/restore/set-up the server redirects here
+    // with the item's id, so the admin lands back in that item's editor at
+    // the Sizes section instead of on a closed modal.
+    var reopenMenuItemId = "{{ session('menu_item_editing') ? (int) session('menu_item_editing') : '' }}";
 
     // ══════════ RECIPE INGREDIENTS — ONE set of handlers for both modes ══════════
     // Every entry row (.recipe-ing-add-row) looks and behaves the same in Add
@@ -667,24 +1032,41 @@
     }
 
     // Search
+    // Shared by searchTable()/filterTable(): applies `matchFn` to every ITEM
+    // row (never a .menu-branch-group-row header itself — its own text is
+    // just a branch name, which would fail almost any search/category
+    // match), then shows a branch section header only while at least one of
+    // its own items is still visible, so filtering can never leave an item
+    // row stranded under no heading, or a heading floating over zero items.
+    function applyMenuRowVisibility(matchFn) {
+        const rows = document.querySelectorAll('#menuTable tbody tr');
+        const visibleGroups = new Set();
+        rows.forEach(row => {
+            if (row.classList.contains('menu-branch-group-row')) return;
+            const visible = matchFn(row);
+            row.style.display = visible ? '' : 'none';
+            if (visible) visibleGroups.add(row.dataset.branchGroup);
+        });
+        rows.forEach(row => {
+            if (!row.classList.contains('menu-branch-group-row')) return;
+            row.style.display = visibleGroups.has(row.dataset.branchGroup) ? '' : 'none';
+        });
+    }
+
     function searchTable() {
         const input = document.getElementById('searchInput').value.toLowerCase();
-        const rows = document.querySelectorAll('#menuTable tbody tr');
-        rows.forEach(row => {
-            row.style.display = row.innerText.toLowerCase().includes(input) ? '' : 'none';
-        });
+        applyMenuRowVisibility(row => row.innerText.toLowerCase().includes(input));
     }
 
     // Filter
     function filterTable() {
         const cat = document.getElementById('categoryFilter').value.toLowerCase();
         const sub = document.getElementById('subCategoryFilter').value.toLowerCase();
-        const rows = document.querySelectorAll('#menuTable tbody tr');
-        rows.forEach(row => {
+        applyMenuRowVisibility(row => {
             const text = row.innerText.toLowerCase();
             const catMatch = cat === '' || text.includes(cat);
             const subMatch = sub === '' || text.includes(sub);
-            row.style.display = catMatch && subMatch ? '' : 'none';
+            return catMatch && subMatch;
         });
     }
 
@@ -707,6 +1089,19 @@
         });
     }
 
+    // Size action redirect (see reopenMenuItemId above). Never competes with
+    // the failed Add/Edit reopen just above — size refusals arrive as the
+    // page's error flash, not the error bag.
+    if (reopenMenuItemId && hasErrors !== '1') {
+        document.addEventListener('DOMContentLoaded', function () {
+            var editBtn = document.querySelector('.btn-edit-custom[data-id="' + reopenMenuItemId + '"]');
+            if (!editBtn) return;
+            openEditModal(editBtn);
+            var section = document.getElementById('sizesSection');
+            if (section && section.scrollIntoView) section.scrollIntoView({ block: 'start' });
+        });
+    }
+
     // ══════════ Live "Cost from recipe" — ONE function for both Add and Edit ══════════
     // Recomputes the running total straight from the rows the table is showing,
     // for whichever Recipe Ingredients block is named ('add' for a new item, a
@@ -719,9 +1114,14 @@
     // appends after an Edit add-ingredient succeeds) carries data-unit-cost and
     // data-qty; Add-mode draft rows also keep the authoritative quantity in a
     // hidden input, which wins while it is being typed.
+    //
+    // A size recipe block ('size-<id>') is costed the same way but is NOT the
+    // item's recipe: it never locks the item's Cost box, and its profit is
+    // against that size's own price box, not the item's Price.
     function recalcRecipeCost(blockId) {
         var tbody = document.getElementById('recipe-tbody-' + blockId);
         if (!tbody) return;
+        var isSizeBlock = String(blockId).indexOf('size-') === 0;
 
         var total = 0;
         var filled = 0;
@@ -738,9 +1138,15 @@
         var profitEl = document.getElementById('recipe-profit-' + blockId);
         if (totalEl) totalEl.textContent = '₱' + total.toFixed(2);
 
-        applyCostLock(filled > 0, total.toFixed(2));
+        if (isSizeBlock) {
+            syncSizeRecipeChip(blockId);
+        } else {
+            applyCostLock(filled > 0, total.toFixed(2));
+        }
 
-        var priceInput = document.getElementById('itemPrice');
+        var priceInput = isSizeBlock
+            ? document.getElementById('sizePrice-' + String(blockId).slice(5))
+            : document.getElementById('itemPrice');
         var price = parseFloat(priceInput && priceInput.value ? priceInput.value : '0');
         if (profitEl) {
             if (filled > 0 && price > 0) {
@@ -990,7 +1396,9 @@
         if (!confirm('Remove this ingredient?')) return;
 
         var row = btn.closest('tr');
-        var block = btn.closest('.recipe-block');
+        // .size-recipe-block too: a size recipe's wrapper is "recipe-size-<id>",
+        // so its blockId comes out as "size-<id>", matching its partial ids.
+        var block = btn.closest('.recipe-block, .size-recipe-block');
         var blockId = block ? block.id.replace('recipe-', '') : null;
         var token = document.querySelector('#itemForm input[name="_token"]').value;
 

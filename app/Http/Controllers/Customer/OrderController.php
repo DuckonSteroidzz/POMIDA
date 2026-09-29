@@ -94,7 +94,7 @@ class OrderController extends Controller
 
     public function placeOrder(Request $request)
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'order_type'            => 'required|in:dine_in,pick_up,walk_in',
             'is_takeout'            => 'nullable|boolean',
             'items'                 => 'required|array|min:1',
@@ -105,25 +105,30 @@ class OrderController extends Controller
             'voucher_code_confirmed' => 'nullable|string|max:100',
             'discount_card_id'       => 'nullable|integer|exists:discount_cards,id',
             'discount_type'          => 'nullable|in:pwd,senior',
-            'discount_beneficiary_name' => [
-                'nullable',
-                'string',
-                'max:100',
-                "regex:/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]{1,99}$/u",
-            ],
-            'discount_beneficiary_id' => [
-                'nullable',
-                'string',
-                'max:100',
-                "regex:/^[A-Za-z0-9\-\/ ]+$/",
-            ],
-            // Deliberately only 'date' here: whether the date is still in the
-            // future is DiscountCard::expirationErrorFor()'s call, so the cart
-            // preview and checkout cannot end up with two different rules (or
-            // two different messages) for the same card.
-            'discount_beneficiary_expiration' => 'nullable|date',
-            'discount_beneficiary_image' => 'nullable|image|mimes:jpeg,jpg,png,webp|max:5120',
-        ]);
+            // Deliberately just a bounded string here, not Laravel's own
+            // 'date' rule: the cart's expiration field is now free-typed
+            // text ("1/5/2027" or "01/05/2027"), and Laravel's 'date' rule
+            // uses PHP's own date_parse()/checkdate(), which reads a
+            // dash-separated date as day-month-year — accepting shapes this
+            // field's format policy must refuse (see
+            // DiscountCard::normalizeTypedExpiration()). Shape, realness,
+            // and "is it still in the future" are ALL that method's and
+            // DiscountCard::expirationErrorFor()'s call below, so the cart
+            // preview and checkout cannot end up with two different rules
+            // (or two different messages) for the same card.
+            'discount_beneficiary_expiration' => 'nullable|string|max:20',
+
+            /*
+             * No 'discount_beneficiary_image' rule any more (September 2026):
+             * checkout no longer collects a photo of the ID. A file still
+             * posted under that name is ignored — never validated, never
+             * stored — so no identity document is written to disk at all.
+             *
+             * The ID rows — the original single-row fields plus the
+             * repeatable discount_beneficiaries[n] list — share one set of
+             * rules with the counter; see App\Support\DiscountBeneficiaries.
+             */
+        ], \App\Support\DiscountBeneficiaries::rules()), \App\Support\DiscountBeneficiaries::messages());
 
         // Branch logic — from session only (set from QR or branch selector)
         $branchId = session('branch_id') ?? $request->input('branch_id');
@@ -339,6 +344,20 @@ class OrderController extends Controller
             return back()->withErrors(['items' => 'Invalid menu item']);
         }
 
+        /*
+         * Menu Item Sizes (Phase 2): a line CartPricing could not price by
+         * size — a sized item carted with no size, or a size that is not this
+         * item's — is refused outright. It was priced at 0, and the item's
+         * menu_items.price ("starting from") is never charged in its place.
+         */
+        if ($priced['size_problem']) {
+            foreach ($priced['lines'] as $line) {
+                if (($line['size_problem'] ?? null) !== null) {
+                    return back()->withErrors(['items' => $line['size_problem']]);
+                }
+            }
+        }
+
         $total = $priced['subtotal'];
         $itemsData = [];
 
@@ -350,6 +369,11 @@ class OrderController extends Controller
                 'unit_price' => $line['unit_price'],
                 'option_details' => $line['option_details'],
                 'option_ids' => $line['option_ids'],
+                // The size model CartPricing priced the line at — ingredients
+                // loaded — reused unchanged by the stock gates and the freeze
+                // below, so all three read the size exactly once. Null when
+                // the line is unsized.
+                'size' => $line['size'] ?? null,
             ];
         }
 
@@ -376,6 +400,14 @@ class OrderController extends Controller
             ? MenuOption::with('ingredients.inventory')->whereIn('id', $allSelectedOptionIds)->get()->keyBy('id')
             : collect();
 
+        // Each line's own assigned add-ons, for the item check below (F7).
+        // One query for the whole cart, and none unless it holds an add-on.
+        if ($allSelectedOptionIds) {
+            (new \Illuminate\Database\Eloquent\Collection(
+                collect($itemsData)->pluck('menu_item')->all()
+            ))->load('options');
+        }
+
         foreach ($itemsData as $data) {
             /*
              * Recipe guard only. Whether there is ENOUGH of the item is now
@@ -384,8 +416,21 @@ class OrderController extends Controller
              * count — neither of which orderBlockedReason() knows about. An
              * item with no recipe at all is a different problem (an admin has
              * to enter one) and still refuses here, in its own words.
+             *
+             * A sized line (Phase 2) asks about ITS size instead: sellable
+             * (active, not archived) and with a recipe of its own. The base
+             * recipe is irrelevant to it. orderBlockedReason() with the size
+             * carries the Phase 1 resolver's own sentence ("…(Large) is no
+             * longer available", "…no recipe has been set for it yet") — the
+             * same refusal pattern, under the same key.
              */
-            if ($data['menu_item']->isMissingRecipe()) {
+            if ($data['size'] !== null) {
+                if (! $data['menu_item']->hasRecipe($data['size'])) {
+                    return back()->withErrors([
+                        'items' => $data['menu_item']->orderBlockedReason((int) $data['quantity'], $data['size']),
+                    ]);
+                }
+            } elseif ($data['menu_item']->isMissingRecipe()) {
                 return back()->withErrors([
                     'items' => $data['menu_item']->orderBlockedReason((int) $data['quantity']),
                 ]);
@@ -404,6 +449,20 @@ class OrderController extends Controller
             foreach ($data['option_ids'] as $optionId) {
                 $optionModel = $optionModels->get($optionId);
 
+                /*
+                 * The add-on must be assigned to THIS line's own menu item
+                 * (hardening pass F7, 2026-09-27). The branch check below
+                 * only proves it can be made here, not that it belongs on
+                 * this item — a hand-built or stale cart could carry another
+                 * item's add-on to the kitchen and the bill. Same check, same
+                 * order, as the counter's storeManualOrder().
+                 */
+                if (! $data['menu_item']->options->firstWhere('id', $optionId)) {
+                    return back()->withErrors([
+                        'items' => 'Sorry, "' . ($optionModel->name ?? 'an add-on') . '" is not an add-on for "' . $data['menu_item']->name . '". Please review your cart and try again.',
+                    ]);
+                }
+
                 if ($optionModel && !$optionModel->isMappedForBranch((int) $branchId)) {
                     return back()->withErrors([
                         'items' => 'Sorry, "' . $optionModel->name . '" is not available for your selected branch. Please review your cart and try again.',
@@ -411,11 +470,18 @@ class OrderController extends Controller
                 }
             }
 
-            $stockLines[] = [
+            $stockLine = [
                 'menu_item' => $data['menu_item'],
                 'quantity' => $data['quantity'],
                 'selected_option_ids' => $data['option_ids'],
             ];
+
+            // Judged against the chosen size's own recipe (Phase 2).
+            if ($data['size'] !== null) {
+                $stockLine['size'] = $data['size'];
+            }
+
+            $stockLines[] = $stockLine;
         }
 
         /*
@@ -445,6 +511,15 @@ class OrderController extends Controller
         $discountBeneficiaryCardNumber = null;
         $discountIdImage = null;
         $discountBeneficiaryExpiration = null;
+
+        /*
+         * Every PWD/Senior ID listed on this order (ID number + full name),
+         * saved to order_discount_beneficiaries inside the order transaction.
+         * A RECORD ONLY: nothing below prices the order from it, so listing
+         * five IDs earns exactly the one discount listing one does. Row 0 is
+         * also mirrored into the two legacy beneficiary columns.
+         */
+        $discountBeneficiaries = [];
         $voucherCode = trim((string) $request->input('voucher_code_confirmed'));
         $voucherId = null;
         $voucherClaim = null;
@@ -461,7 +536,6 @@ class OrderController extends Controller
          * must not be silently treated as absent.
          */
         $cardDiscountAmount = null;
-        $freshlyUploadedIdImage = null;
 
         /*
          * A customer may benefit from exactly one promotional mechanism per
@@ -479,7 +553,6 @@ class OrderController extends Controller
          * genuine ambiguity about which card is being presented, not a
          * question of which is worth more.
          */
-        $hasVoucher = $voucherCode !== '';
         $hasSavedCard = $request->filled('discount_card_id');
         $hasTransactionDiscount = $request->filled('discount_type');
 
@@ -516,12 +589,21 @@ class OrderController extends Controller
                 ])->withInput();
             }
 
+            // Computed before the required-fields check below so that check
+            // can tell whether a missing expiration actually matters for
+            // this card's type — a Senior Citizen ID has none under
+            // Philippine law (see DiscountCard::requiresExpiration()).
+            $discountType = strtolower((string) $selectedDiscountCard->type) === 'senior'
+                ? 'senior'
+                : 'pwd';
+            $expirationRequired = DiscountCard::requiresExpiration($discountType);
+
             $cardName = trim((string) ($selectedDiscountCard->full_name ?? $selectedDiscountCard->name ?? ''));
             $cardNumber = trim((string) ($selectedDiscountCard->id_number ?? $selectedDiscountCard->card_number ?? ''));
             $cardImage = trim((string) ($selectedDiscountCard->id_image ?? ''));
             $cardExpiration = $selectedDiscountCard->expiration_date;
 
-            if (!$cardName || !$cardNumber || !$cardImage || !$cardExpiration) {
+            if (!$cardName || !$cardNumber || !$cardImage || ($expirationRequired && !$cardExpiration)) {
                 return back()->withErrors([
                     'discount_card_id' => 'The selected discount card is missing required information. Please update the card before using it.'
                 ])->withInput();
@@ -529,7 +611,9 @@ class OrderController extends Controller
 
             // Same rule, same wording, same answer as the cart preview and the
             // transaction-card branch below — see DiscountCard::expirationErrorFor().
-            $cardExpirationError = DiscountCard::expirationErrorFor($cardExpiration);
+            // Passing $discountType is what lets a Senior Citizen card through
+            // with no expiration at all; a PWD card is checked exactly as before.
+            $cardExpirationError = DiscountCard::expirationErrorFor($cardExpiration, $discountType);
 
             if ($cardExpirationError !== null) {
                 return back()->withErrors([
@@ -537,15 +621,12 @@ class OrderController extends Controller
                 ])->withInput();
             }
 
-            $discountType = strtolower((string) $selectedDiscountCard->type) === 'senior'
-                ? 'senior'
-                : 'pwd';
-
             $discountCardId = $selectedDiscountCard->id;
             $discountBeneficiaryName = $cardName;
             $discountBeneficiaryCardNumber = $cardNumber;
-            $discountBeneficiaryExpiration = $cardExpiration->toDateString();
+            $discountBeneficiaryExpiration = $cardExpiration ? $cardExpiration->toDateString() : null;
             $discountIdImage = $cardImage;
+            $discountBeneficiaries = [['id_number' => $cardNumber, 'full_name' => $cardName]];
             $discountAmount = \App\Models\Order::pwdSeniorDiscountFor($total);
             $cardDiscountAmount = $discountAmount;
 
@@ -553,11 +634,6 @@ class OrderController extends Controller
             $discountStatus = 'pending';
         } elseif ($request->filled('discount_type')) {
             $discountType = strtolower((string) $request->input('discount_type'));
-            $discountBeneficiaryName = trim((string) $request->input('discount_beneficiary_name'));
-            $discountBeneficiaryCardNumber = trim((string) (
-                $request->input('discount_beneficiary_id')
-                ?? $request->input('discount_beneficiary_card_number')
-            ));
             $discountBeneficiaryExpiration = $request->input('discount_beneficiary_expiration');
 
             if (!in_array($discountType, ['pwd', 'senior'], true)) {
@@ -566,20 +642,92 @@ class OrderController extends Controller
                 ])->withInput();
             }
 
-            if (!$discountBeneficiaryName || !$discountBeneficiaryCardNumber ||
-                !$discountBeneficiaryExpiration || !$request->hasFile('discount_beneficiary_image')) {
+            /*
+             * The IDs listed for this order — one row per eligible person,
+             * ID number + full name each (September 2026). Read through the
+             * same class the counter uses, so a half-filled row or an ID
+             * listed twice is refused identically on both doors.
+             */
+            $beneficiaryList = \App\Support\DiscountBeneficiaries::fromRequest($request);
+
+            if ($beneficiaryList['error'] !== null) {
                 return back()->withErrors([
-                    'discount_type' => 'Please provide the beneficiary name, ID number, expiration date, and ID image.'
+                    'discount_type' => $beneficiaryList['error']
                 ])->withInput();
+            }
+
+            $discountBeneficiaries = $beneficiaryList['rows'];
+
+            // Zero IDs listed means no PWD/Senior discount — refused rather
+            // than quietly charged at full price, so the customer is not
+            // surprised by the total.
+            if ($discountBeneficiaries === []) {
+                return back()->withErrors([
+                    'discount_type' => 'Please add at least one PWD/Senior Citizen ID — its ID number and full name.'
+                ])->withInput();
+            }
+
+            $discountBeneficiaryName = $discountBeneficiaries[0]['full_name'];
+            $discountBeneficiaryCardNumber = $discountBeneficiaries[0]['id_number'];
+
+            /*
+             * A Senior Citizen ID has no expiration under Philippine law (RA
+             * 9994, as amended by RA 10645) — only PWD (which DOES expire and
+             * is renewed) needs one. See DiscountCard::requiresExpiration(),
+             * the single place this decision is made.
+             *
+             * This stays a once-per-order eligibility check, exactly as
+             * before: the discount is applied once, so one valid, unexpired
+             * PWD ID is what it needs.
+             */
+            $expirationRequired = DiscountCard::requiresExpiration($discountType);
+
+            if ($expirationRequired && !$discountBeneficiaryExpiration) {
+                return back()->withErrors([
+                    'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_MISSING
+                ])->withInput();
+            }
+
+            if ($expirationRequired) {
+                /*
+                 * The cart's expiration field is customer-typed text
+                 * ("1/5/2027" or "01/05/2027"), not the Y-m-d the rest of the
+                 * app stores and compares — convert it here, once, before it
+                 * reaches expirationErrorFor() or the orders row. A string
+                 * that is not one of the two accepted shapes, or that does
+                 * not name a real calendar date (13/45/2027, 2/30/2027, 2/29
+                 * in a non-leap year), comes back null and is refused with
+                 * the same shared message expirationErrorFor() already uses
+                 * for a malformed date.
+                 */
+                $discountBeneficiaryExpiration = DiscountCard::normalizeTypedExpiration(
+                    $discountBeneficiaryExpiration
+                );
+
+                if ($discountBeneficiaryExpiration === null) {
+                    return back()->withErrors([
+                        'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID
+                    ])->withInput();
+                }
+            } else {
+                /*
+                 * Senior Citizen: accept-and-ignore whatever this field
+                 * carries — blank, a value left over from switching from PWD,
+                 * or garbage typed by mistake. Never validated, never stored;
+                 * eligibility for this type must never depend on it.
+                 */
+                $discountBeneficiaryExpiration = null;
             }
 
             /*
              * The expiry rule that the cart page also previews with. This is
              * the check that must refuse the reported "expiration 01/01/1940"
              * card; the validation rule above no longer duplicates it, so
-             * there is exactly one place that decides, and exactly one message.
+             * there is exactly one place that decides, and exactly one
+             * message. Passing $discountType is what makes this a no-op for
+             * Senior Citizen — PWD is checked exactly as before.
              */
-            $expirationError = DiscountCard::expirationErrorFor($discountBeneficiaryExpiration);
+            $expirationError = DiscountCard::expirationErrorFor($discountBeneficiaryExpiration, $discountType);
 
             if ($expirationError !== null) {
                 return back()->withErrors([
@@ -587,38 +735,28 @@ class OrderController extends Controller
                 ])->withInput();
             }
 
-            if ($request->hasFile('discount_beneficiary_image')) {
-                /*
-                 * The `local` disk (storage/app), NOT `public`.
-                 *
-                 * Security review 2026-08-31 (Pass 4, item #10): this used to
-                 * name the `public` disk here instead of `local`, and the
-                 * public disk is exposed through the storage symlink. Because
-                 * public/.htaccess serves an existing file directly
-                 * (RewriteCond %{REQUEST_FILENAME} !-f), Laravel never ran for
-                 * those URLs at all — an anonymous request with no cookies and
-                 * no session returned the complete identity document with
-                 * HTTP 200. Proven live before this change.
-                 *
-                 * `local` is not web-reachable. The file is now served only by
-                 * DiscountIdController, which authorises the request first;
-                 * see App\Services\DiscountIdAccess for who may view one.
-                 */
-                $discountIdImage = $request->file('discount_beneficiary_image')
-                    ->store('discount_ids', 'local');
+            /*
+             * NO ID PHOTO IS STORED (September 2026).
+             *
+             * This used to require an upload and store it on the `local` disk
+             * — itself the fix for Security review 2026-08-31 (Pass 4, item
+             * #10), when uploads sat on the web-reachable `public` disk and an
+             * anonymous request could fetch a customer's identity document.
+             * Checkout now records only each ID's number and full name, and
+             * staff check the physical ID in person before approving the
+             * discount (the approval step below is unchanged), exactly as the
+             * counter has always done. Not collecting the document at all is
+             * the strongest form of that fix. Orders placed before this change
+             * keep their stored photo, still served only through
+             * DiscountIdController.
+             */
 
-                /*
-                 * Remembered separately so it can be deleted again if this
-                 * card ends up LOSING the bigger-discount comparison below.
-                 * An identity document that no order references is a privacy
-                 * liability sitting in storage for nothing — and only a
-                 * freshly uploaded file may ever be deleted here, never the
-                 * image belonging to a saved DiscountCard (that one is the
-                 * customer's own record and is reused across orders).
-                 */
-                $freshlyUploadedIdImage = $discountIdImage;
-            }
-
+            /*
+             * THE DISCOUNT — ONCE, FROM THE SUBTOTAL, WHATEVER THE ROW COUNT.
+             * The same Order::pwdSeniorDiscountFor() every path uses; neither
+             * count($discountBeneficiaries) nor any figure the browser sent
+             * (it posts a discount_amount it never gets to decide) reaches it.
+             */
             $discountAmount = \App\Models\Order::pwdSeniorDiscountFor($total);
             $cardDiscountAmount = $discountAmount;
 
@@ -729,13 +867,9 @@ class OrderController extends Controller
                     $discountBeneficiaryExpiration = null;
                     $discountIdImage = null;
 
-                    // Only ever a file uploaded in THIS request — a saved
-                    // card's own image is the customer's record and is never
-                    // touched here.
-                    if ($freshlyUploadedIdImage !== null) {
-                        Storage::disk('local')->delete($freshlyUploadedIdImage);
-                        $freshlyUploadedIdImage = null;
-                    }
+                    // No listed ID is recorded against a discount that was
+                    // never given.
+                    $discountBeneficiaries = [];
                 }
             } else {
                 /*
@@ -758,7 +892,10 @@ class OrderController extends Controller
         $finalTotal = max(0, round($total - $discountAmount, 2));
 
         try {
-            $order = DB::transaction(function () use (
+            // OrderTransaction, not DB::transaction: READ COMMITTED for this one
+            // transaction, so the locked stock gate below counts an order that
+            // won the race while this one waited on the lock. See the class.
+            $order = \App\Support\OrderTransaction::run(function () use (
                 $validated,
                 $itemsData,
                 $stockLines,
@@ -776,6 +913,7 @@ class OrderController extends Controller
                 $discountBeneficiaryCardNumber,
                 $discountBeneficiaryExpiration,
                 $discountIdImage,
+                $discountBeneficiaries,
                 $voucherId,
                 $voucherClaim,
                 $discountStatus
@@ -824,6 +962,11 @@ class OrderController extends Controller
                     'change_amount' => 0,
                 ]);
 
+                // Every listed PWD/Senior ID, in the same transaction as the
+                // order so they roll back with it. Empty when no PWD/Senior
+                // discount applies (none claimed, or a bigger voucher won).
+                \App\Support\DiscountBeneficiaries::saveFor($order, $discountBeneficiaries);
+
                 foreach ($itemsData as $data) {
                     // Price and add-ons come from THIS line's own cart entry
                     // (resolved above), not from a first-match scan of the whole
@@ -831,11 +974,23 @@ class OrderController extends Controller
                     $orderItem = OrderItem::create([
                         'order_id' => $order->id,
                         'menu_item_id' => $data['menu_item']->id,
+                        // Size snapshot (Phase 2), beside the item's own. NULL
+                        // on an unsized line, exactly as before.
+                        'menu_item_size_id' => $data['size']?->id,
                         'item_name' => $data['menu_item']->name,
+                        'size_name' => $data['size']?->name,
                         'quantity' => $data['quantity'],
                         'item_price' => $data['unit_price'],
                         'subtotal' => $data['subtotal'],
                     ]);
+
+                    // Freeze the size recipe the locked gate above just
+                    // measured — the same loaded rows — so completion deducts
+                    // what was sold whatever happens to the size afterwards.
+                    if ($data['size'] !== null) {
+                        app(InventoryDeductionService::class)
+                            ->freezeSizeRecipe($orderItem, $data['menu_item'], $data['size']);
+                    }
 
                     foreach ($data['option_details'] as $opt) {
                         DB::table('order_item_options')->insert([
@@ -937,6 +1092,32 @@ return redirect()->route('customer.orders')
             // order", reported under the same key and with the same wording as
             // the early gate so the cart page renders it identically.
             return back()->withErrors(['items' => $e->messages()]);
+        } catch (\App\Exceptions\MenuItemSizeUnavailableException $e) {
+            // A size refused inside the transaction (Phase 2). Nothing was
+            // written. Same key and the resolver's own customer-safe sentence,
+            // exactly like the size refusal before the transaction.
+            return back()->withErrors(['items' => $e->getMessage()]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // MUST come before RuntimeException: QueryException extends
+            // PDOException extends RuntimeException, so the branch below used
+            // to catch it and show the customer the raw SQLSTATE, SQL text and
+            // table names. The realistic cause is a menu item permanently
+            // deleted between pricing the cart and inserting its line (foreign
+            // key 1452). The transaction rolled back, so no order exists.
+            Log::error('Order placement failed (database)', [
+                'user_id'   => Auth::id(),
+                'exception' => $e,
+            ]);
+
+            return (int) ($e->errorInfo[1] ?? 0) === 1452
+                ? back()->withErrors([
+                    'items' => 'One of the items in your order is no longer available. '
+                        . 'Nothing was charged. Please review your cart and try again.',
+                ])
+                : back()->withErrors([
+                    'error' => 'Sorry, we could not place your order just now. '
+                        . 'Nothing was charged. Please try again, or ask staff for help.',
+                ]);
         } catch (\RuntimeException $e) {
             // Deliberate, user-facing refusals thrown inside the transaction
             // (voucher already used, not enough stock). The message is written

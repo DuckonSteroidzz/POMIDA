@@ -379,7 +379,8 @@
                                 <div class="flex min-w-0 items-start gap-2.5">
                                     <span class="mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-peach-soft px-1 text-[0.68rem] font-black text-peach-red">{{ $item->quantity }}</span>
                                     <div class="min-w-0">
-                                        <p class="text-sm font-bold leading-snug text-peach-deep sm:text-[0.95rem]">{{ $item->item_name }}</p>
+                                        {{-- Snapshots only: item_name + the size_name a sized line was sold as. --}}
+                                        <p class="text-sm font-bold leading-snug text-peach-deep sm:text-[0.95rem]">{{ $item->displayName() }}</p>
                                         @if($item->options && $item->options->count() > 0)
                                         <div class="mt-1.5 flex flex-wrap gap-1">
                                             @foreach($item->options as $option)
@@ -421,6 +422,28 @@
                             <span class="dots"></span>
                             <span class="font-bold text-green-600">-₱{{ number_format($order->discount_amount, 2) }}</span>
                         </div>
+
+                        {{-- Every PWD / Senior Citizen ID listed on the order
+                             (name + ID number), as a Senior/PWD sale receipt
+                             records them. One discount line above however
+                             many are listed. --}}
+                        @php
+                            $receiptDiscountIds = in_array(strtolower((string) $order->discount_type), ['pwd', 'senior'], true)
+                                ? $order->discountBeneficiaryList()
+                                : [];
+                        @endphp
+                        @if(count($receiptDiscountIds) > 0)
+                        <div class="rounded-xl bg-green-50 px-3 py-2 text-xs text-peach-deep/70" data-receipt-discount-ids>
+                            <p class="font-bold text-peach-deep/60">
+                                {{ count($receiptDiscountIds) > 1 ? 'IDs listed (' . count($receiptDiscountIds) . ')' : 'ID listed' }}
+                            </p>
+                            <ul class="mt-1 space-y-0.5">
+                                @foreach($receiptDiscountIds as $person)
+                                <li><span class="font-semibold">{{ $person['full_name'] }}</span> · ID {{ $person['id_number'] }}</li>
+                                @endforeach
+                            </ul>
+                        </div>
+                        @endif
                         @endif
                     </div>
 

@@ -3,12 +3,18 @@
 namespace App\Services;
 
 use App\Models\Inventory;
+use App\Exceptions\MenuItemSizeUnavailableException;
 use App\Models\MenuItem;
+use App\Models\MenuItemSize;
 use App\Models\MenuOption;
 use App\Models\Order;
+use App\Models\OrderItem;
+use App\Models\OrderItemSizeIngredient;
 use App\Models\StockMovement;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 use RuntimeException;
 
 /**
@@ -54,6 +60,26 @@ use RuntimeException;
  * ingredient link pointed at Branch A's inventory silently deducted
  * Branch A's stock, and a Branch A shortage blocked the Branch B order with
  * an indistinguishable "Not enough <ingredient>" message.
+ *
+ * MENU ITEM SIZES (Phase 1, Sept 2026). requirementsForLine() takes an
+ * optional size, and cartShortfalls() passes a line's optional `size` through
+ * to it. With a size, the size's own recipe REPLACES the base recipe, resolved
+ * by MenuItem::sizeRecipe() — the same resolver MenuItem::hasIngredientStock()
+ * and remainingServings() use — and a size that cannot be sold throws rather
+ * than returning []. With no size nothing changed.
+ *
+ * MENU ITEM SIZES (Phase 2, Sept 2026). An order line sold by size carries
+ * size_name (its snapshot, and the marker) and the size's recipe FROZEN at
+ * placement in order_item_size_ingredients — see freezeSizeRecipe(), called
+ * by both order paths inside their order transaction with the very rows the
+ * stock gate just validated. committedQuantities(), totalRequirements() and
+ * deductWithLock() read ORDER LINES, so for a sized line they deduct those
+ * frozen rows (requirementsForOrderLine()) and never re-resolve the live size:
+ * an order already in the pipeline completes as it was sold even after its
+ * size is archived, deactivated, deleted or re-costed. An unsized line is
+ * untouched — base recipe, exactly as before. A NEW order still goes through
+ * requirementsForLine() with the size, which still refuses a size that cannot
+ * be sold.
  */
 class InventoryDeductionService
 {
@@ -77,11 +103,42 @@ class InventoryDeductionService
      *                                            own branch's inventory (enforced at
      *                                            write time by
      *                                            inventoryIsSelectableForBranch()).
+     * @param  MenuItemSize|int|null  $size     Menu Item Sizes, Phase 1. null (every
+     *                                            existing caller) = the unchanged base
+     *                                            behaviour below. A size = that size's
+     *                                            OWN recipe REPLACES the base recipe
+     *                                            (menu_item_ingredients and the legacy
+     *                                            link are not read at all), resolved
+     *                                            through MenuItem::sizeRecipe(), the one
+     *                                            resolver the model's stock functions
+     *                                            also use. A size that is missing, not
+     *                                            this item's, inactive, archived, or has
+     *                                            no recipe THROWS
+     *                                            MenuItemSizeUnavailableException —
+     *                                            it never returns [], because [] is
+     *                                            what cartShortfalls()/deductWithLock()
+     *                                            read as "no recipe, nothing to check or
+     *                                            deduct", which would let a bad size
+     *                                            straight through the stock gate.
+     *                                            Selected options are handled below
+     *                                            exactly as without a size — add-ons are
+     *                                            not size-dependent.
      * @return array<int,float>                 [inventory_id => amount]
+     *
+     * @throws MenuItemSizeUnavailableException  only when $size is given
      */
-    public function requirementsForLine(MenuItem $menuItem, int $quantity, array $selectedOptionIds, ?int $branchId = null): array
+    public function requirementsForLine(MenuItem $menuItem, int $quantity, array $selectedOptionIds, ?int $branchId = null, MenuItemSize|int|null $size = null): array
     {
         $needs = [];
+
+        if ($size !== null) {
+            foreach ($menuItem->sizeRecipe($size) as $row) {
+                $needs[$row->inventory_id] = ($needs[$row->inventory_id] ?? 0)
+                    + ((float) $row->quantity * $quantity);
+            }
+
+            return $this->addSelectedOptionRequirements($needs, $quantity, $selectedOptionIds, $branchId);
+        }
 
         // Base recipe. Always ends up a Collection, never null, regardless of
         // eager-loading state — but an eager-loaded relation is reused rather
@@ -104,6 +161,19 @@ class InventoryDeductionService
             }
         }
 
+        return $this->addSelectedOptionRequirements($needs, $quantity, $selectedOptionIds, $branchId);
+    }
+
+    /**
+     * The selected-options half of requirementsForLine(), shared by the base
+     * and sized paths so an add-on deducts identically whichever recipe the
+     * line itself used. Body unchanged from when it lived inline.
+     *
+     * @param  array<int,float>  $needs
+     * @return array<int,float>
+     */
+    private function addSelectedOptionRequirements(array $needs, int $quantity, array $selectedOptionIds, ?int $branchId): array
+    {
         // Selected options only.
         if (!empty($selectedOptionIds)) {
             $options = MenuOption::with('ingredients.inventory')->whereIn('id', $selectedOptionIds)->get();
@@ -236,6 +306,17 @@ class InventoryDeductionService
             ])
             ->get();
 
+        // Frozen size recipes (Phase 2) — loaded for the SIZED lines only, in
+        // one query, and not at all while no open order has one, so a shop
+        // that sells no sizes pays nothing for this.
+        $sizedLines = $orders->flatMap(fn (Order $order) => $order->items)
+            ->filter(fn (OrderItem $line) => $line->isSized())
+            ->values();
+
+        if ($sizedLines->isNotEmpty()) {
+            (new EloquentCollection($sizedLines->all()))->load('sizeIngredients');
+        }
+
         $totals = [];
 
         foreach ($orders as $order) {
@@ -282,9 +363,10 @@ class InventoryDeductionService
         MenuItem $menuItem,
         ?int $branchId = null,
         array $selectedOptionIds = [],
-        ?array $committed = null
+        ?array $committed = null,
+        MenuItemSize|int|null $size = null
     ): ?int {
-        return $this->availabilityBreakdownFor($menuItem, $branchId, $selectedOptionIds, $committed)['units'];
+        return $this->availabilityBreakdownFor($menuItem, $branchId, $selectedOptionIds, $committed, null, $size)['units'];
     }
 
     /**
@@ -314,6 +396,14 @@ class InventoryDeductionService
      *                                            walking many menu items and this method
      *                                            issues no query at all; omit it and one
      *                                            whereIn per call is taken, as before.
+     * @param  MenuItemSize|int|null  $size      Menu Item Sizes, Phase 2: measure the line
+     *                                            as that size (its own recipe, through
+     *                                            requirementsForLine()). null = the base
+     *                                            recipe, as every earlier caller. A size
+     *                                            that cannot be sold THROWS
+     *                                            MenuItemSizeUnavailableException, exactly
+     *                                            as requirementsForLine() does — callers
+     *                                            check MenuItem::hasRecipe($size) first.
      * @return array{
      *     units: int|null,
      *     reason: string|null,
@@ -328,9 +418,10 @@ class InventoryDeductionService
         ?int $branchId = null,
         array $selectedOptionIds = [],
         ?array $committed = null,
-        $inventoryById = null
+        $inventoryById = null,
+        MenuItemSize|int|null $size = null
     ): array {
-        $perUnit = $this->requirementsForLine($menuItem, 1, $selectedOptionIds, $branchId);
+        $perUnit = $this->requirementsForLine($menuItem, 1, $selectedOptionIds, $branchId, $size);
 
         if (empty($perUnit)) {
             return ['units' => null, 'reason' => self::UNMEASURABLE_NO_RECIPE, 'bottleneck' => null, 'ingredients' => []];
@@ -421,7 +512,16 @@ class InventoryDeductionService
      * sharing an ingredient cannot both be told the whole remaining stock is
      * theirs.
      *
-     * @param  array<int, array{menu_item: MenuItem, quantity:int, selected_option_ids?:int[]}>  $lines
+     * @param  array<int, array{menu_item: MenuItem, quantity:int, selected_option_ids?:int[], size?:MenuItemSize|int|null}>  $lines
+     *                      `size` (Menu Item Sizes) is optional. When a line carries one,
+     *                      that size's recipe is what the line is judged against — see
+     *                      requirementsForLine(), which also THROWS
+     *                      MenuItemSizeUnavailableException for a size that cannot be
+     *                      sold, so a bad size fails the gate instead of skipping it.
+     *                      Both order paths (Phase 2) pass the MenuItemSize MODEL with
+     *                      its `ingredients` loaded, and freeze that same model's rows
+     *                      afterwards (freezeSizeRecipe()), so the recipe the gate
+     *                      measured and the recipe the order carries are one read.
      * @param  bool  $lock  SELECT … FOR UPDATE the inventory rows first. Only valid
      *                      inside a transaction; this is what makes two simultaneous
      *                      checkouts queue up instead of both passing the check.
@@ -437,7 +537,8 @@ class InventoryDeductionService
                 $line['menu_item'],
                 1,
                 $line['selected_option_ids'] ?? [],
-                $branchId
+                $branchId,
+                $line['size'] ?? null
             );
 
             $perUnit[$i] = $needs;
@@ -507,11 +608,36 @@ class InventoryDeductionService
             }
 
             if ($requested > $max) {
-                $messages[] = $this->shortfallMessage($line['menu_item']->name, $max, $requested);
+                // A sized line is named with its size (Phase 2) — "Iced Latte
+                // (Large)" — so the customer knows WHICH size ran short; the
+                // other size may be perfectly available.
+                $label = ($line['size'] ?? null) instanceof MenuItemSize
+                    ? $line['menu_item']->name . ' (' . $line['size']->name . ')'
+                    : $line['menu_item']->name;
+
+                $messages[] = $this->shortfallMessage($label, $max, $requested);
             }
         }
 
         return $messages;
+    }
+
+    /**
+     * An order line whose menu item no longer exists (menu_item_id is NULL:
+     * order_items.menu_item_id is ON DELETE SET NULL). It has no recipe, so
+     * it deducts and commits nothing. CatalogueLifecycle refuses to
+     * permanently delete an item on an open order, so reaching this means
+     * that guard was bypassed — the log line is how anyone finds out.
+     */
+    private function logMissingMenuItem(Order $order, $orderItem, string $consequence): void
+    {
+        Log::error('Order line has no menu item — ' . $consequence, [
+            'order_id'      => $order->id,
+            'order_number'  => $order->order_number,
+            'order_status'  => $order->status,
+            'order_item_id' => $orderItem->id,
+            'item_name'     => $orderItem->item_name,
+        ]);
     }
 
     /**
@@ -526,20 +652,88 @@ class InventoryDeductionService
         foreach ($order->items as $orderItem) {
             $menuItem = $orderItem->menuItem;
             if (!$menuItem) {
+                // Its menu item was permanently deleted, so there is no recipe
+                // to count. Unreachable by design — permanent delete refuses
+                // an item on any open order — so if this ever fires, something
+                // bypassed that guard: say so loudly, but never block the order.
+                $this->logMissingMenuItem($order, $orderItem, 'its recipe cannot be counted');
                 continue;
             }
-            $selectedOptionIds = $orderItem->options->pluck('id')->all();
-            $needs = $this->requirementsForLine(
-                $menuItem,
-                (int) $orderItem->quantity,
-                $selectedOptionIds,
-                $order->branch_id !== null ? (int) $order->branch_id : null
-            );
-            foreach ($needs as $invId => $amount) {
+            foreach ($this->requirementsForOrderLine($order, $orderItem, $menuItem) as $invId => $amount) {
                 $totals[$invId] = ($totals[$invId] ?? 0) + $amount;
             }
         }
         return $totals;
+    }
+
+    /**
+     * What ONE placed order line needs, for committing and for deducting —
+     * the single place totalRequirements() and deductWithLock() both ask, so
+     * the stock an open order holds and the stock it finally takes can never
+     * disagree.
+     *
+     * SIZED LINE (size_name set — Phase 2): the size recipe frozen when the
+     * order was placed (order_item_size_ingredients) x the line quantity,
+     * plus its selected add-ons exactly as any line. The live size is never
+     * consulted: not its recipe, not whether it is still active, archived or
+     * even exists — none of that may stop an order already in the pipeline
+     * from completing as sold. Nor is the base recipe: a sized line with no
+     * frozen rows left (every one of its inventory rows since permanently
+     * deleted) contributes its add-ons only, never a base-recipe stand-in.
+     *
+     * UNSIZED LINE: requirementsForLine() with no size, unchanged — the
+     * item's base recipe (or legacy link) plus add-ons.
+     *
+     * @return array<int,float>  [inventory_id => amount]
+     */
+    private function requirementsForOrderLine(Order $order, OrderItem $orderItem, MenuItem $menuItem): array
+    {
+        $quantity = (int) $orderItem->quantity;
+        $selectedOptionIds = $orderItem->options->pluck('id')->all();
+        $branchId = $order->branch_id !== null ? (int) $order->branch_id : null;
+
+        if ($orderItem->isSized()) {
+            $needs = [];
+
+            foreach ($orderItem->sizeIngredients as $row) {
+                $needs[$row->inventory_id] = ($needs[$row->inventory_id] ?? 0)
+                    + ((float) $row->quantity * $quantity);
+            }
+
+            return $this->addSelectedOptionRequirements($needs, $quantity, $selectedOptionIds, $branchId);
+        }
+
+        return $this->requirementsForLine($menuItem, $quantity, $selectedOptionIds, $branchId);
+    }
+
+    /**
+     * FREEZE a sized order line's recipe at placement (Phase 2). Call inside
+     * the order transaction, right after creating the line, with the SAME
+     * MenuItemSize model the stock gate (cartShortfalls()) was just given —
+     * its loaded `ingredients` are what the gate measured, and
+     * MenuItem::sizeRecipe(), the one Phase 1 resolver, hands back exactly
+     * those rows again rather than re-reading them. One row per inventory_id,
+     * quantity per ONE unit.
+     *
+     * Throws MenuItemSizeUnavailableException for a size that cannot be sold,
+     * as sizeRecipe() does; inside the order transaction that rolls the whole
+     * order back rather than recording a line with nothing frozen.
+     */
+    public function freezeSizeRecipe(OrderItem $orderItem, MenuItem $menuItem, MenuItemSize $size): void
+    {
+        $perUnit = [];
+
+        foreach ($menuItem->sizeRecipe($size) as $row) {
+            $perUnit[$row->inventory_id] = ($perUnit[$row->inventory_id] ?? 0) + (float) $row->quantity;
+        }
+
+        foreach ($perUnit as $inventoryId => $quantity) {
+            OrderItemSizeIngredient::create([
+                'order_item_id' => $orderItem->id,
+                'inventory_id'  => $inventoryId,
+                'quantity'      => $quantity,
+            ]);
+        }
     }
 
     /**
@@ -591,15 +785,14 @@ class InventoryDeductionService
         foreach ($order->items as $orderItem) {
             $menuItem = $orderItem->menuItem;
             if (!$menuItem) {
+                // See totalRequirements(): logged, never thrown — completing
+                // an order must not get stuck on a line nobody can fix.
+                $this->logMissingMenuItem($order, $orderItem, 'stock NOT deducted');
                 continue;
             }
-            $selectedOptionIds = $orderItem->options->pluck('id')->all();
-            $needs = $this->requirementsForLine(
-                $menuItem,
-                (int) $orderItem->quantity,
-                $selectedOptionIds,
-                $order->branch_id !== null ? (int) $order->branch_id : null
-            );
+            // Frozen size recipe for a sized line, base recipe otherwise —
+            // the same answer totalRequirements() summed and locked above.
+            $needs = $this->requirementsForOrderLine($order, $orderItem, $menuItem);
             if (empty($needs)) {
                 continue;
             }
@@ -609,7 +802,12 @@ class InventoryDeductionService
             $reasonSuffix = $orderItem->options->isNotEmpty()
                 ? ' + ' . $orderItem->options->pluck('name')->implode(', ')
                 : '';
-            $reason = 'Order #' . $order->order_number . ': ' . $orderItem->quantity . 'x ' . $menuItem->name . $reasonSuffix;
+            // A sized line names its size snapshot, so the stock log says
+            // which size took the stock.
+            $lineLabel = $orderItem->isSized()
+                ? $menuItem->name . ' (' . $orderItem->size_name . ')'
+                : $menuItem->name;
+            $reason = 'Order #' . $order->order_number . ': ' . $orderItem->quantity . 'x ' . $lineLabel . $reasonSuffix;
 
             // COGS snapshot: total recipe cost for THIS line, priced at the
             // unit_cost each inventory row has right now (read under the same

@@ -1042,15 +1042,18 @@
                                 the row said "Viewing: All Branches" for someone who was
                                 actually locked to one branch the whole time — while the
                                 data on the page underneath was correctly scoped by
-                                getSelectedBranch()/AdminOrderAccess::lockedBranchId(). Same
-                                fallback rule as the (now-removed) second badge that used to
-                                sit here: 'Main Branch' for staff, whose missing branch
-                                resolves to branch 1; a branchless supervisor is denied
-                                everything instead (locked to 0), so 'No branch assigned' is
-                                told plainly rather than lying that they see Main Branch.
+                                getSelectedBranch()/AdminOrderAccess::lockedBranchId().
+
+                                Branch parity audit B7 (2026-09-27): a branchless staff
+                                account used to fall back to 'Main Branch' here, matching
+                                AdminOrderAccess::lockedBranchId()'s old ?? 1. That method
+                                now denies both branchless roles instead of defaulting
+                                staff to Main, so this label agrees with what the account
+                                can actually see — 'No branch assigned', same as a
+                                branchless supervisor, rather than a name for a branch
+                                whose data lockedBranchId() no longer hands them.
                             --}}
-                            {{ $adminUser?->branch?->name
-                                ?? ($adminUser?->role === 'staff' ? 'Main Branch' : 'No branch assigned') }}
+                            {{ $adminUser?->branch?->name ?? 'No branch assigned' }}
                         @endif
                     </span>
                 </span>

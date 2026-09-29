@@ -81,13 +81,158 @@ class DiscountCard extends Model
     public const ERROR_EXPIRATION_INVALID = 'That discount card expiration date is not a valid date.';
     public const ERROR_EXPIRED = 'This discount card has already expired.';
 
+    /*
+    |--------------------------------------------------------------------------
+    | WHETHER AN EXPIRATION DATE IS EVEN REQUIRED (September 2026)
+    |--------------------------------------------------------------------------
+    |
+    | Philippine Senior Citizen IDs (RA 9994, as amended by RA 10645) carry no
+    | expiration at all — they are valid for life. The PWD ID (RA 10754 and its
+    | implementing rules) DOES expire and is renewed, typically every few
+    | years. The checkout form used to demand a valid expiration for both
+    | types alike, which incorrectly blocked a Senior Citizen with a lifetime
+    | ID from ever completing a discounted order.
+    |
+    | requiresExpiration() is the one place that decides this, so
+    | expirationErrorFor() below and every caller of it (the saved-card branch
+    | and the fresh-transaction branch in OrderController::placeOrder(), and
+    | this same rule's JS twin on the cart page) all agree. Only 'pwd' is
+    | exempted from "required"; anything else — 'senior', null, or an
+    | unrecognised value — keeps the original, stricter behaviour, so a typo
+    | or a future third type never silently becomes optional by accident.
+    */
+
+    /**
+     * True when the given discount type must supply a valid, unexpired
+     * expiration date to be honoured. False only for Senior Citizen, whose ID
+     * does not expire under Philippine law.
+     */
+    public static function requiresExpiration(?string $discountType): bool
+    {
+        return strtolower((string) $discountType) !== 'senior';
+    }
+
+    /**
+     * The placeholder shown on the cart page's typed expiration field, and
+     * the human-readable name for the two shapes normalizeTypedExpiration()
+     * accepts.
+     */
+    public const TYPED_EXPIRATION_PLACEHOLDER = 'M/D/Y';
+
+    /*
+    |--------------------------------------------------------------------------
+    | TYPED EXPIRATION DATE (September 2026 UX pass)
+    |--------------------------------------------------------------------------
+    |
+    | The cart page used to ask for this date with three <select> dropdowns
+    | (day/month/year) — themselves a replacement for an earlier native
+    | calendar picker that older PWD/Senior customers found hard to use.
+    | Three dropdowns turned out to still be several taps slower than typing
+    | a date outright, so the field is now a single text input.
+    |
+    | ACCEPTED FORMATS: M/D/Y and MM/DD/YYYY only — e.g. "1/5/2027" or
+    | "01/05/2027" (both mean January 5, 2027). Deliberately refused rather
+    | than guessed at:
+    |
+    |   - dash-separated ("1-5-2027")   — PHP would read the dashes as
+    |     day-month-year, silently reversing what was typed for slash-order.
+    |   - year-first ("2027/1/5")       — not a shape a customer would type
+    |     for a Philippine ID's expiry, and easy to confuse with the day.
+    |   - 2-digit years ("5/1/27")      — "27" could mean 1927 or 2027; an ID
+    |     expiry decades in the wrong direction is exactly the kind of
+    |     mistake this field must not paper over.
+    |
+    | normalizeTypedExpiration() is the only place that turns typed text into
+    | the Y-m-d value the rest of the app already stores and compares
+    | (Order::placeOrder(), expirationErrorFor() above, and the orders table
+    | itself all keep working with Y-m-d — only the customer-facing input
+    | format changed).
+    */
+
+    /**
+     * Turns a customer-typed "M/D/Y" or "MM/DD/YYYY" string into the Y-m-d
+     * value the rest of the app stores and compares, or null when the text
+     * is not one of those two shapes or does not name a real calendar date.
+     *
+     * Deliberately does NOT hand the raw string to Carbon::createFromFormat()
+     * (or Carbon::parse()) and trust whatever comes back: PHP's date parser
+     * silently rolls an impossible combination like 2/30/2027 forward into
+     * 3/2/2027 instead of rejecting it — the exact bug class
+     * expirationErrorFor() above already guards against for the stored
+     * Y-m-d format. Pulling the month/day/year apart with a regex first and
+     * checking them against the real calendar with checkdate() has no
+     * parsing step left that could roll anything over: either the three
+     * numbers name a real day on the calendar, or they do not, and there is
+     * nothing in between for a parser to guess at.
+     */
+    public static function normalizeTypedExpiration(?string $typed): ?string
+    {
+        $typed = trim((string) $typed);
+
+        if ($typed === '') {
+            return null;
+        }
+
+        // Exactly M/D/Y or MM/DD/YYYY: 1-2 digit month, 1-2 digit day, a
+        // literal 4-digit year, slash-separated. Anything else — dashes,
+        // year-first, a 2-digit year, extra whitespace, stray text — fails
+        // the shape check here and is never handed to checkdate() at all.
+        if (! preg_match('/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/', $typed, $parts)) {
+            return null;
+        }
+
+        [, $month, $day, $year] = $parts;
+        $month = (int) $month;
+        $day = (int) $day;
+        $year = (int) $year;
+
+        if (! checkdate($month, $day, $year)) {
+            return null;
+        }
+
+        return sprintf('%04d-%02d-%02d', $year, $month, $day);
+    }
+
+    /**
+     * The reverse of normalizeTypedExpiration(): formats a stored Y-m-d (or
+     * any date-ish value the model already accepts) back into the M/D/Y text
+     * the cart's input shows, e.g. for pre-filling the field with a value
+     * that came from the backend. Returns null for anything that is not a
+     * real date, rather than guessing.
+     */
+    public static function formatForTypedInput($expiration): ?string
+    {
+        if ($expiration === null || $expiration === '') {
+            return null;
+        }
+
+        try {
+            $date = $expiration instanceof \DateTimeInterface
+                ? \Illuminate\Support\Carbon::instance($expiration)
+                : \Illuminate\Support\Carbon::parse((string) $expiration);
+        } catch (\Throwable $e) {
+            return null;
+        }
+
+        return $date->format('n/j/Y');
+    }
+
     /**
      * Why this expiration date makes the card unusable, or null when it is
      * fine. Accepts anything date-ish: a Y-m-d string from the cart form, a
      * Carbon instance from the saved-card column, or null.
+     *
+     * $discountType is optional and defaults to the original, stricter
+     * behaviour (expiration required) so any caller that does not pass it
+     * keeps working exactly as before. Pass 'senior' to exempt a Senior
+     * Citizen ID from needing one at all — see requiresExpiration() above.
      */
-    public static function expirationErrorFor($expiration): ?string
+    public static function expirationErrorFor($expiration, ?string $discountType = null): ?string
     {
+        if (! self::requiresExpiration($discountType)) {
+            return null;
+        }
+
         if ($expiration === null || $expiration === '') {
             return self::ERROR_EXPIRATION_MISSING;
         }
@@ -119,7 +264,7 @@ class DiscountCard extends Model
 
     public function isExpired(): bool
     {
-        return self::expirationErrorFor($this->expiration_date) !== null;
+        return self::expirationErrorFor($this->expiration_date, $this->type) !== null;
     }
 
     /**

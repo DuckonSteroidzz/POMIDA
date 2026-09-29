@@ -117,6 +117,27 @@ class AdminController extends Controller
             'remember_token' => \Illuminate\Support\Str::random(60),
         ])->save();
 
+        /*
+         * A NEW SESSION ID FIRST, then claim it — the same pair the customer
+         * side already used (AuthController::updateAccount()) and for the same
+         * reason.
+         *
+         * remember_token is the single-session token, so rotating it above ends
+         * every OTHER session on this account. What it cannot end is a COPY OF
+         * THIS SESSION'S OWN COOKIE: that copy is not another session, it is
+         * this one, so claim() would fingerprint the attacker's id along with
+         * the owner's and leave them signed in — which is precisely the thing
+         * someone changing their password is trying to stop.
+         *
+         * regenerate() moves this browser to a new id and leaves the copy
+         * holding the old one, which EnforceSingleSession then refuses.
+         * Reproduced both ways in PasswordChangeSessionRotationTest.
+         */
+        $request->session()->regenerate();
+
+        // Keep THIS session, which just proved the current password, signed in.
+        \App\Support\SingleSession::claim($request, 'admin');
+
         return back()->with('password_success', 'Your password has been updated.');
     }
 
@@ -174,7 +195,10 @@ class AdminController extends Controller
         $outOfStockCount = $outOfStockItems->count();
         $inventoryAssetValue = $analytics->inventoryAssetValue();
 
-        $bestSellers = $analytics->bestSellers(5);
+        // Top Selling includes permanently deleted items (labelled in the
+        // view); Least Selling does not — "consider a promotion" means nothing
+        // for an item that no longer exists.
+        $bestSellers = $analytics->bestSellers(5, includeDeleted: true);
         $leastSellers = $analytics->leastSellers(5);
 
         $selectedBranchName = $selectedBranch === 'all'
@@ -213,10 +237,15 @@ class AdminController extends Controller
             'grossProfit'          => $current['gross_profit'],
             'grossMarginPercent'   => $current['margin_percent'],
 
-            // How many sold lines carried no cost snapshot and were therefore
-            // costed at TODAY'S ingredient prices. Zero on a healthy period,
+            // How many sold lines carried no cost snapshot: costed at TODAY'S
+            // ingredient prices, or — for a permanently deleted menu item
+            // with no estimate — counted at zero. Zero on a healthy period,
             // and the view stays silent when it is zero.
-            'uncostedLineCount'    => $current['legacy_fallback_count'],
+            'uncostedLineCount'    => $current['legacy_fallback_count'] + $current['uncosted_deleted_count'],
+            'uncostedDeletedLineCount' => $current['uncosted_deleted_count'],
+            // Lines whose cost was frozen from the recipe when their menu item
+            // was permanently deleted — an estimate, not a time-of-sale record.
+            'estimatedCostLineCount' => $current['estimated_cost_count'],
             'soldLineCount'        => $current['item_count'],
 
             // KPI 5: completed orders
@@ -820,11 +849,8 @@ class AdminController extends Controller
             fputcsv($file, ['Unavailable figures', 'Where a figure could not be calculated it is written as'
                 . ' Insufficient Data, Unavailable, Not Applicable or No Sales. It is never written as 0.']);
 
-            if ($financials['legacy_fallback_count'] > 0) {
-                fputcsv($file, ['Cost note', $financials['legacy_fallback_count'] . ' of '
-                    . $financials['item_count'] . ' sold lines have no recorded cost from the time of sale,'
-                    . ' so they are costed at TODAY\'S ingredient prices. COGS and Gross Profit for those'
-                    . ' lines are an estimate, not a record of what the ingredients cost then.']);
+            foreach ($this->costNoteRows($financials) as $row) {
+                fputcsv($file, $row);
             }
 
             fclose($file);
@@ -948,10 +974,41 @@ class AdminController extends Controller
      */
     private function archivedCatalogueCount(): int
     {
-        return \App\Models\MenuItem::onlyArchived()->count()
+        return $this->archivedMenuItemsInScope()->count()
             + \App\Models\MenuOption::onlyArchived()->count()
             + Category::onlyArchived()->count()
             + \App\Models\Subcategory::onlyArchived()->count();
+    }
+
+    /**
+     * Archived menu items the signed-in viewer may see — the ONE query behind
+     * both the Archived page's menu-item section and the "Archived (N)" count,
+     * so the two cannot drift apart.
+     *
+     * Branch-scoped (2026-09-24). Both used to read every branch, so a Branch 1
+     * supervisor or staff member saw Branch 2's archived dishes. The rule is
+     * the same one the live Menu Items list applies (showMenuItems() filters
+     * on getSelectedBranch(), which is lockedBranchId() for these roles): a
+     * branch-locked viewer gets their own branch_id only, which also leaves
+     * out SHARED items (branch_id NULL) — they are not on that viewer's live
+     * list either, and deleteMenuItem() refuses them to a manager.
+     *
+     * Deliberately lockedBranchId() and not the owner's "Viewing:" picker:
+     * the owner sees every branch here, as before.
+     *
+     * Only menu items. Add-ons have no branch_id, and categories/subcategories
+     * are not branch-scoped on their own live lists, so their archive sections
+     * keep the behaviour those lists have.
+     */
+    private function archivedMenuItemsInScope(): \Illuminate\Database\Eloquent\Builder
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        return \App\Models\MenuItem::onlyArchived()
+            ->when(
+                $lockedBranchId !== null,
+                fn ($q) => $q->where('menu_items.branch_id', $lockedBranchId)
+            );
     }
 
     // ══════════ Menu Items (CRUD WORKING) ══════════
@@ -974,10 +1031,23 @@ class AdminController extends Controller
             // MenuItemCosting::breakdownForMany()'s docblock for the query
             // budget this closes.
             'recipeIngredients.inventory',
+            // Menu Item Sizes (Phase 1): every size row, archived included
+            // (the editor offers Restore), with its recipe and each line's
+            // inventory — three batched queries whatever the catalogue size,
+            // instead of three per sized item in the size editor below.
+            'allSizes.ingredients.inventory',
         ])
             ->when($selectedBranch !== 'all', function ($q) use ($selectedBranch) {
                 $q->where('branch_id', $selectedBranch);
             })
+            // Branch-grouped table (admin/menu-items.blade.php): non-null
+            // branches first in id order, the shared "All Branches" items
+            // last, display_order/name unchanged as the tiebreak WITHIN each
+            // branch. A no-op when $selectedBranch already narrowed the rows
+            // to one branch (locked staff/supervisor, or an admin's explicit
+            // branch pick) — every row shares one branch_id either way.
+            ->orderByRaw('branch_id IS NULL')
+            ->orderBy('branch_id')
             ->orderBy('display_order')
             ->orderBy('name')
             ->get();
@@ -1010,6 +1080,10 @@ class AdminController extends Controller
         // this item cost to make" — see App\Services\MenuItemCosting.
         $costing = app(\App\Services\MenuItemCosting::class)->breakdownForMany($menuItems);
 
+        // Cost-from-recipe line for each size's recipe editor, from the rows
+        // eager-loaded above — no query.
+        $sizeCosting = app(\App\Services\MenuItemCosting::class)->sizeCostLines($menuItems);
+
         return view('admin.menu-items', compact(
             'menuItems',
             'categories',
@@ -1019,7 +1093,8 @@ class AdminController extends Controller
             'branchNames',
             'selectedBranch',
             'archivedCount',
-            'costing'
+            'costing',
+            'sizeCosting'
         ));
     }
 
@@ -1039,6 +1114,24 @@ class AdminController extends Controller
         return $inventory
             && (bool) $inventory->is_active
             && (int) $inventory->branch_id === (int) $selectedBranch;
+    }
+
+    /**
+     * May $inventory be a line of a recipe that belongs to $menuItem — its base
+     * recipe (addIngredient()) or one of its sizes' recipes (addSizeIngredient())?
+     *
+     * The rule addIngredient() has always applied, named once so the two recipe
+     * editors cannot drift: a branch item takes only an ACTIVE inventory row of
+     * ITS OWN branch (inventoryIsSelectableForBranch(), compared against the
+     * item's branch_id — never the viewer's picker, never a literal id). A
+     * shared (NULL branch_id) item is not narrowed, exactly as before; only the
+     * owner can reach one, because resolveRecordInScope() hands a branch-locked
+     * user a 404 for it first.
+     */
+    private function menuItemRecipeAcceptsInventory(\App\Models\MenuItem $menuItem, \App\Models\Inventory $inventory): bool
+    {
+        return $menuItem->branch_id === null
+            || $this->inventoryIsSelectableForBranch($inventory->id, $menuItem->branch_id);
     }
 
     /**
@@ -1151,12 +1244,9 @@ class AdminController extends Controller
         if ($request->hasFile('image')) {
             $file = $request->file('image');
 
-            $filename = time() . '_' .
-                preg_replace(
-                    '/[^A-Za-z0-9\.]/',
-                    '_',
-                    $file->getClientOriginalName()
-                );
+            // Name comes from the image's CONTENT plus a random token, never
+            // from the browser's filename. See App\Support\UploadedImageName.
+            $filename = \App\Support\UploadedImageName::for($file);
 
             $file->move(public_path('uploads/menu-items'), $filename);
 
@@ -1271,18 +1361,26 @@ class AdminController extends Controller
         }
 
         if ($request->hasFile('image')) {
-            if ($menuItem->image && file_exists(public_path($menuItem->image))) {
+            // Same "is this path used elsewhere" guard as
+            // CatalogueLifecycle::removeMenuItemImage() (Permanent Delete):
+            // withArchived(), matched on the image path. Excluding this
+            // item's own id is the only addition — that row still holds the
+            // old path in the database at this point, unlike the delete
+            // path where the row is already gone.
+            $imageStillUsedElsewhere = $menuItem->image && \App\Models\MenuItem::withArchived()
+                ->where('image', $menuItem->image)
+                ->where('id', '!=', $menuItem->id)
+                ->exists();
+
+            if ($menuItem->image && !$imageStillUsedElsewhere && file_exists(public_path($menuItem->image))) {
                 unlink(public_path($menuItem->image));
             }
 
             $file = $request->file('image');
 
-            $filename = time() . '_' .
-                preg_replace(
-                    '/[^A-Za-z0-9\.]/',
-                    '_',
-                    $file->getClientOriginalName()
-                );
+            // Name comes from the image's CONTENT plus a random token, never
+            // from the browser's filename. See App\Support\UploadedImageName.
+            $filename = \App\Support\UploadedImageName::for($file);
 
             $file->move(public_path('uploads/menu-items'), $filename);
 
@@ -1297,10 +1395,25 @@ class AdminController extends Controller
         $menuItem->inventory_amount_used = $validated['inventory_amount_used'] ?? 0;
         $menuItem->name = $validated['name'];
         $menuItem->description = $validated['description'] ?? null;
-        $menuItem->price = $validated['price'];
+
+        // Menu Item Sizes (Phase 1): a SIZED item's price is not the admin's
+        // to type — it is the "starting from" figure, the lowest live size
+        // price, and the modal shows it read-only. The posted value is
+        // ignored and re-derived below, so this form can never set a figure
+        // that disagrees with the sizes. An unsized item is unchanged.
+        $isSized = $menuItem->hasSizes();
+
+        if (! $isSized) {
+            $menuItem->price = $validated['price'];
+        }
+
         $menuItem->cost = $validated['cost'] ?? 0;
         $menuItem->branch_id = $targetBranch;
         $menuItem->save();
+
+        if ($isSized) {
+            $menuItem->syncStartingPriceFromSizes();
+        }
 
         return redirect()->route('admin.menu-items')
             ->with('success', 'Menu item updated successfully!');
@@ -1325,14 +1438,18 @@ class AdminController extends Controller
     }
 
     /**
-     * Remove a menu item: hard delete when nothing ever ordered it, archive
-     * when something did.
+     * Remove a menu item: ALWAYS archives it (2026-09-24), sold or unsold.
      *
      * This used to untick "Available" and call that success, which is what the
      * owner reported: the item stayed in the list forever and the message read
-     * like a failure. CatalogueLifecycle now decides, and says which of the two
-     * happened. safelyDelete() stays underneath as the net from the previous
-     * round — a constraint added later still cannot reach the screen.
+     * like a failure. It then became a hybrid — hard delete when nothing had
+     * ordered the item, archive when something had — which made this endpoint
+     * a permanent-delete door with no UI (see CatalogueLifecycle::
+     * removeMenuItem()). The irreversible step now lives only on the Archived
+     * page, owner only: forceDeleteArchivedMenuItem().
+     *
+     * safelyDelete() stays underneath as the net from the previous round — a
+     * constraint added later still cannot reach the screen.
      */
     public function deleteMenuItem(int $id)
     {
@@ -1374,6 +1491,23 @@ class AdminController extends Controller
             }
         }
 
+        /*
+         * THE HIDDEN DOOR, CLOSED. The lookup above deliberately includes
+         * archived rows so the branch checks answer the same way for them, but
+         * an archived item has already been through this endpoint once. A
+         * second DELETE here used to be the permanent delete — for an item
+         * whose order lines had since been purged, and for a same-branch
+         * supervisor too. It is now refused, and changes nothing. The only
+         * irreversible delete is the owner's Permanent Delete on the Archived
+         * page. (CatalogueLifecycle::removeMenuItem() is also archive-only and
+         * idempotent, so this refusal is the explanation, not the only guard.)
+         */
+        if ($menuItem->isArchived()) {
+            return redirect()->route('admin.menu-items')
+                ->with('error', 'Menu item "' . $menuItem->name . '" is already archived, so nothing was changed. '
+                    . 'Archived items are restored or permanently deleted from Archived items.');
+        }
+
         return $this->safelyDelete(
             function () use ($menuItem) {
                 $outcome = app(\App\Services\CatalogueLifecycle::class)->remove($menuItem);
@@ -1406,8 +1540,9 @@ class AdminController extends Controller
     // recipe row: an ingredient must belong to the item's own branch. Only
     // checked when the item HAS a branch — a shared (NULL branch_id) item
     // is unaffected, matching how the rest of this rule already treats it.
-    if ($menuItemModel->branch_id !== null
-        && !$this->inventoryIsSelectableForBranch($inventory->id, $menuItemModel->branch_id)) {
+    // (Named once in menuItemRecipeAcceptsInventory() since the size recipe
+    // editor applies the identical rule.)
+    if (!$this->menuItemRecipeAcceptsInventory($menuItemModel, $inventory)) {
         $message = 'Selected inventory item must belong to the same branch as this menu item.';
 
         if ($request->expectsJson()) {
@@ -1499,6 +1634,247 @@ public function deleteIngredient(Request $request, int $menuItem, int $ingredien
         'success',
         'Ingredient removed successfully.'
     );
+}
+
+// ══════════ MENU ITEM SIZES (Phase 1) ══════════
+//
+// Regular and Large, and nothing else — the database refuses any other name or
+// position (see the create_menu_item_sizes migration), and these endpoints
+// never take a name from the request at all. A size is part of its menu item:
+// every action below resolves the PARENT item through
+// AdminOrderAccess::resolveRecordInScope() FIRST, exactly as addIngredient()
+// does, so a branch-locked supervisor gets the same 404 for another branch's
+// item (or a shared one) as for a missing id; the size is then looked up UNDER
+// that item, so another item's size id is a 404 too. The item is the branch
+// boundary; there is no branch value in any of this code.
+//
+// Writes go through App\Services\MenuItemSizes (parent row lock, one
+// transaction); MenuItemSize's saved hook re-derives menu_items.price.
+//
+// Price rule: the one Menu Options adopted (required, > 0, fits
+// decimal(10,2)) — the menu item form's own min:0 would accept a ₱0 size and
+// has no upper bound. Refusals come back as the page's error flash and
+// reopen the item's editor ('menu_item_editing'), not as the default error
+// bag, which the page treats as a failed Add/Edit submission.
+
+private const SIZE_PRICE_RULE = ['required', 'numeric', 'gt:0', 'max:99999999.99'];
+
+private function sizeEditorRedirect(int $menuItemId): \Illuminate\Http\RedirectResponse
+{
+    return redirect()->route('admin.menu-items')->with('menu_item_editing', $menuItemId);
+}
+
+/** Make an unsized item sized: Regular + Large, together, both active. */
+public function enableMenuItemSizes(Request $request, int $menuItem)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+
+    $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        'regular_price' => self::SIZE_PRICE_RULE,
+        'large_price'   => self::SIZE_PRICE_RULE,
+    ], [
+        'regular_price.required' => 'Enter a price for Regular.',
+        'regular_price.numeric'  => 'Regular price must be a number.',
+        'regular_price.gt'       => 'Regular price must be more than ₱0.',
+        'regular_price.max'      => 'Regular price is too large.',
+        'large_price.required'   => 'Enter a price for Large.',
+        'large_price.numeric'    => 'Large price must be a number.',
+        'large_price.gt'         => 'Large price must be more than ₱0.',
+        'large_price.max'        => 'Large price is too large.',
+    ]);
+
+    if ($validator->fails()) {
+        return $this->sizeEditorRedirect($menuItemModel->id)->with('error', $validator->errors()->first());
+    }
+
+    $validated = $validator->validated();
+
+    try {
+        app(\App\Services\MenuItemSizes::class)->enable(
+            $menuItemModel,
+            $validated['regular_price'],
+            $validated['large_price']
+        );
+    } catch (\DomainException $e) {
+        return $this->sizeEditorRedirect($menuItemModel->id)->with('error', $e->getMessage());
+    } catch (\Illuminate\Database\QueryException $e) {
+        // Caught by type so SQL never reaches the page — e.g. the UNIQUE
+        // backstop firing on a double submit that raced past the lock.
+        Log::error('Menu item size enable failed', ['menu_item_id' => $menuItemModel->id, 'exception' => $e]);
+
+        return $this->sizeEditorRedirect($menuItemModel->id)
+            ->with('error', 'Could not set up sizes just now. Nothing was changed — please try again.');
+    }
+
+    return $this->sizeEditorRedirect($menuItemModel->id)->with(
+        'success',
+        'Regular and Large sizes set up for "' . $menuItemModel->name . '". '
+            . 'Add a recipe to each size — a size with no recipe cannot be ordered.'
+    );
+}
+
+/** Price and active flag of one live size. Name and position are fixed. */
+public function updateMenuItemSize(Request $request, int $menuItem, int $size)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+    // Live sizes only: an archived size is read-only until it is restored.
+    $sizeModel = $menuItemModel->sizes()->whereKey($size)->firstOrFail();
+
+    $validator = \Illuminate\Support\Facades\Validator::make($request->all(), [
+        'price'     => self::SIZE_PRICE_RULE,
+        'is_active' => ['required', 'boolean'],
+    ], [
+        'price.required' => 'Enter a price for ' . $sizeModel->name . '.',
+        'price.numeric'  => $sizeModel->name . ' price must be a number.',
+        'price.gt'       => $sizeModel->name . ' price must be more than ₱0.',
+        'price.max'      => $sizeModel->name . ' price is too large.',
+    ]);
+
+    if ($validator->fails()) {
+        return $this->sizeEditorRedirect($menuItemModel->id)->with('error', $validator->errors()->first());
+    }
+
+    $validated = $validator->validated();
+
+    app(\App\Services\MenuItemSizes::class)->update(
+        $sizeModel,
+        $validated['price'],
+        (bool) $validated['is_active']
+    );
+
+    return $this->sizeEditorRedirect($menuItemModel->id)
+        ->with('success', $sizeModel->name . ' size of "' . $menuItemModel->name . '" saved.');
+}
+
+/** Archive one size. Its row and recipe lines are kept for Restore. */
+public function archiveMenuItemSize(int $menuItem, int $size)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+    $sizeModel = $menuItemModel->sizes()->whereKey($size)->firstOrFail();
+
+    app(\App\Services\MenuItemSizes::class)->archive($sizeModel);
+
+    return $this->sizeEditorRedirect($menuItemModel->id)->with(
+        'success',
+        $sizeModel->name . ' size of "' . $menuItemModel->name . '" archived. Its recipe is kept — restore it any time.'
+    );
+}
+
+/**
+ * Restore one archived size — the same row, so the same recipe lines.
+ * Owner only (role:admin on the route), matching every other Restore in the
+ * catalogue lifecycle (admin.archived.restore).
+ */
+public function restoreMenuItemSize(int $menuItem, int $size)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+    $sizeModel = $menuItemModel->allSizes()->whereKey($size)->whereNotNull('archived_at')->firstOrFail();
+
+    app(\App\Services\MenuItemSizes::class)->restore($sizeModel);
+
+    return $this->sizeEditorRedirect($menuItemModel->id)
+        ->with('success', $sizeModel->name . ' size of "' . $menuItemModel->name . '" restored.');
+}
+
+/**
+ * Add one line to a size's recipe. Mirrors addIngredient() — same request
+ * fields, same refusals, same JSON shape — so the existing recipe editor JS
+ * drives it unchanged.
+ */
+public function addSizeIngredient(Request $request, int $menuItem, int $size)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+    $sizeModel = $menuItemModel->sizes()->whereKey($size)->firstOrFail();
+
+    $validated = $request->validate([
+        'inventory_id' => 'required|integer|exists:inventory,id',
+        // max = the largest value menu_item_size_ingredients.quantity
+        // (decimal(12,3)) holds, so an oversized figure is a 422, not a 500.
+        'quantity_used' => 'required|numeric|min:0.001|max:999999999.999',
+    ]);
+
+    $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
+
+    // THE branch rule — the same one addIngredient() applies, against the
+    // PARENT item's branch. A supervisor cannot reach another branch's item
+    // (404 above), and cannot attach another branch's inventory to their own.
+    if (!$this->menuItemRecipeAcceptsInventory($menuItemModel, $inventory)) {
+        $message = 'Selected inventory item must belong to the same branch as this menu item.';
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+
+        return redirect()->back()->withErrors(['inventory_id' => $message]);
+    }
+
+    $existing = \App\Models\MenuItemSizeIngredient::where('menu_item_size_id', $sizeModel->id)
+        ->where('inventory_id', $inventory->id)
+        ->first();
+
+    if ($existing) {
+        $existingQty = rtrim(rtrim(number_format((float) $existing->quantity, 3), '0'), '.');
+        $message = 'This ingredient is already added at ' . $existingQty . ' ' . $inventory->unit
+            . '. Delete it first if you want to change the quantity.';
+
+        if ($request->expectsJson()) {
+            return response()->json(['success' => false, 'message' => $message], 422);
+        }
+
+        return redirect()->back()->withErrors(['inventory_id' => $message]);
+    }
+
+    $ingredient = \App\Models\MenuItemSizeIngredient::create([
+        'menu_item_size_id' => $sizeModel->id,
+        'inventory_id'      => $inventory->id,
+        'quantity'          => $validated['quantity_used'],
+    ]);
+
+    $message = 'Ingredient "' . $inventory->item_name . '" added to ' . $sizeModel->name . '.';
+
+    if ($request->expectsJson()) {
+        return response()->json([
+            'success' => true,
+            'message' => $message,
+            'ingredient' => [
+                'id' => $ingredient->id,
+                'inventory_id' => $inventory->id,
+                'name' => $inventory->item_name,
+                // Key kept as quantity_used: it is the recipe editor's contract.
+                'quantity_used' => rtrim(rtrim(number_format((float) $ingredient->quantity, 3), '0'), '.'),
+                'unit' => $inventory->unit,
+                'delete_url' => route('admin.menu-items.sizes.ingredients.delete', [$menuItemModel->id, $sizeModel->id, $ingredient->id]),
+            ],
+        ]);
+    }
+
+    return redirect()->back()->with('success', $message);
+}
+
+/** Remove one line from a size's recipe. Mirrors deleteIngredient(). */
+public function deleteSizeIngredient(Request $request, int $menuItem, int $size, int $ingredient)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+    $sizeModel = $menuItemModel->sizes()->whereKey($size)->firstOrFail();
+    $ingredientModel = $sizeModel->ingredients()->whereKey($ingredient)->firstOrFail();
+
+    try {
+        $ingredientModel->delete();
+    } catch (\Throwable $e) {
+        Log::error('Size recipe ingredient delete failed', ['exception' => $e]);
+
+        $message = 'Could not remove that ingredient just now. Nothing was changed — please try again.';
+
+        return $request->expectsJson()
+            ? response()->json(['success' => false, 'message' => $message], 422)
+            : redirect()->back()->withErrors(['error' => $message]);
+    }
+
+    if ($request->expectsJson()) {
+        return response()->json(['success' => true, 'message' => 'Ingredient removed successfully.']);
+    }
+
+    return redirect()->back()->with('success', 'Ingredient removed successfully.');
 }
 
 /**
@@ -1689,12 +2065,8 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
         if ($request->hasFile('image')) {
             $file = $request->file('image');
 
-            $filename = time() . '_cat_' .
-                preg_replace(
-                    '/[^A-Za-z0-9\.]/',
-                    '_',
-                    $file->getClientOriginalName()
-                );
+            // See App\Support\UploadedImageName — client filename is ignored.
+            $filename = \App\Support\UploadedImageName::for($file, 'cat_');
 
             $file->move(public_path('uploads/categories'), $filename);
 
@@ -1730,6 +2102,9 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
         );
     }
 
+    // Owner-only route (see web.php's role:admin on add-category.update) —
+    // categories are always shared across every branch, so a supervisor
+    // renaming one has no "own branch only" reading the way menu items do.
     public function updateCategory(Request $request, int $id)
     {
         $category = Category::findOrFail($id);
@@ -1747,12 +2122,8 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
             $file = $request->file('image');
 
-            $filename = time() . '_cat_' .
-                preg_replace(
-                    '/[^A-Za-z0-9\.]/',
-                    '_',
-                    $file->getClientOriginalName()
-                );
+            // See App\Support\UploadedImageName — client filename is ignored.
+            $filename = \App\Support\UploadedImageName::for($file, 'cat_');
 
             $file->move(public_path('uploads/categories'), $filename);
 
@@ -1982,19 +2353,55 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
     public function showMenuOptions()
     {
-        // 'menuItems:id,branch_id' so the view can list, per option, which
-        // branches it is actually assigned to and whether each has its own
-        // ingredient mapping — see MenuOption::isMappedForBranch() (Phase 3
-        // audit, Finding #3).
-        $options = \App\Models\MenuOption::with(['ingredients.inventory', 'menuItems:id,branch_id'])
-            ->orderBy('name')
-            ->get();
-
-        $categories = \App\Models\Category::with(['menuItems'])
+        // 'menuItems:id,name,branch_id' so the view can list, per option,
+        // which branches it is actually assigned to and whether each has its
+        // own ingredient mapping — see MenuOption::isMappedForBranch() (Phase
+        // 3 audit, Finding #3) — and, with 'name' added here, which menu
+        // items by name ("Used in: ..."), so an admin no longer has to open
+        // every menu item one at a time to find out. Same relation, same
+        // MenuItem global scope (archived items already excluded), just one
+        // more selected column — no new query.
+        $options = \App\Models\MenuOption::with(['ingredients.inventory', 'menuItems:id,name,branch_id'])
             ->orderBy('name')
             ->get();
 
         $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        /*
+         * The Menu Items picker.
+         *
+         * BRANCH SCOPE. This read Category::with(['menuItems']) — every
+         * branch's items, for every viewer. assignOptions() resolves its
+         * target through AdminOrderAccess::resolveRecordInScope(), so a
+         * branch-locked supervisor who clicked another branch's row already
+         * got a 404 from Save Options; the list was a filter nobody had
+         * applied, and all it achieved was offering a supervisor rows they
+         * cannot act on and — until the branch badge added below — could not
+         * even tell apart from their own. Scoped now to the same branch
+         * resolveRecordInScope() will accept, so the picker and the save
+         * agree instead of disagreeing by a 404. Admins stay unrestricted,
+         * exactly as they are for $inventoryItems below and everywhere else
+         * in AdminOrderAccess.
+         *
+         * A NULL-branch ("all branches") menu item is deliberately NOT shown
+         * to a locked supervisor either: resolveRecordInScope() matches on
+         * branch_id = <theirs>, so it would 404 on that too.
+         *
+         * 'options' closes an N+1 that predates this pass — the view reads
+         * $item->options twice per row (the assigned-id list and the
+         * "N option(s)" count), which was one menu_item_options query per
+         * menu item on the page.
+         */
+        $categories = \App\Models\Category::with([
+                'menuItems' => fn ($query) => $query
+                    ->with('options')
+                    ->when(
+                        $lockedBranchId !== null,
+                        fn ($scoped) => $scoped->where('branch_id', $lockedBranchId)
+                    ),
+            ])
+            ->orderBy('name')
+            ->get();
 
         // Menu options are global (no branch_id), so offer every active inventory
         // item and label each with its branch so the admin picks the right one.
@@ -2048,13 +2455,13 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'price' => 'nullable|numeric|min:0',
+            'price' => 'required|numeric|gt:0|max:99999999.99',
             'description' => 'nullable|string|max:255',
         ]);
 
         \App\Models\MenuOption::create([
             'name' => $validated['name'],
-            'additional_price' => $validated['price'] ?? 0,
+            'additional_price' => $validated['price'],
             'is_active' => true,
             'display_order' => 0,
         ]);
@@ -2083,6 +2490,14 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
      * are untouched: this is a plain attribute update on the existing model,
      * never a delete+recreate, so nothing here can touch a relationship.
      *
+     * PRICE MUST BE > 0 (2026-09-23): a $0/blank price used to be accepted
+     * (`nullable|numeric|min:0`), which let a typo through with no add-on
+     * value at all. Tightened to `required|numeric|gt:0` on both this path
+     * and storeMenuOption(). This does NOT touch options already stored at
+     * additional_price = 0 — they stay visible and orderable — but saving
+     * an edit to one of them now requires giving it a real price first,
+     * same as any other option.
+     *
      * PAST ORDERS: order_item_options snapshots option_name and
      * additional_price onto the order line at order time (see that table's
      * migration) specifically so a later edit here cannot change what a
@@ -2094,20 +2509,72 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
      */
     public function updateMenuOption(Request $request, int $id)
     {
-        $option = \App\Models\MenuOption::findOrFail($id);
+        $option = \App\Models\MenuOption::with('menuItems:id,branch_id')->findOrFail($id);
+
+        if ($error = $this->refuseForeignBranchMenuOption($option, 'edit', 'edited')) {
+            return $error;
+        }
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'price' => 'nullable|numeric|min:0',
+            'price' => 'required|numeric|gt:0|max:99999999.99',
         ]);
 
         $option->update([
             'name' => $validated['name'],
-            'additional_price' => $validated['price'] ?? 0,
+            'additional_price' => $validated['price'],
         ]);
 
         return redirect()->route('admin.menu-options')
             ->with('success', 'Option "' . $option->name . '" updated!');
+    }
+
+    /**
+     * "Manage Menu Options/Add-ons" is Y | Y | N, but menu_options has no
+     * branch_id of its own — it is a global table, deliberately (an option
+     * can be assigned to menu items in several branches at once; see
+     * MenuOption::isMappedForBranch()). An option is only as branch-local as
+     * every menu item it is actually assigned to, via menu_item_options.
+     *
+     * Branch parity audit B2 (2026-09-27): updateMenuOption()/
+     * deleteMenuOption() carried no branch check at all, so a supervisor
+     * could rename, reprice or archive an add-on used by another branch's
+     * menu items — or one used only by a SHARED (branch_id = null) item —
+     * changing what every branch's customers saw or could order. Mirrors
+     * deleteMenuItem()'s two-part refusal on MenuItem itself: a shared item
+     * is refused outright, and a foreign branch is refused by comparing
+     * against $lockedBranchId — never coalesced, since MenuItem::branch_id
+     * null must never compare equal to an integer lock.
+     *
+     * An option assigned to NO menu item yet (just created, not linked to
+     * anything) refuses nothing — vacuously "every assigned item is mine".
+     *
+     * Admins are unaffected: lockedBranchId() is null for them, so this
+     * returns null unconditionally.
+     *
+     * @param  string  $verb            Present tense for the second message, e.g. "edit", "archive".
+     * @param  string  $pastParticiple  Past participle for the first, e.g. "edited", "archived".
+     * @return \Illuminate\Http\RedirectResponse|null  A refusal, or null to proceed.
+     */
+    private function refuseForeignBranchMenuOption(\App\Models\MenuOption $option, string $verb, string $pastParticiple)
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        if ($lockedBranchId === null) {
+            return null;
+        }
+
+        if ($option->menuItems->contains(fn ($item) => $item->branch_id === null)) {
+            return redirect()->route('admin.menu-options')
+                ->with('error', "Add-ons used by a shared menu item can only be {$pastParticiple} by the owner.");
+        }
+
+        if ($option->menuItems->contains(fn ($item) => (int) $item->branch_id !== $lockedBranchId)) {
+            return redirect()->route('admin.menu-options')
+                ->with('error', "You can only {$verb} add-ons that are used only by your own branch's menu items.");
+        }
+
+        return null;
     }
 
     /**
@@ -2123,7 +2590,11 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
      */
     public function deleteMenuOption(int $id)
     {
-        $option = \App\Models\MenuOption::withArchived()->findOrFail($id);
+        $option = \App\Models\MenuOption::withArchived()->with('menuItems:id,branch_id')->findOrFail($id);
+
+        if ($error = $this->refuseForeignBranchMenuOption($option, 'archive', 'archived')) {
+            return $error;
+        }
 
         return $this->safelyDelete(
             function () use ($option) {
@@ -2151,9 +2622,48 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
      */
     public function showArchivedCatalogue()
     {
+        $adminUser = Auth::guard('admin')->user();
+
+        // Same test the Restore button has always used, so Permanent Delete is
+        // shown to exactly the role its route (role:admin) admits.
+        $canPermanentlyDelete = $adminUser && $adminUser->isAdmin();
+
         return view('admin.archived', [
-            'menuItems' => \App\Models\MenuItem::onlyArchived()
+            'canPermanentlyDelete' => $canPermanentlyDelete,
+            'menuItems' => $this->archivedMenuItemsInScope()
                 ->with(['category' => fn ($q) => $q->withArchived(), 'branch'])
+                /*
+                 * What a Permanent Delete would do, shown BEFORE the click —
+                 * the same counts permanentlyDeleteMenuItem() re-checks. As
+                 * correlated subqueries in the one menu_items SELECT, so the
+                 * page costs no extra query however many rows are archived
+                 * (Deleted Inventory runs two per row). Only the owner sees
+                 * them, so only the owner's page asks.
+                 *
+                 * The add-on count lifts MenuOption's archived scope: the
+                 * CASCADE removes the pivot rows for archived add-ons too, and
+                 * a count that hid them would under-report what goes.
+                 *
+                 * open_lines_count decides whether the button is offered at
+                 * all (an item on a pending/preparing/serving order cannot go
+                 * yet); uncosted_lines_count is how many completed lines will
+                 * have today's estimated cost frozen onto them. Both are the
+                 * same rules permanentlyDeleteMenuItem() applies under lock.
+                 */
+                ->when($canPermanentlyDelete, fn ($q) => $q->withCount([
+                    'orderItems as order_lines_count',
+                    'orderItems as open_lines_count' => fn ($o) => $o->whereHas(
+                        'order',
+                        fn ($ord) => $ord->whereIn('status', \App\Services\InventoryDeductionService::COMMITTED_ORDER_STATUSES)
+                    ),
+                    'orderItems as uncosted_lines_count' => fn ($o) => $o
+                        ->where(fn ($c) => $c->whereNull('ingredient_cost')->orWhere('ingredient_cost', '<=', 0))
+                        ->whereHas('order', fn ($ord) => $ord->where('status', 'completed')),
+                    'recipeIngredients as recipe_lines_count',
+                    'options as option_links_count' => fn ($o) => $o->withoutGlobalScope(
+                        \App\Models\Concerns\NotArchivedScope::class
+                    ),
+                ]))
                 ->orderByDesc('archived_at')
                 ->get(),
             'menuOptions' => \App\Models\MenuOption::onlyArchived()
@@ -2193,13 +2703,84 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
         if (!$record) {
             return redirect()->route('admin.archived')
-                ->withErrors(['error' => 'That record is not in the archive — it may have been restored already.']);
+                ->withErrors(['error' => $type === 'menu-item'
+                    ? 'That menu item is no longer in the archive — it may have been restored or permanently deleted already. Nothing was changed.'
+                    : 'That record is not in the archive — it may have been restored already.']);
         }
 
+        // restore() re-reads the row under a lock before changing anything,
+        // so a permanent delete that commits after the lookup above is
+        // answered here as a refusal, not a "restored" for a row that is gone.
         $outcome = app(\App\Services\CatalogueLifecycle::class)->restore($record);
+
+        if ($outcome['action'] === \App\Services\CatalogueLifecycle::BLOCKED) {
+            return redirect()->route('admin.archived')
+                ->withErrors(['error' => $outcome['message']]);
+        }
 
         return redirect()->route('admin.archived')
             ->with('success', $outcome['message']);
+    }
+
+    /**
+     * Permanent Delete for an archived menu item — the irreversible second
+     * stage, reachable only from the Archived page.
+     *
+     * Owner only. The route sits in the role:admin group, and the role is
+     * re-checked here as well, answered the way RoleMiddleware answers, so
+     * moving the route into a wider group by mistake cannot open this to a
+     * supervisor. The owner is never branch-locked (lockedBranchId() is null
+     * for admin), so no branch narrowing applies — the same as the owner's
+     * normal delete.
+     *
+     * Menu items only, by design: add-ons, categories and subcategories have
+     * no permanent-delete step. Eligibility and the delete itself live in
+     * CatalogueLifecycle::permanentlyDeleteMenuItem(), which re-checks the
+     * archived state and refuses an item still on an open order, under a row
+     * lock. A sold item's past order lines are kept with their link cut
+     * (order_items.menu_item_id is ON DELETE SET NULL since 2026-09-24).
+     */
+    public function forceDeleteArchivedMenuItem(int $id)
+    {
+        $adminUser = Auth::guard('admin')->user();
+
+        if (!$adminUser || !$adminUser->isAdmin()) {
+            return redirect()->route('admin.home')
+                ->with('error', "You don't have permission to access that.");
+        }
+
+        $menuItem = \App\Models\MenuItem::onlyArchived()->find($id);
+
+        if (!$menuItem) {
+            return redirect()->route('admin.archived')
+                ->withErrors(['error' => 'That menu item is not in the archive — it may have been restored or permanently deleted already.']);
+        }
+
+        return $this->safelyDelete(
+            function () use ($menuItem) {
+                $outcome = app(\App\Services\CatalogueLifecycle::class)->permanentlyDeleteMenuItem($menuItem);
+
+                $redirect = redirect()->route('admin.archived');
+
+                if ($outcome['action'] !== \App\Services\CatalogueLifecycle::DELETED) {
+                    return $redirect->withErrors(['error' => $outcome['message']]);
+                }
+
+                $redirect->with('success', $outcome['message']);
+
+                // The row is gone and stays gone; a file that could not be
+                // removed afterwards is reported beside the success, not
+                // folded into it and not "fixed" by restoring anything.
+                if ($outcome['cleanup_problem']) {
+                    $redirect->withErrors(['error' => $outcome['cleanup_problem']]);
+                }
+
+                return $redirect;
+            },
+            'admin.archived',
+            'the menu item "' . $menuItem->name . '"',
+            'Something still refers to it, so it stays archived.'
+        );
     }
 
     /**
@@ -2245,10 +2826,62 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             ], 422);
         }
 
+        /*
+         * Every element has to be a scalar id before it is coerced.
+         *
+         * array_map('intval', ...) below turns a NESTED array into 1 without a
+         * warning, so an option_ids[]=[…] payload used to resolve to option #1
+         * and assign it — an input that quietly meant something other than what
+         * it said. Not an escalation on its own (the actor is already an
+         * authenticated admin or supervisor who may assign any option they can
+         * see, and the branch check on $menuItem above is what actually guards
+         * this endpoint), which is exactly why it would have sat here until it
+         * was one. Refused with the same message as a malformed option_ids, so
+         * saveAssignment() surfaces it through the path it already has.
+         */
+        foreach ($optionIds as $candidate) {
+            if (! is_scalar($candidate) || ! is_numeric($candidate)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Could not save: the selected options were not sent correctly. Please refresh and try again.',
+                ], 422);
+            }
+        }
+
         $optionIds = array_values(array_unique(array_map('intval', $optionIds)));
 
-        $existing = \App\Models\MenuOption::withArchived()
-            ->whereIn('id', $optionIds)
+        /*
+         * ARCHIVED OPTIONS ARE NOT ASSIGNABLE (Phase 2, Sept 2026).
+         *
+         * This read withArchived(), which lifts the Archivable global scope
+         * and made an archived add-on pass the existence check like any
+         * other. The rendered checkbox list has never contained one, so the
+         * page itself could not send it — but option_ids is a JSON array
+         * this endpoint takes on trust once the ids resolve, and a crafted
+         * request naming an archived id was accepted and synced.
+         *
+         * Nothing appeared on the customer menu as a result: the same global
+         * scope hides an archived row from the MenuItem->options relation
+         * everywhere it is read. The damage was deferred rather than absent.
+         * Archiving an add-on means "the shop stopped selling this", and the
+         * pivot row written here survives until the next save of that item,
+         * so restoring the option later would have put it back on a menu
+         * item nobody chose to put it on, with no record that anything had
+         * been assigned in between.
+         *
+         * The fix is the default scope, i.e. deleting the withArchived()
+         * call: an archived option now falls into $missing below and is
+         * refused with the message that was already there for an id that
+         * does not resolve, which is what an archived one is as far as this
+         * page is concerned. Restoring the option first makes it assignable
+         * again, because it is then an ordinary row.
+         *
+         * DELIBERATELY NOT A CHANGE TO ARCHIVING. An option archived while
+         * already assigned keeps its existing pivot rows — that is
+         * CatalogueLifecycle's business and MenuOptionArchivePreservesLinksTest
+         * pins it. This refuses a NEW assignment; it removes nothing.
+         */
+        $existing = \App\Models\MenuOption::whereIn('id', $optionIds)
             ->pluck('id')
             ->all();
 
@@ -2277,6 +2910,9 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             $pendingOrders = \App\Models\Order::with([
                     'items',
                     'discountCard',
+                    // Every listed PWD/Senior ID, for the discount modal —
+                    // one query for the whole board, not one per card.
+                    'discountBeneficiaries',
                     'voucher',
                     'customer',
                 ])
@@ -2352,7 +2988,15 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     $query->where('is_active', true)
                         ->orderBy('display_order')
                         ->orderBy('name');
-                }
+                },
+                // Feeds $optionBranchIds below — two extra queries for the
+                // whole page (menu_option_ingredients, then inventory), not
+                // one per option.
+                'options.ingredients.inventory',
+                // Menu Item Sizes (Phase 2): the counter's Regular/Large
+                // picker (MenuItem::sizeChoices(), recipe verdicts only). One
+                // query for the page, a second only when any size exists.
+                'allSizes.ingredients',
             ])
             ->where('is_available', true)
             ->where(function ($query) {
@@ -2369,6 +3013,50 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
             $subcategories = \App\Models\Subcategory::orderBy('name')->get();
 
+            /*
+             * Which branches each add-on option is actually orderable in —
+             * [option_id => [branch_id, ...]].
+             *
+             * storeManualOrder() hard-refuses an add-on that has no ingredient
+             * link for the order's branch (the same rule as
+             * MenuOption::isMappedForBranch(), mirrored from the customer
+             * checkout). The counter's option modal did not know that, so it
+             * offered every assigned add-on and staff only found out at submit
+             * — a dead end in front of a paying customer, and the staff-side
+             * twin of the shown-but-inert add-on that
+             * MenuItem::optionsAvailableForBranch() already removed from the
+             * customer menu.
+             *
+             * Shipped as ONE page-level map rather than per card because an
+             * option may be assigned to items in several branches; the modal
+             * filters against the branch currently chosen in the walk-in form,
+             * which is the branch the order will actually be written to, not
+             * the card's own branch (a NULL-branch item is sold by every
+             * branch). Derived from the already eager-loaded relations, so it
+             * costs no query of its own.
+             *
+             * Every option present on this page gets an entry, so the modal can
+             * treat a MISSING id as "unknown, show it" and only hide an option
+             * it positively knows is unmapped for that branch. An empty array
+             * means mapped nowhere, which is correctly unorderable everywhere.
+             * The server refusal stays authoritative either way — this only
+             * stops staff being offered a choice that cannot succeed.
+             */
+            $optionBranchIds = $menuItems
+                ->pluck('options')
+                ->flatten()
+                ->unique('id')
+                ->mapWithKeys(fn ($option) => [
+                    (int) $option->id => $option->ingredients
+                        ->map(fn ($link) => $link->inventory?->branch_id)
+                        ->filter(fn ($branchId) => $branchId !== null)
+                        ->map(fn ($branchId) => (int) $branchId)
+                        ->unique()
+                        ->values()
+                        ->all(),
+                ])
+                ->all();
+
             return view(
                 'admin.home',
                 compact(
@@ -2379,7 +3067,8 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     'menuItems',
                     'categories',
                     'subcategories',
-                    'selectedBranch'
+                    'selectedBranch',
+                    'optionBranchIds'
                 )
             );
         }
@@ -2518,10 +3207,21 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
         public function storeManualOrder(Request $request)
         {
-            $validated = $request->validate([
+            $validated = $request->validate(array_merge([
                 'branch_id' => 'required|exists:branches,id',
                 'order_type' => 'required|in:dine_in,pick_up',
-                'table_number' => 'nullable|string|max:50',
+                // max:10 matches orders.table_number, which is varchar(10) —
+                // as are table_sessions, table_access_codes and
+                // restaurant_tables, all three of which call it "the canonical
+                // shape". The table-DEFINITION endpoints already validated
+                // max:10; only this form said 50. Because MySQL runs with
+                // STRICT_TRANS_TABLES, an 11-50 character value passed
+                // validation and then failed at INSERT (1406 "Data too long"),
+                // which the QueryException catch below turned into the generic
+                // "could not be saved" banner with no field named instead of a
+                // plain message on the box staff typed in. Same reasoning as
+                // amount_paid below. See ManualOrderTableNumberLengthTest.
+                'table_number' => 'nullable|string|max:10',
                 'payment_method' => 'required|in:cash,gcash',
                 // Upper bound matches the decimal(10,2) the column actually
                 // is. Without it a tampered or fat-fingered amount_paid was
@@ -2534,23 +3234,16 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 'items.*.quantity' => 'required|integer|min:1',
                 'items.*.options' => 'nullable|array',
                 'items.*.options.*' => 'integer|exists:menu_options,id',
+                // Menu Item Sizes (Phase 2): required for a sized item, and
+                // must be one of that item's own — checked per line below.
+                'items.*.size_id' => 'nullable|integer',
 
                 // PWD / Senior Citizen — staff verifies the physical ID in
-                // person at the counter, so unlike the online flow there is no
-                // photo upload and no discount_status = 'pending' step.
+                // person at the counter, so there is no discount_status =
+                // 'pending' step here. The ID rows (the first-row fields plus
+                // any "+ Add another ID" rows) are validated by the rules
+                // merged in below, shared with customer checkout.
                 'discount_type' => 'nullable|in:pwd,senior',
-                'discount_beneficiary_name' => [
-                    'nullable',
-                    'string',
-                    'max:100',
-                    "regex:/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ .'-]{1,99}$/u",
-                ],
-                'discount_beneficiary_id' => [
-                    'nullable',
-                    'string',
-                    'max:100',
-                    "regex:/^[A-Za-z0-9\-\/ ]+$/",
-                ],
 
                 /*
                  * The customer's voucher code, keyed in by staff on their
@@ -2568,7 +3261,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                  * validator accepts.
                  */
                 'voucher_code' => 'nullable|string|max:64',
-            ]);
+            ], \App\Support\DiscountBeneficiaries::rules()), \App\Support\DiscountBeneficiaries::messages());
 
             // A staff member may only raise a walk-in order in their OWN
             // branch. validate() above only proves branch_id EXISTS; this is
@@ -2651,17 +3344,33 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             $discountBeneficiaryName = null;
             $discountBeneficiaryCardNumber = null;
 
-            if ($request->filled('discount_type')) {
-                $discountBeneficiaryName = trim((string) $request->input('discount_beneficiary_name'));
-                $discountBeneficiaryCardNumber = trim((string) $request->input('discount_beneficiary_id'));
+            // Every PWD/Senior ID staff listed — a record for the receipt and
+            // the compliance log, never a multiplier: the discount below is
+            // still Order::pwdSeniorDiscountFor($total), computed once.
+            $discountBeneficiaries = [];
 
-                if (!$discountBeneficiaryName || !$discountBeneficiaryCardNumber) {
+            if ($request->filled('discount_type')) {
+                $beneficiaryList = \App\Support\DiscountBeneficiaries::fromRequest($request);
+
+                if ($beneficiaryList['error'] !== null) {
+                    return back()
+                        ->withErrors(['discount_type' => $beneficiaryList['error']])
+                        ->withInput();
+                }
+
+                $discountBeneficiaries = $beneficiaryList['rows'];
+
+                if ($discountBeneficiaries === []) {
                     return back()
                         ->withErrors([
                             'discount_type' => 'Please provide the beneficiary name and ID number.'
                         ])
                         ->withInput();
                 }
+
+                // Row 0 is mirrored into the two legacy columns.
+                $discountBeneficiaryName = $discountBeneficiaries[0]['full_name'];
+                $discountBeneficiaryCardNumber = $discountBeneficiaries[0]['id_number'];
 
                 $discountType = $validated['discount_type'];
             }
@@ -2679,7 +3388,10 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
             $branchId = (int) $validated['branch_id'];
 
-            $menuItems = \App\Models\MenuItem::with(['options.ingredients.inventory', 'recipeIngredients'])
+            // allSizes.ingredients.inventory (Phase 2): the size a line names
+            // is resolved against THIS item's own rows, and the same loaded
+            // model is what the stock gate measures and the freeze records.
+            $menuItems = \App\Models\MenuItem::with(['options.ingredients.inventory', 'recipeIngredients', 'allSizes.ingredients.inventory'])
                 ->whereIn(
                     'id',
                     collect($validated['items'])
@@ -2714,6 +3426,54 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             foreach ($validated['items'] as $item) {
                 $menuItem = $menuItems->get((int) $item['menu_item_id']);
 
+                /*
+                 * Menu Item Sizes (Phase 2) — the counter is held to exactly
+                 * what customer checkout is. A sized item needs a size; the
+                 * size must be one of THIS item's own rows (never another
+                 * item's, another branch's same-named item included); and it
+                 * must be sellable with a recipe of its own — the Phase 1
+                 * resolver's verdict and sentence, via hasRecipe() /
+                 * orderBlockedReason() with the size. A size sent for an
+                 * unsized item is refused, not ignored. The base-recipe guard
+                 * below is for unsized items only.
+                 */
+                $postedSizeId = $item['size_id'] ?? null;
+                $size = null;
+
+                if ($menuItem->hasSizes()) {
+                    if ($postedSizeId === null || $postedSizeId === '') {
+                        return back()
+                            ->withErrors([
+                                'items' => 'Please choose a size (Regular or Large) for ' . $menuItem->name . '.'
+                            ])
+                            ->withInput();
+                    }
+
+                    $size = $menuItem->allSizes->firstWhere('id', (int) $postedSizeId);
+
+                    if (! $size) {
+                        return back()
+                            ->withErrors([
+                                'items' => \App\Exceptions\MenuItemSizeUnavailableException::notFound($menuItem)->getMessage()
+                            ])
+                            ->withInput();
+                    }
+
+                    if (! $menuItem->hasRecipe($size)) {
+                        return back()
+                            ->withErrors([
+                                'items' => $menuItem->orderBlockedReason((int) $item['quantity'], $size)
+                            ])
+                            ->withInput();
+                    }
+                } elseif ($postedSizeId !== null && $postedSizeId !== '') {
+                    return back()
+                        ->withErrors([
+                            'items' => \App\Exceptions\MenuItemSizeUnavailableException::notFound($menuItem)->getMessage()
+                        ])
+                        ->withInput();
+                }
+
                 // No-recipe guard (Phase 3 audit, Finding #9): mirrors
                 // MenuItem::orderBlockedReason() on the customer checkout —
                 // an item with no recipe lines and no legacy inventory_item_id
@@ -2721,7 +3481,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 // later would deduct nothing and the kitchen would have no
                 // instructions. Staff-facing wording since this is the
                 // counter flow, not the customer's.
-                if ($menuItem->isMissingRecipe()) {
+                if ($size === null && $menuItem->isMissingRecipe()) {
                     return back()
                         ->withErrors([
                             'items' => $menuItem->name . ' has no recipe set and cannot be added to an order yet.'
@@ -2771,7 +3531,9 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     ];
                 }
 
-                $itemPrice = (float) $menuItem->price + $optionsTotal;
+                // A sized line is charged its size's OWN price, never the
+                // item's "starting from" menu_items.price; add-ons stay flat.
+                $itemPrice = (float) ($size !== null ? $size->price : $menuItem->price) + $optionsTotal;
                 $subtotal = $itemPrice * (int) $item['quantity'];
 
                 $total += $subtotal;
@@ -2782,6 +3544,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     'item_price' => $itemPrice,
                     'subtotal' => $subtotal,
                     'options' => $optionDetails,
+                    'size' => $size,
                 ];
             }
 
@@ -2810,11 +3573,20 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             // refusal the way customers already see it ("Only N left"); the
             // authoritative, locked re-check runs inside the order
             // transaction below.
-            $stockLines = array_map(fn($data) => [
-                'menu_item' => $data['menu_item'],
-                'quantity' => $data['quantity'],
-                'selected_option_ids' => array_column($data['options'], 'id'),
-            ], $itemsToCreate);
+            $stockLines = array_map(function ($data) {
+                $line = [
+                    'menu_item' => $data['menu_item'],
+                    'quantity' => $data['quantity'],
+                    'selected_option_ids' => array_column($data['options'], 'id'),
+                ];
+
+                // Judged against the chosen size's own recipe (Phase 2).
+                if ($data['size'] !== null) {
+                    $line['size'] = $data['size'];
+                }
+
+                return $line;
+            }, $itemsToCreate);
 
             $stockErrors = app(\App\Services\InventoryDeductionService::class)
                 ->cartShortfalls($stockLines, (int) $branchId);
@@ -2925,6 +3697,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                      */
                     $discountBeneficiaryName       = null;
                     $discountBeneficiaryCardNumber = null;
+                    $discountBeneficiaries         = [];
                 } else {
                     /*
                      * The PWD/Senior wins, so the voucher is NOT spent. These
@@ -2960,7 +3733,11 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             $changeAmount = $amountPaid - $finalTotal;
 
             try {
-                $order = \Illuminate\Support\Facades\DB::transaction(function () use (
+                // OrderTransaction, not DB::transaction: READ COMMITTED for this
+                // one transaction, so the locked stock gate counts an online
+                // order that committed while this one waited on the lock — the
+                // same guarantee customer checkout has. See the class.
+                $order = \App\Support\OrderTransaction::run(function () use (
                     $validated,
                     $itemsToCreate,
                     $total,
@@ -2969,6 +3746,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     $discountType,
                     $discountBeneficiaryName,
                     $discountBeneficiaryCardNumber,
+                    $discountBeneficiaries,
                     $amountPaid,
                     $changeAmount,
                     $branchId,
@@ -3026,7 +3804,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                         // Staff IS the verifier here, in person, at the moment
                         // of sale — there is nothing left to approve afterward,
                         // unlike the online flow's discount_status = 'pending'.
-                        'discount_status' => 'approved', // pending only applies to the online photo-verification flow
+                        'discount_status' => 'approved', // pending only applies to the online staff-approval flow
                         'tax_amount' => 0,
                         'total' => $finalTotal,
                         'payment_method' => $validated['payment_method'],
@@ -3036,15 +3814,29 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                         'status' => 'pending',
                     ]);
 
+                    // Every listed PWD/Senior ID, rolled back with the order
+                    // if anything below throws. Empty when none applies.
+                    \App\Support\DiscountBeneficiaries::saveFor($order, $discountBeneficiaries);
+
                     foreach ($itemsToCreate as $data) {
                         $orderItem = \App\Models\OrderItem::create([
                             'order_id' => $order->id,
                             'menu_item_id' => $data['menu_item']->id,
+                            // Size snapshot (Phase 2) — NULL when unsized.
+                            'menu_item_size_id' => $data['size']?->id,
                             'item_name' => $data['menu_item']->name,
+                            'size_name' => $data['size']?->name,
                             'quantity' => $data['quantity'],
                             'item_price' => $data['item_price'],
                             'subtotal' => $data['subtotal'],
                         ]);
+
+                        // Freeze the size recipe the locked gate just measured,
+                        // exactly as customer checkout does.
+                        if ($data['size'] !== null) {
+                            app(\App\Services\InventoryDeductionService::class)
+                                ->freezeSizeRecipe($orderItem, $data['menu_item'], $data['size']);
+                        }
 
                         foreach ($data['options'] as $option) {
                             \Illuminate\Support\Facades\DB::table(
@@ -3099,6 +3891,28 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                         ' created successfully!'
                     );
 
+            } catch (\Illuminate\Database\QueryException $e) {
+                // MUST come before RuntimeException: QueryException extends
+                // PDOException extends RuntimeException, so the branch below
+                // used to catch it and echo the raw SQLSTATE, the SQL and the
+                // table names to staff. The realistic cause is a menu item
+                // permanently deleted between the lookup above and the line
+                // insert (foreign key 1452); anything else gets the generic
+                // line. Either way the transaction rolled back — no order.
+                Log::error('Manual order creation failed (database)', [
+                    'admin_id'  => Auth::guard('admin')->id(),
+                    'exception' => $e,
+                ]);
+
+                return back()
+                    ->withErrors([
+                        'error' => (int) ($e->errorInfo[1] ?? 0) === 1452
+                            ? 'One of the selected items is no longer available. Nothing was '
+                                . 'recorded and no stock was deducted. Please refresh the menu and try again.'
+                            : 'The manual order could not be saved. Nothing was '
+                                . 'recorded and no stock was deducted. Please try again.',
+                    ])
+                    ->withInput();
             } catch (\RuntimeException $e) {
                 // Thrown deliberately by the inventory deduction service with a
                 // message written for staff ("Not enough X ..."). Safe to show.
@@ -3244,6 +4058,9 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             'items.menuItem.recipeIngredients',
             'items.menuItem.inventoryItem',
             'items.options.ingredients',
+            // Menu Item Sizes (Phase 2): a sized line deducts the recipe
+            // frozen when it was placed, never the size's live one.
+            'items.sizeIngredients',
         ]);
 
         if (!in_array($order->status, ['pending', 'preparing', 'serving'])) {
@@ -3877,12 +4694,18 @@ public function markOrderRefunded(int $id)
              * no existing row to exempt on a create. Every other rule (max:50,
              * the custom message) is identical, so the two paths cannot
              * silently drift on what "already used" means.
+             *
+             * SCOPED TO $selectedBranch (Branch parity audit B5, 2026-09-27)
+             * — the unique INDEX itself is now composite(branch_id,
+             * item_code) (see that migration), so this mirrors the schema
+             * instead of rejecting a code another branch is free to reuse.
              */
             'item_code' => [
                 'required',
                 'string',
                 'max:50',
-                \Illuminate\Validation\Rule::unique('inventory', 'item_code'),
+                \Illuminate\Validation\Rule::unique('inventory', 'item_code')
+                    ->where('branch_id', $selectedBranch),
             ],
             'category' => 'nullable|string|max:100',
             'quantity' => 'required|numeric|min:0',
@@ -3957,12 +4780,21 @@ public function markOrderRefunded(int $id)
              *
              * ->ignore($item->id) is what makes "leave my own code as it is"
              * pass: the rule then checks every OTHER row, not this one.
+             *
+             * SCOPED TO $item->branch_id (Branch parity audit B5,
+             * 2026-09-27) — same reasoning as storeInventory() above. This
+             * endpoint never lets branch_id itself be edited (not in this
+             * validate() array, not in the $item->update() below), so the
+             * item's own current branch is the right scope for its whole
+             * lifetime here.
              */
             'item_code' => [
                 'required',
                 'string',
                 'max:50',
-                \Illuminate\Validation\Rule::unique('inventory', 'item_code')->ignore($item->id),
+                \Illuminate\Validation\Rule::unique('inventory', 'item_code')
+                    ->where('branch_id', $item->branch_id)
+                    ->ignore($item->id),
             ],
             'category' => 'nullable|string|max:100',
             'quantity' => 'required|numeric|min:0',
@@ -4643,6 +5475,56 @@ public function markOrderRefunded(int $id)
     }
 
     /**
+     * May this viewer ACT on a promotion at all — the weaker, read-shaped
+     * sibling of promotionScopeRefusal() above.
+     *
+     * WHY TWO RULES AND NOT ONE
+     * -------------------------
+     * They answer different questions, and conflating them breaks something
+     * either way:
+     *
+     *   promotionScopeRefusal()  — "may they MANAGE this promotion?" Company-wide
+     *     rows are owner-only there, because editing or deleting a global voucher
+     *     affects every branch.
+     *
+     *   this one                 — "is this promotion one they can SEE?" That is
+     *     the rule scopePromotionListing() applies to the Vouchers/Ads listings:
+     *     own branch PLUS global. Staff are shown company-wide codes on purpose
+     *     so they can quote them at the counter, so an action that merely hands a
+     *     code out must allow globals.
+     *
+     * Used by the issue-code endpoints, which are the only promotion actions open
+     * to Staff. Before this existed, issueVoucherCode() went straight from
+     * findOrFail() to minting, so the branch boundary on those endpoints was
+     * enforced only by the button not being rendered — see
+     * VoucherIssueCodeBranchScopeTest, which reproduced a Branch-1 staff account
+     * minting a spendable code against a Branch-2 promotion.
+     *
+     * Refuses as a 404, following AdminOrderAccess's convention for an
+     * attacker-supplied record id: "no such voucher" and "not your voucher" then
+     * look identical from outside, so probing sequential ids learns nothing.
+     * (promotionScopeRefusal's chatty redirect is right for its own callers,
+     * where the row came off a page the user was already looking at.)
+     */
+    private function refusePromotionOutsideBranch($record): void
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        // The owner is not branch-locked and reaches every branch, unchanged.
+        if ($lockedBranchId === null) {
+            return;
+        }
+
+        // Global (company-wide) rows are visible to everyone; own branch is fine.
+        if ($record->branch_id === null || (int) $record->branch_id === $lockedBranchId) {
+            return;
+        }
+
+        throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())
+            ->setModel(get_class($record), [$record->getKey()]);
+    }
+
+    /**
      * Narrow a voucher/ad listing to what this viewer may SEE.
      *
      * A branch-locked viewer gets their own branch's rows PLUS the global ones.
@@ -4879,6 +5761,21 @@ public function markOrderRefunded(int $id)
     {
         $voucher = \App\Models\Voucher::findOrFail($id);
 
+        /*
+         * THE BRANCH BOUNDARY. This endpoint is the one promotion action open to
+         * Staff as well as Supervisors, and $id comes straight from the request,
+         * so until this line the boundary was enforced only by the Vouchers page
+         * not rendering the button — which a typed POST ignores. Own-branch and
+         * company-wide are both allowed (that is exactly what the listing shows
+         * them); another branch's promotion 404s. See
+         * refusePromotionOutsideBranch(), and VoucherIssueCodeBranchScopeTest for
+         * the reproduction.
+         *
+         * The points-reward sibling below (issueRewardCode) needs no such call:
+         * it is in the role:admin group, and the owner is never branch-locked.
+         */
+        $this->refusePromotionOutsideBranch($voucher);
+
         $blocked = $voucher->issuanceErrorFor();
 
         if ($blocked !== null) {
@@ -5020,11 +5917,11 @@ public function markOrderRefunded(int $id)
 
     public function toggleGame(Request $request)
     {
-        $current = \Illuminate\Support\Facades\DB::table('settings')
-            ->where('key', 'game_enabled')
-            ->value('value');
-
-        $new = $current === '1' ? '0' : '1';
+        // Reads and writes the same global row (branch_id NULL) every reader
+        // uses — see Setting::gameEnabled(). The read used to take the first
+        // game_enabled row with no branch filter, which in both databases
+        // was a legacy branch-1 row this write never touches.
+        $new = \App\Models\Setting::gameEnabled() ? '0' : '1';
 
         \Illuminate\Support\Facades\DB::table('settings')
             ->updateOrInsert(
@@ -5086,14 +5983,23 @@ public function markOrderRefunded(int $id)
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'code' => 'required|string|max:20|unique:branches,code',
-            'address' => 'nullable|string|max:500',
+            'code' => 'required|string|max:10|unique:branches,code',
+            'address' => 'required|string|max:500',
             'contact_number' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'opening_time' => 'nullable',
             'closing_time' => 'nullable',
         ]);
 
+        /*
+         * is_active starts FALSE (Branch parity audit B4, 2026-09-27). A new
+         * branch used to go live immediately with an empty menu, no
+         * inventory and no tables set up — every customer-facing branch
+         * query filters on is_active, so it appeared in the pick-up branch
+         * list the instant this row was created. The owner now opens it
+         * manually (toggleBranch(), same switch used to close one) once menu
+         * items, inventory and tables are actually in place.
+         */
         $branch = \App\Models\Branch::create([
             'name' => $validated['name'],
             'code' => strtoupper($validated['code']),
@@ -5102,14 +6008,14 @@ public function markOrderRefunded(int $id)
             'email' => $validated['email'] ?? null,
             'opening_time' => $validated['opening_time'] ?? null,
             'closing_time' => $validated['closing_time'] ?? null,
-            'is_active' => true,
+            'is_active' => false,
             'is_main_branch' => false,
         ]);
 
         return redirect()->route('admin.branches')
             ->with(
                 'success',
-                'Branch "' . $validated['name'] . '" created!'
+                'Branch "' . $validated['name'] . '" created! It is closed by default — open it once its menu, inventory and tables are set up.'
             );
     }
 
@@ -5119,7 +6025,7 @@ public function markOrderRefunded(int $id)
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'address' => 'nullable|string|max:500',
+            'address' => 'required|string|max:500',
             'contact_number' => 'nullable|string|max:20',
             'email' => 'nullable|email|max:255',
             'opening_time' => 'nullable',
@@ -5279,12 +6185,8 @@ public function markOrderRefunded(int $id)
         if ($request->hasFile('image')) {
             $file = $request->file('image');
 
-            $filename = time() . '_ad_' .
-                preg_replace(
-                    '/[^A-Za-z0-9\.]/',
-                    '_',
-                    $file->getClientOriginalName()
-                );
+            // See App\Support\UploadedImageName — client filename is ignored.
+            $filename = \App\Support\UploadedImageName::for($file, 'ad_');
 
             $file->move(public_path('uploads/ads'), $filename);
 
@@ -5339,12 +6241,8 @@ public function markOrderRefunded(int $id)
 
             $file = $request->file('image');
 
-            $filename = time() . '_ad_' .
-                preg_replace(
-                    '/[^A-Za-z0-9\.]/',
-                    '_',
-                    $file->getClientOriginalName()
-                );
+            // See App\Support\UploadedImageName — client filename is ignored.
+            $filename = \App\Support\UploadedImageName::for($file, 'ad_');
 
             $file->move(public_path('uploads/ads'), $filename);
 
@@ -5420,6 +6318,47 @@ public function markOrderRefunded(int $id)
             'admin.ads',
             'the ad "' . $ad->title . '"'
         );
+    }
+
+    /**
+     * The cost caveats both CSV exports carry, from one ProfitCalculationService
+     * result (forRange() or the analytics financials that pass it through).
+     * The same disclosures the Summary screen and its print copy show. Empty
+     * when there is nothing to disclose, so a healthy period writes nothing.
+     *
+     * The first sentence is unchanged from before permanent deletes of sold
+     * items existed; the rest only appears when such lines are in the period.
+     *
+     * @return list<array{0: string, 1: string}>
+     */
+    private function costNoteRows(array $figures): array
+    {
+        $rows = [];
+        $sold = (int) ($figures['item_count'] ?? 0);
+        $deletedUncosted = (int) ($figures['uncosted_deleted_count'] ?? 0);
+        $uncosted = (int) ($figures['legacy_fallback_count'] ?? 0) + $deletedUncosted;
+        $estimated = (int) ($figures['estimated_cost_count'] ?? 0);
+
+        if ($uncosted > 0) {
+            $text = $uncosted . ' of ' . $sold . ' sold lines have no recorded cost from the time of sale,'
+                . ' so they are costed at TODAY\'S ingredient prices. COGS and Gross Profit for those'
+                . ' lines are an estimate, not a record of what the ingredients cost then.';
+
+            if ($deletedUncosted > 0) {
+                $text .= ' ' . $deletedUncosted . ' of them belong to permanently deleted menu items'
+                    . ' with nothing left to price them from, so they count as 0.';
+            }
+
+            $rows[] = ['Cost note', $text];
+        }
+
+        if ($estimated > 0) {
+            $rows[] = ['Estimated cost', $estimated . ' of ' . $sold . ' sold lines belong to permanently'
+                . ' deleted menu items; their cost was estimated from the recipe when the item was'
+                . ' deleted, not recorded at the time of sale.'];
+        }
+
+        return $rows;
     }
 
     /**
@@ -5568,15 +6507,14 @@ public function markOrderRefunded(int $id)
             // been emailed onward must still disclose how its costs were
             // priced, so it cannot be read as more certain than it is. Silent
             // when there is nothing to disclose.
-            if ($totals['legacy_fallback_count'] > 0) {
+            $costNotes = $this->costNoteRows($totals);
+
+            if ($costNotes) {
                 fputcsv($file, []);
-                fputcsv($file, [
-                    'Cost note',
-                    $totals['legacy_fallback_count'] . ' of ' . $totals['item_count']
-                        . ' sold lines have no recorded cost from the time of sale, so they are'
-                        . ' costed at TODAY\'S ingredient prices. COGS and Gross Profit for those'
-                        . ' lines are an estimate, not a record of what the ingredients cost then.',
-                ]);
+
+                foreach ($costNotes as $row) {
+                    fputcsv($file, $row);
+                }
             }
 
             fclose($file);
@@ -5671,21 +6609,42 @@ public function markOrderRefunded(int $id)
         $me = Auth::guard('admin')->user();
 
         /*
-         * The branch choices offered by the create/edit form.
+         * The branch choices offered by the create/edit form. ONE shared list
+         * — every row's inline edit form loops the same $branches (see
+         * users.blade.php), so this has to work for every account on the
+         * page, not just whichever one happens to be open.
          *
-         * A supervisor gets exactly their own branch. Their accounts are
-         * forced to it server-side by storeUser()/updateUser() regardless of
-         * what is posted, so this is the form agreeing with the enforcement
-         * rather than being the enforcement — but offering a branch that will
-         * be silently overridden would be a worse form than offering one.
+         * Branch parity audit B3 (2026-09-27). This used to be active
+         * branches only, which quietly broke two ways once a branch closes:
+         *
+         *  - Owner editing an account AT a closed branch: the dropdown had no
+         *    option matching that account's current branch_id, so no <option>
+         *    came back `selected` and the browser defaulted to the first item
+         *    in the list — silently reassigning the account to whatever
+         *    branch happened to sort first (id order) the moment ANY
+         *    non-branch field, e.g. name, was saved.
+         *  - Supervisor of a closed branch: `where('id', lockedBranchId())`
+         *    was ANDed onto `where('is_active', true)`, so a closed own-branch
+         *    matched neither and the dropdown — and the whole form — had no
+         *    branch option at all. `branch_id` is `required`, so saving any
+         *    edit to their own staff 422'd on a field the form never let them
+         *    touch.
+         *
+         * Fixed per role rather than by loosening the active filter for
+         * everyone: a supervisor must still never see the existence of any
+         * OTHER branch, closed or not, so their list stays a single row keyed
+         * on lockedBranchId() alone, without the is_active gate that a closed
+         * home branch would fail. The owner keeps every open branch, plus any
+         * closed branch a currently-listed account still belongs to — pulled
+         * from $staff so this never needs to look further than the accounts
+         * actually on this page.
          */
-        $branches = \App\Models\Branch::where('is_active', true)
-            ->when(
-                $me && ! $me->isAdmin(),
-                fn ($q) => $q->where('id', \App\Services\AdminOrderAccess::lockedBranchId() ?? 0)
-            )
-            ->orderBy('id')
-            ->get();
+        $branches = ($me && ! $me->isAdmin())
+            ? \App\Models\Branch::where('id', \App\Services\AdminOrderAccess::lockedBranchId() ?? 0)->get()
+            : \App\Models\Branch::where('is_active', true)
+                ->orWhereIn('id', $staff->pluck('branch_id')->filter()->unique())
+                ->orderBy('id')
+                ->get();
 
         // The role dropdown's options come from the SAME method the validator
         // uses, so the form cannot offer a role the server would refuse — a
@@ -5758,6 +6717,12 @@ public function markOrderRefunded(int $id)
             'branch_id' => $branchId,               // forced to own branch for a manager
             'role'      => $validated['role'],      // validated above; never admin
             'is_active' => true,
+            // Portal accounts are minted here by a manager, not self-registered,
+            // so there is no confirmation-email loop for them — see the Email
+            // Verification report. Pre-verified so a future check reading
+            // email_verified_at never locks out an account that never had a
+            // verification email sent to it.
+            'email_verified_at' => now(),
         ]);
 
         return redirect()->route('admin.users')

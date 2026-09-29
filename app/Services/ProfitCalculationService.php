@@ -40,6 +40,16 @@ use Illuminate\Support\Collection;
  * NULL/zero snapshot) fall back to today's MenuItemCosting figure for that
  * menu item — an approximation, not a time machine, but better than silently
  * treating the line as free.
+ *
+ * PERMANENTLY DELETED MENU ITEMS (Phase 2). Their lines keep menu_item_id
+ * NULL, so there is no recipe left to fall back to. Just before the delete,
+ * CatalogueLifecycle freezes estimatedUnitCostFor() — the very figure this
+ * class was already reporting for those lines — into ingredient_cost and
+ * flags it ingredient_cost_estimated, so COGS does not move. Three counts
+ * keep the report honest about what is not a time-of-sale record:
+ *   legacy_fallback_count   no snapshot, costed at today's recipe prices
+ *   uncosted_deleted_count  no snapshot and the item is gone: counted at 0
+ *   estimated_cost_count    snapshot frozen at deletion, not at sale
  */
 class ProfitCalculationService
 {
@@ -59,6 +69,8 @@ class ProfitCalculationService
      *     order_count: int,
      *     item_count: int,
      *     legacy_fallback_count: int,
+     *     uncosted_deleted_count: int,
+     *     estimated_cost_count: int,
      *     period_start: string,
      *     period_end: string,
      *     items: list<array{
@@ -152,7 +164,7 @@ class ProfitCalculationService
             ->with(['menuItem.recipeIngredients', 'order'])
             ->get();
 
-        $legacyFallbackCount = 0;
+        $costCounts = $this->blankCostCounts();
         $fallbackCosts = $this->fallbackCostMap($items);
         $orders = [];
 
@@ -185,7 +197,7 @@ class ProfitCalculationService
 
             $orders[$id]['lines'][] = (int) $item->quantity . 'x ' . $item->item_name;
             $orders[$id]['gross_revenue'] += (float) $item->subtotal;
-            $orders[$id]['cogs'] += $this->unitIngredientCost($item, $legacyFallbackCount, $fallbackCosts)
+            $orders[$id]['cogs'] += $this->unitIngredientCost($item, $costCounts, $fallbackCosts)
                 * (int) $item->quantity;
         }
 
@@ -267,7 +279,7 @@ class ProfitCalculationService
         $grossRevenue = 0.0;
         $discounts = 0.0;
         $cogs = 0.0;
-        $legacyFallbackCount = 0;
+        $costCounts = $this->blankCostCounts();
         $orderIds = [];
 
         // Per-menu-item accumulators, filled in the SAME pass as the period
@@ -284,7 +296,7 @@ class ProfitCalculationService
 
         foreach ($items as $item) {
             $lineRevenue = (float) $item->subtotal;
-            $unitCost = $this->unitIngredientCost($item, $legacyFallbackCount, $fallbackCosts);
+            $unitCost = $this->unitIngredientCost($item, $costCounts, $fallbackCosts);
             $lineCost = $unitCost * (int) $item->quantity;
 
             $grossRevenue += $lineRevenue;
@@ -358,7 +370,9 @@ class ProfitCalculationService
             'margin_percent'        => $netRevenue > 0 ? round($grossProfit / $netRevenue * 100, 1) : null,
             'order_count'           => count($orderIds),
             'item_count'            => $items->count(),
-            'legacy_fallback_count' => $legacyFallbackCount,
+            'legacy_fallback_count' => $costCounts['legacy_fallback'],
+            'uncosted_deleted_count' => $costCounts['uncosted_deleted'],
+            'estimated_cost_count'  => $costCounts['estimated'],
             'period_start'          => $start->toDateTimeString(),
             'period_end'            => $end->toDateTimeString(),
             'items'                 => $breakdown,
@@ -386,13 +400,50 @@ class ProfitCalculationService
      */
     private function fallbackCostMap(Collection $items): array
     {
-        $menuItems = $items
-            ->pluck('menuItem')
-            ->filter()
-            ->unique('id')
-            ->values();
+        return $this->fallbackCostMapForMenuItems(
+            $items
+                ->pluck('menuItem')
+                ->filter()
+                ->unique('id')
+                ->values()
+        );
+    }
 
+    /** @return array<int, float> */
+    private function fallbackCostMapForMenuItems(Collection $menuItems): array
+    {
         return $menuItems->isEmpty() ? [] : $this->costing->costForMany($menuItems);
+    }
+
+    /**
+     * The single-unit cost this report would use for a line of $menuItem that
+     * has no cost snapshot — computed through the SAME fallbackCostMap /
+     * fallbackUnitCost path the report itself takes, so a figure frozen from
+     * here is, to the centavo, the figure the report was already showing.
+     *
+     * CatalogueLifecycle::permanentlyDeleteMenuItem() calls this just before
+     * the delete, while the recipe still exists, and writes the result into
+     * the item's uncosted completed lines. That is what keeps COGS and Gross
+     * Profit identical across a permanent delete.
+     */
+    public function estimatedUnitCostFor(\App\Models\MenuItem $menuItem): float
+    {
+        return $this->fallbackUnitCost(
+            $menuItem,
+            $this->fallbackCostMapForMenuItems(collect([$menuItem]))
+        );
+    }
+
+    /** @param  array<int, float>  $fallbackCosts */
+    private function fallbackUnitCost(\App\Models\MenuItem $menuItem, array $fallbackCosts): float
+    {
+        return $fallbackCosts[$menuItem->id] ?? $this->costing->costFor($menuItem);
+    }
+
+    /** @return array{legacy_fallback: int, uncosted_deleted: int, estimated: int} */
+    private function blankCostCounts(): array
+    {
+        return ['legacy_fallback' => 0, 'uncosted_deleted' => 0, 'estimated' => 0];
     }
 
     /**
@@ -409,25 +460,35 @@ class ProfitCalculationService
      * optional only so the method stays callable on its own; every caller in
      * this class passes it, and without it the per-line costFor() N+1 returns.
      *
+     * $costCounts tallies, by reference, how each line was costed — see
+     * blankCostCounts() and the class header.
+     *
+     * @param  array{legacy_fallback: int, uncosted_deleted: int, estimated: int}  $costCounts
      * @param  array<int, float>  $fallbackCosts
      */
-    private function unitIngredientCost(OrderItem $item, int &$legacyFallbackCount, array $fallbackCosts = []): float
+    private function unitIngredientCost(OrderItem $item, array &$costCounts, array $fallbackCosts = []): float
     {
         $snapshot = $item->ingredient_cost;
 
         if ($snapshot !== null && (float) $snapshot > 0) {
+            if ($item->ingredient_cost_estimated) {
+                $costCounts['estimated']++;
+            }
+
             return (float) $snapshot;
         }
 
         if ($item->menuItem) {
-            $legacyFallbackCount++;
+            $costCounts['legacy_fallback']++;
 
-            return $fallbackCosts[$item->menuItem->id]
-                ?? $this->costing->costFor($item->menuItem);
+            return $this->fallbackUnitCost($item->menuItem, $fallbackCosts);
         }
 
-        // No snapshot and the menu item is gone too (hard-deleted, not just
-        // archived) — nothing left to estimate from.
+        // No snapshot and the menu item has been permanently deleted, so
+        // there is nothing left to estimate from. Counted, so the report's
+        // cost note still says this line's cost is not known.
+        $costCounts['uncosted_deleted']++;
+
         return (float) ($snapshot ?? 0);
     }
 }

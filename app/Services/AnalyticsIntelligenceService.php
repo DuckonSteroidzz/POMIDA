@@ -295,6 +295,8 @@ class AnalyticsIntelligenceService
                 'order_count'           => $profit['order_count'] ?? 0,
                 'item_count'            => $profit['item_count'] ?? 0,
                 'legacy_fallback_count' => $profit['legacy_fallback_count'] ?? 0,
+                'uncosted_deleted_count' => $profit['uncosted_deleted_count'] ?? 0,
+                'estimated_cost_count'  => $profit['estimated_cost_count'] ?? 0,
             ],
         ];
     }

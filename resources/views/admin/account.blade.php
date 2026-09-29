@@ -156,7 +156,7 @@
                 <div class="pw-field">
                     <input id="new_password" type="password" name="password" class="form-control-custom"
                            readonly onfocus="this.removeAttribute('readonly');"
-                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" required style="margin-bottom:0;">
+                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="20" required style="margin-bottom:0;">
                     <button type="button" class="js-pw-toggle" data-target="new_password"
                         aria-label="Show password" aria-pressed="false" title="Show password">
                         <i class="bi bi-eye" aria-hidden="true"></i>
@@ -168,7 +168,7 @@
                 <div class="pw-field">
                     <input id="new_password_confirmation" type="password" name="password_confirmation" class="form-control-custom"
                            readonly onfocus="this.removeAttribute('readonly');"
-                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" required style="margin-bottom:0;">
+                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="20" required style="margin-bottom:0;">
                     <button type="button" class="js-pw-toggle" data-target="new_password_confirmation"
                         aria-label="Show password" aria-pressed="false" title="Show password">
                         <i class="bi bi-eye" aria-hidden="true"></i>

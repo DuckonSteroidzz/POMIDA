@@ -7,6 +7,7 @@ use App\Models\Order;
 use App\Models\Voucher;
 use App\Support\GuestOrders;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
@@ -52,6 +53,7 @@ use Tests\TestCase;
 class GameBranchScopingTest extends TestCase
 {
     use DatabaseTransactions;
+    use ForcesSpinOutcome;
 
     private const PREFIX = 'GBSCOPE';
     private const HOME_BRANCH = 1;
@@ -222,9 +224,10 @@ class GameBranchScopingTest extends TestCase
     private function spinFor(int $branchId, int $points): ?array
     {
         $this->guestOrder($branchId);
+        $this->forceSpinOutcome($points); // the server picks the prize since F3
 
         $response = $this->withSession(['branch_id' => $branchId, 'guest_points' => 0])
-            ->postJson('/customer/add-points', ['points' => $points])
+            ->postJson('/customer/add-points')
             ->assertOk();
 
         return $response->json('voucher');
@@ -283,9 +286,10 @@ class GameBranchScopingTest extends TestCase
         $this->voucher(self::HOME_BRANCH, 'NOBR-NOWIN', pointsRequired: 8);
 
         $this->guestOrder(self::HOME_BRANCH);
+        $this->forceSpinOutcome(8);
 
         $won = $this->withSession(['guest_points' => 0])
-            ->postJson('/customer/add-points', ['points' => 8])
+            ->postJson('/customer/add-points')
             ->assertOk()
             ->json('voucher');
 

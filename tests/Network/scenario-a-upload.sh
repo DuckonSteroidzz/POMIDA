@@ -19,7 +19,7 @@ curl -s -o /dev/null -c $J1 -b $J1 --limit-rate 100k --max-time 1.2 \
   -F "_token=$T1" -F "order_type=pick_up" -F "payment_method=cash" -F "branch_id=1" \
   -F "items[0][menu_item_id]=33" -F "items[0][quantity]=1" \
   -F "discount_type=pwd" -F "discount_beneficiary_name=Test Person" \
-  -F "discount_beneficiary_id=PWD-0001" -F "discount_beneficiary_expiration=2030-01-01" \
+  -F "discount_beneficiary_id=PWD-0001" -F "discount_beneficiary_expiration=1/1/2030" \
   -F "discount_beneficiary_image=@$IMG;type=image/png"
 echo "curl exit=$?"
 sleep 1
@@ -33,7 +33,7 @@ R=$(curl -s -o /dev/null -w '%{http_code} %{redirect_url}' -c $J2 -b $J2 \
   -F "_token=$T2" -F "order_type=pick_up" -F "payment_method=cash" -F "branch_id=1" \
   -F "items[0][menu_item_id]=33" -F "items[0][quantity]=1" \
   -F "discount_type=pwd" -F "discount_beneficiary_name=Test Person" \
-  -F "discount_beneficiary_id=PWD-0001" -F "discount_beneficiary_expiration=2030-01-01" \
+  -F "discount_beneficiary_id=PWD-0001" -F "discount_beneficiary_expiration=1/1/2030" \
   -F "discount_beneficiary_image=@$IMG;type=image/png")
 echo "curl exit=$? response=$R"
 echo "orders created: $(q "SELECT COUNT(*) FROM orders WHERE id > $O0")   (expect 1)"

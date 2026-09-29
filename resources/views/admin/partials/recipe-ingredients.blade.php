@@ -38,6 +38,14 @@
                        Add mode: the same arithmetic run over $draftRows, so a
                        reopened failed submit shows the right figure even
                        before any JS has run.
+    $qtyAttribute     Optional. The saved row's quantity column. Default
+                       'quantity_used' (menu_item_ingredients); a size recipe
+                       passes 'quantity' (menu_item_size_ingredients).
+    $deleteUrlFor     Optional Closure(row): string — the saved row's delete
+                       URL. Default: the menu item ingredient delete route with
+                       $blockId as the item id, exactly as before. A size recipe
+                       passes its own (Menu Item Sizes, Phase 1). Every other
+                       caller passes neither and renders byte-for-byte as before.
 
     STYLING: every class here (form-label-custom, form-control-custom,
     btn-primary-custom) is defined globally in admin/layout.blade.php, and
@@ -62,6 +70,10 @@
     $pickerItems = ($branchId ?? null) !== null
         ? collect($inventoryItems ?? [])->where('branch_id', (int) $branchId)
         : collect($inventoryItems ?? []);
+
+    $qtyAttribute = $qtyAttribute ?? 'quantity_used';
+    $deleteUrlFor = $deleteUrlFor
+        ?? fn ($row) => route('admin.menu-items.ingredients.delete', [$blockId, $row->id]);
 @endphp
 
 <div class="recipe-empty-notice" id="recipe-empty-{{ $blockId }}" style="background:#fff8e1; color:#6B4E00; font-weight:500; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.74rem; margin-bottom:0.5rem; {{ $recipeEmpty ? '' : 'display:none;' }}">
@@ -84,13 +96,13 @@
              (recalcRecipeCost() in menu-items.blade.php) recompute from the
              rows on screen after an ingredient is added or removed in Edit
              mode, the same way it already does from draft rows in Add mode. --}}
-        <tr style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}" data-unit-cost="{{ $row->inventory->unit_cost ?? 0 }}" data-qty="{{ $row->quantity_used }}">
+        <tr style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}" data-unit-cost="{{ $row->inventory->unit_cost ?? 0 }}" data-qty="{{ $row->{$qtyAttribute} }}">
             <td style="padding:0.35rem 0.4rem;">{{ $row->inventory->item_name ?? '(removed)' }}</td>
             <td style="padding:0.35rem 0.4rem;">
-                {{ rtrim(rtrim(number_format($row->quantity_used, 3), '0'), '.') }} {{ $row->inventory->unit ?? '' }}
+                {{ rtrim(rtrim(number_format($row->{$qtyAttribute}, 3), '0'), '.') }} {{ $row->inventory->unit ?? '' }}
             </td>
             <td style="padding:0.35rem 0.4rem; text-align:right;">
-                <button type="button" class="recipe-ing-delete-btn" data-url="{{ route('admin.menu-items.ingredients.delete', [$blockId, $row->id]) }}" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
+                <button type="button" class="recipe-ing-delete-btn" data-url="{{ $deleteUrlFor($row) }}" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
                     <i class="bi bi-trash3"></i>
                 </button>
             </td>

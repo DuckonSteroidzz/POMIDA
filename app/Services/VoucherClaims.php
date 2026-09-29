@@ -324,9 +324,43 @@ class VoucherClaims
          * Increment by ID, not by the typed string. A typed CLAIM code matches
          * no row in `vouchers`, so a where('code', ...) would silently increment
          * nothing and the redemption would not count against max_uses at all.
+         *
+         * THE CAP IS ENFORCED HERE, IN THE SAME STATEMENT THAT COUNTS.
+         *
+         * It used to be an unconditional increment, with the cap checked earlier
+         * by Voucher::redemptionErrorFor() — which runs OUTSIDE the order
+         * transaction and takes no lock on this row (the transaction locks
+         * inventory rows only). That is a check-then-act: several checkouts could
+         * all read used_count = max_uses - 1, all pass the earlier check, and all
+         * increment, so a code capped at 1 could be redeemed twice and a "first
+         * 10 orders" code could be honoured more than ten times. A public promo
+         * code has no claim row to fall back on — resolveTypedCode() returns
+         * claim => null — so this counter was the only thing standing there.
+         *
+         * Now the condition and the write are one UPDATE, which the database
+         * evaluates against the committed value while holding the row lock: a
+         * second transaction blocks here, re-reads, matches no row, gets 0
+         * affected and is refused. Same shape as the claim-row update below, and
+         * the business rule is untouched — max_uses <= 0 still means unlimited.
          */
         if ($voucherId) {
-            Voucher::whereKey($voucherId)->increment('used_count');
+            $counted = Voucher::whereKey($voucherId)
+                ->where(function ($q) {
+                    $q->where('max_uses', '<=', 0)
+                        ->orWhereColumn('used_count', '<', 'max_uses');
+                })
+                ->increment('used_count');
+
+            if ($counted === 0) {
+                /*
+                 * RuntimeException, because placeOrder() and storeManualOrder()
+                 * both already catch it and show the message to whoever
+                 * redeemed — and because throwing rolls the order transaction
+                 * back, which is what leaves the refused redemption with no
+                 * order and no spent claim.
+                 */
+                throw new \RuntimeException('This voucher has reached its usage limit.');
+            }
         }
 
         if ($claim) {

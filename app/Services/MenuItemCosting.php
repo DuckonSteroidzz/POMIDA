@@ -229,6 +229,51 @@ class MenuItemCosting
         return $out;
     }
 
+    /**
+     * Menu Item Sizes (Phase 1): the "Cost from recipe" line for each size's
+     * recipe editor on the Menu Items page, keyed by size id.
+     *
+     * The same arithmetic as everything above — quantity x the inventory
+     * row's unit_cost, summed over the size's OWN recipe (it replaces the base
+     * recipe, so the base rows are not part of a size's cost). It reads the
+     * rows the caller eager-loaded (`allSizes.ingredients.inventory`) and
+     * issues no query.
+     *
+     * Deliberately NOT routed through requirementsForLine(): that walk refuses
+     * a size that is inactive, archived or recipe-less, which is right for
+     * ordering, but the editor must still show what an inactive size's recipe
+     * costs. A size with no recipe lines reports cost 0 and is_fallback true,
+     * which the recipe partial renders as its "No recipe" badge.
+     *
+     * @param  iterable<MenuItem>  $menuItems
+     * @return array<int, array{cost: float, is_fallback: bool}>
+     */
+    public function sizeCostLines(iterable $menuItems): array
+    {
+        $out = [];
+
+        foreach ($menuItems as $menuItem) {
+            if (! $menuItem->relationLoaded('allSizes')) {
+                continue;
+            }
+
+            foreach ($menuItem->allSizes as $size) {
+                $cost = 0.0;
+                foreach ($size->ingredients as $row) {
+                    // A vanished inventory row contributes nothing, as above.
+                    $cost += (float) $row->quantity * (float) ($row->inventory->unit_cost ?? 0);
+                }
+
+                $out[$size->id] = [
+                    'cost'        => round($cost, 2),
+                    'is_fallback' => $size->ingredients->isEmpty(),
+                ];
+            }
+        }
+
+        return $out;
+    }
+
     private function assemble(float $price, float $cost, bool $isFallback, int $ingredientCount): array
     {
         $profit = $price - $cost;

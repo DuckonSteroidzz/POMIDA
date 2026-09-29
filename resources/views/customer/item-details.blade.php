@@ -62,6 +62,39 @@
             color: #fff;
         }
         .option-input:checked + .option-chip-label .option-tick i { opacity: 1; }
+
+        /* Size picker (Menu Item Sizes): the same chip, as a radio. */
+        .size-input:checked + .option-chip-label {
+            border-color: #F4845F;
+            background-color: #FDE8DE;
+            box-shadow: 0 0 0 3px rgb(244 132 95 / .18);
+        }
+        .size-input:focus-visible + .option-chip-label {
+            box-shadow: 0 0 0 3px rgb(244 132 95 / .35);
+        }
+        .size-input:disabled + .option-chip-label {
+            opacity: .55;
+            cursor: not-allowed;
+        }
+        .size-dot {
+            display: grid;
+            place-items: center;
+            width: 1.25rem;
+            height: 1.25rem;
+            flex-shrink: 0;
+            border-radius: 9999px;
+            border: 1px solid #F6D3C4;
+            background: #FFF8F3;
+        }
+        .size-dot::after {
+            content: '';
+            width: .55rem;
+            height: .55rem;
+            border-radius: 9999px;
+            background: transparent;
+        }
+        .size-input:checked + .option-chip-label .size-dot { border-color: #C0392B; }
+        .size-input:checked + .option-chip-label .size-dot::after { background: #C0392B; }
     </style>
     @include('partials.session-guard')
 
@@ -123,6 +156,33 @@
         </div>
 
         @php
+            $itemIsSized = $itemIsSized ?? false;
+            $sizeChoices = $sizeChoices ?? [];
+            $selectedSize = null;
+            $itemSizeUnavailable = false;
+
+            if ($itemIsSized) {
+                /*
+                 * Menu Item Sizes (Phase 2): a sized item is ordered BY SIZE,
+                 * so its state comes from its sizes (MenuItem::sizeChoices() —
+                 * the Phase 1 size functions), never from the base recipe.
+                 * The first orderable size starts selected; the add buttons are
+                 * disabled only when no size can be ordered at all.
+                 */
+                $orderableSizes = collect($sizeChoices)->where('orderable', true);
+                $selectedSize = $orderableSizes->first();
+                $itemOutOfStock = $orderableSizes->isEmpty();
+                $itemIngredientOOS = $itemOutOfStock && collect($sizeChoices)->contains('state', 'out_of_stock');
+                $itemMissingRecipe = $itemOutOfStock && ! $itemIngredientOOS
+                    && collect($sizeChoices)->contains('state', 'no_recipe');
+                // Every size inactive or archived: neither "no recipe" nor
+                // "out of stock" is the truth, so it is plainly unavailable.
+                $itemSizeUnavailable = $itemOutOfStock && ! $itemIngredientOOS && ! $itemMissingRecipe;
+                $itemBlockedLabel = $itemIngredientOOS ? 'Out of stock' : 'Unavailable';
+                // Low stock is shown per size, in the picker.
+                $itemLowStock = false;
+                $itemRemainingServings = null;
+            } else {
             // Two reasons an item cannot be ordered: no recipe has been set for
             // it, or its recipe cannot be covered by current inventory.
             $itemMissingRecipe = isset($item) && $item->isMissingRecipe();
@@ -137,6 +197,13 @@
             // MenuItem::isLowOnIngredientStock().
             $itemLowStock = isset($item) && ! $itemOutOfStock && $item->isLowOnIngredientStock($reserved ?? null);
             $itemRemainingServings = $itemLowStock ? $item->remainingServings($reserved ?? null) : null;
+            }
+
+            // The unit price the page opens on: the selected size's own price
+            // for a sized item, the item's price otherwise.
+            $itemUnitPrice = $selectedSize !== null
+                ? (float) $selectedSize['price']
+                : (isset($item) ? (float) $item->price : 0.0);
         @endphp
 
         <form action="{{ route('customer.cart.add') }}" method="POST" id="addToCartForm">
@@ -167,6 +234,9 @@
                                 {{ isset($item) ? $item->name : 'Item Name' }}
                             </h1>
                             <span class="shrink-0 rounded-full bg-peach-soft px-3 py-1.5 font-display text-base font-black text-peach-red sm:text-lg">
+                                @if($itemIsSized)
+                                <span class="text-xs font-bold">From</span>
+                                @endif
                                 ₱{{ isset($item) ? number_format($item->price, 2) : '0.00' }}
                             </span>
                         </div>
@@ -182,6 +252,10 @@
                                 <span class="font-black uppercase tracking-wide text-peach-red">Unavailable — No Recipe Set</span><br>
                                 This item cannot be ordered yet because the kitchen has no recipe
                                 set for it. Please check back later.
+                                @elseif($itemSizeUnavailable)
+                                <span class="font-black uppercase tracking-wide text-peach-red">Unavailable</span><br>
+                                None of this item's sizes can be ordered right now.
+                                Please check back later.
                                 @else
                                 <span class="font-black uppercase tracking-wide text-peach-red">Out of Stock</span><br>
                                 This item is temporarily unavailable because one or more of its
@@ -203,6 +277,52 @@
                         </div>
                         @endif
                     </section>
+
+                    {{-- Size (Menu Item Sizes, Phase 2) --}}
+                    {{--
+                        A sized item is ordered by size: Regular / Large, each at
+                        its OWN price and with its own orderability from the
+                        Phase 1 size functions (MenuItem::sizeChoices()). Archived
+                        sizes are not listed; a size that is inactive, has no
+                        recipe or is out of stock is shown but cannot be picked.
+                        The radio is only the UI — addToCart() refuses a sized
+                        item without a valid size of its own regardless.
+                    --}}
+                    @if($itemIsSized && count($sizeChoices) > 0)
+                    <section class="card-surface p-4 sm:p-6">
+                        <div class="mb-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                            <div class="min-w-0">
+                                <h2 class="font-display text-lg font-bold text-peach-deep">Choose a size</h2>
+                                <p class="text-xs text-peach-deep/50">Each size has its own price.</p>
+                            </div>
+                            <span class="shrink-0 rounded-full border border-peach-soft px-3 py-1 text-[0.68rem] font-bold text-peach-red">Required</span>
+                        </div>
+
+                        <div class="grid gap-2.5 sm:grid-cols-2">
+                            @foreach($sizeChoices as $choice)
+                            <div class="min-w-0">
+                                <input type="radio" name="size_id" value="{{ $choice['id'] }}" id="size{{ $choice['id'] }}"
+                                    class="size-input sr-only" data-price="{{ $choice['price'] }}"
+                                    @checked($selectedSize !== null && $selectedSize['id'] === $choice['id'])
+                                    @disabled(! $choice['orderable'])
+                                    required>
+                                <label for="size{{ $choice['id'] }}" class="option-chip option-chip-label {{ $choice['orderable'] ? 'option-chip-hover' : '' }}">
+                                    <span class="size-dot" aria-hidden="true"></span>
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block truncate text-sm font-semibold text-peach-deep">{{ $choice['name'] }}</span>
+                                        @if(! $choice['orderable'])
+                                        <span class="block text-[0.66rem] font-black uppercase tracking-wide text-peach-red">{{ $choice['label'] }}</span>
+                                        @elseif($choice['low_stock'])
+                                        <span class="block text-[0.66rem] font-bold text-amber-600">{{ $choice['remaining'] }} stocks left — order soon!</span>
+                                        @endif
+                                    </span>
+                                    <span class="shrink-0 text-xs font-bold text-peach-red">₱{{ number_format($choice['price'], 2) }}</span>
+                                </label>
+                            </div>
+                            @endforeach
+                        </div>
+                    </section>
+                    @endif
 
                     {{-- Customize --}}
                     {{--
@@ -252,7 +372,7 @@
                             <div class="min-w-0">
                                 <p class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45">Total</p>
                                 <p class="font-display text-2xl font-black text-peach-deep" id="totalPriceDesktop">
-                                    ₱{{ isset($item) ? number_format($item->price, 2) : '0.00' }}
+                                    ₱{{ number_format($itemUnitPrice, 2) }}
                                 </p>
                             </div>
                             <div class="flex shrink-0 items-center gap-2.5">
@@ -280,7 +400,7 @@
                     <div class="min-w-0">
                         <p class="text-[0.6rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Total</p>
                         <p class="font-display text-lg font-black leading-tight text-peach-deep" id="totalPriceMobile">
-                            ₱{{ isset($item) ? number_format($item->price, 2) : '0.00' }}
+                            ₱{{ number_format($itemUnitPrice, 2) }}
                         </p>
                     </div>
                     <div class="ml-auto flex shrink-0 items-center rounded-full border border-peach-soft bg-white p-1">
@@ -323,7 +443,9 @@
 
     <script>
         // Live total preview only — the server still computes the authoritative price.
-        const BASE_PRICE = {{ isset($item) ? (float) $item->price : 0 }};
+        // For a sized item this is the SELECTED size's own price, and follows
+        // the size radios below (Menu Item Sizes, Phase 2).
+        let BASE_PRICE = {{ (float) $itemUnitPrice }};
 
         function peso(n) {
             return '₱' + n.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -407,6 +529,15 @@
         }
 
         document.querySelectorAll('.option-input').forEach(cb => cb.addEventListener('change', updateTotal));
+
+        // Size radios: the unit price becomes the chosen size's own price.
+        document.querySelectorAll('.size-input').forEach(radio => radio.addEventListener('change', function () {
+            if (radio.checked) {
+                BASE_PRICE = parseFloat(radio.dataset.price || 0) || 0;
+                updateTotal();
+            }
+        }));
+
         updateTotal();
 
         // Auto-dismiss floating flash toasts so they don't linger

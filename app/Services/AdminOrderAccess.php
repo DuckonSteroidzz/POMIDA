@@ -101,20 +101,22 @@ class AdminOrderAccess
             return null;
         }
 
-        // A branch-locked account with NO branch assigned.
+        // A branch-locked account with NO branch assigned — deny-by-default
+        // for BOTH roles now (Branch parity audit B7, 2026-09-27).
         //
-        // Staff keep the historic ?? 1: a staff row with no branch has always
-        // been treated as the main branch, every live staff row has a branch,
-        // and silently moving them is not this pass's job.
-        //
-        // Supervisor is deny-by-default instead. 0 is not a real branch id, so
-        // `where('branch_id', 0)` matches nothing and the account sees an empty
-        // portal rather than being handed Main Branch's orders, inventory and
-        // customer ID documents by an omission. storeUser() requires a branch
-        // for a supervisor, so this is the unreachable-by-design path — which
-        // is exactly the kind that must fail closed.
+        // Staff used to get ?? 1 here (silently treated as Main Branch). That
+        // was reasoned to be safe because every live staff row had a branch —
+        // re-verified against the live DB for this pass, still true — but it
+        // was reasoning about data, not a rule the code enforced, and any
+        // future row created with a null branch_id would have been silently
+        // handed Main Branch's orders, inventory and customer ID documents
+        // rather than being refused. 0 is not a real branch id, so
+        // `where('branch_id', 0)` matches nothing and the account sees an
+        // empty portal — exactly how a branchless supervisor was already
+        // handled below, and storeUser()/updateUser() require a branch for
+        // both roles, so this is the unreachable-by-design path either way.
         if ($user->branch_id === null) {
-            return $user->role === 'staff' ? 1 : 0;
+            return 0;
         }
 
         return (int) $user->branch_id;

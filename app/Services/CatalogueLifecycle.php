@@ -56,19 +56,31 @@ use Illuminate\Support\Facades\DB;
  * cascading them away made the same trash click either safely archive or
  * permanently destroy depending only on whether a customer had ever picked
  * that add-on. See removeMenuOption(). The rule above still holds unchanged
- * for menu items, categories and subcategories.
+ * for categories and subcategories.
  *
- * Verified against the live schema rather than assumed. The two ON DELETE
- * RESTRICT constraints in the database are precisely the two history links:
- *   order_items.menu_item_id        -> menu_items
- *   order_item_options.menu_option_id -> menu_options
- * Everything else in the catalogue is CASCADE or SET NULL.
+ * MENU ITEMS NO LONGER FOLLOW THE RULE AT ALL (2026-09-24). Removing a menu
+ * item now ALWAYS archives it, sold or not — the same two-stage shape
+ * Inventory already has. The irreversible step is a separate, owner-only
+ * permanentlyDeleteMenuItem(), reachable only from the Archived page. See
+ * removeMenuItem() for why the hybrid was wrong for menu items.
+ *
+ * Verified against the live schema rather than assumed. The two history
+ * links are:
+ *   order_items.menu_item_id          -> menu_items    ON DELETE SET NULL
+ *                                                      (since 2026-09-24; was RESTRICT)
+ *   order_item_options.menu_option_id -> menu_options  ON DELETE RESTRICT
+ * Everything else in the catalogue is CASCADE or SET NULL. Because the
+ * menu-item link no longer RESTRICTs, nothing in the database stops a
+ * menu_items delete any more — permanentlyDeleteMenuItem() is the only path
+ * that deletes one, and removeCategory() never hard-deletes a category that
+ * still holds any item (its CASCADE would bypass every guard below).
  */
 class CatalogueLifecycle
 {
     public const DELETED  = 'deleted';
     public const ARCHIVED = 'archived';
     public const BLOCKED  = 'blocked';
+    public const RESTORED = 'restored';
 
     /**
      * Decide and act.
@@ -91,39 +103,289 @@ class CatalogueLifecycle
     // ── Menu items ───────────────────────────────────────────────────────────
 
     /**
-     * Referenced by order_items (ON DELETE RESTRICT). Its recipe lines and
-     * option links are its own children and cascade with it.
+     * ALWAYS ARCHIVES — sold or unsold (2026-09-24).
+     *
+     * This used to hard-delete an item nothing had ordered, which made the
+     * normal Delete button a hidden permanent-delete door with no UI:
+     *
+     *   - The same click archived or destroyed depending only on sales
+     *     history, and the destroy half took the item's menu_item_options and
+     *     menu_item_ingredients with it (both ON DELETE CASCADE) without the
+     *     admin ever being shown what was being lost.
+     *   - DELETE /admin/menu-items/{id} resolves archived rows too, so an
+     *     ARCHIVED item whose order lines had since been purged was hard-deleted
+     *     by the ordinary endpoint — including for a same-branch supervisor,
+     *     who is never allowed an irreversible catalogue delete.
+     *   - The image was unlinked BEFORE the row delete, so a delete that then
+     *     failed still lost the image while the error said nothing had changed.
+     *
+     * Now the only thing this does is stamp archived_at. Option links and
+     * recipe rows are not touched (archive() only saves one column), so a
+     * restore brings the item back exactly as it was. Nothing here unlinks
+     * the image either — only permanentlyDeleteMenuItem() may, and only
+     * after its database delete has succeeded.
+     *
+     * Idempotent on an already-archived item (archive() keeps the first
+     * date), so even a caller that skipped deleteMenuItem()'s own
+     * "already archived" refusal can no longer delete anything through here.
      */
     private function removeMenuItem(MenuItem $item): array
     {
         $orderLines = DB::table('order_items')->where('menu_item_id', $item->id)->count();
 
-        if ($orderLines > 0) {
-            $item->archive();
+        $item->archive();
 
+        if ($orderLines > 0) {
             return $this->result(self::ARCHIVED, $item, sprintf(
-                'Menu item "%s" was archived, not deleted — it appears on %s and those '
-                . 'receipts and sales figures have to keep showing it. It is gone from the '
-                . 'menu and from every order screen, and you can bring it back any time '
-                . 'from Archived items.',
+                'Menu item "%s" was archived, not deleted — it appears on %s, and those '
+                . 'receipts and sales figures keep showing it. It is gone from the menu and '
+                . 'from every order screen, and you can bring it back any time from Archived '
+                . 'items. The owner can also permanently delete it there once it is on no open '
+                . 'order; its past order lines are kept either way.',
                 $item->name,
                 $this->plural($orderLines, 'past order line')
             ));
         }
 
-        $name = $item->name;
+        return $this->result(self::ARCHIVED, $item, sprintf(
+            'Menu item "%s" was archived. It is gone from the menu and from every order '
+            . 'screen, and its add-ons and recipe are kept, so you can bring it back any time '
+            . 'from Archived items, where the owner can also permanently delete it.',
+            $item->name
+        ));
+    }
 
-        if ($item->image && file_exists(public_path($item->image))) {
-            @unlink(public_path($item->image));
+    /**
+     * The irreversible second stage — owner only, archived items only, and
+     * never while the item is on an OPEN order.
+     *
+     * The caller (AdminController::forceDeleteArchivedMenuItem()) has already
+     * resolved the row from the archived scope and checked the role. Both
+     * facts are re-checked HERE, under a row lock, because they are exactly
+     * what could change between the page render and this request: another
+     * owner restoring the item, or an order line appearing.
+     *
+     * SOLD ITEMS CAN GO NOW (Phase 2). order_items.menu_item_id is NULLABLE
+     * + ON DELETE SET NULL: every past order line survives with its own
+     * item_name / item_price / subtotal / add-on snapshot and only its live
+     * link is cut. Receipts, reports and exports all read the snapshot.
+     *
+     * OPEN ORDERS STILL BLOCK IT. A pending, preparing or serving order has
+     * not been deducted yet, and deduction reads the LIVE recipe: with the
+     * link cut, completing that order would silently deduct nothing and the
+     * stock it had promised would be released early. The database no longer
+     * stops that, so this check is the only thing that does.
+     *
+     * LOCK ORDER, and why it is this exact order. The item row is locked by
+     * the FIRST statement, so an order being written for this item right
+     * now (its foreign-key check holds a shared lock on this row) finishes
+     * first. The open-line count is then a LOCKING read: under
+     * REPEATABLE-READ, a plain read would be answered from a snapshot, and
+     * any plain read taken before the lock would pin a snapshot that cannot
+     * see an order committed while we waited. Proven with two real sessions
+     * — the plain count said 0 while the locking count said 1. Do not add a
+     * plain read of order_items above the lock.
+     *
+     * COSTS ARE FROZEN FIRST. A completed line with no recorded ingredient
+     * cost is priced by the profit report at TODAY's recipe for this item,
+     * which is about to be deleted. Before the delete, that same figure
+     * (ProfitCalculationService::estimatedUnitCostFor()) is written onto the
+     * line and flagged ingredient_cost_estimated, so COGS and Gross Profit
+     * read identically before and after. A zero estimate is left alone — the
+     * line stays "uncosted" and the report says so. Cancelled lines and lines
+     * with a real cost are never touched.
+     *
+     * WHAT CASCADES. menu_item_options and menu_item_ingredients are
+     * ON DELETE CASCADE — they are counted first so the admin is told how
+     * many went, and the Archived page shows the same counts before the click.
+     *
+     * DATABASE FIRST, FILE SECOND. The row delete is verified to have happened
+     * (a re-read, not trust in delete()'s return), and so is every past line
+     * having kept its row with the link cut. The transaction commits, and
+     * only THEN is the image file removed. A failed database delete therefore
+     * leaves the image exactly where it was. A failed file removal after a
+     * successful delete is reported as what it is — the item is gone, the
+     * file is not — and is never rolled back into a half-restored row.
+     *
+     * @return array{action: string, message: string, model: Model, cleanup_problem: ?string}
+     */
+    public function permanentlyDeleteMenuItem(MenuItem $item): array
+    {
+        $outcome = DB::transaction(function () use ($item) {
+            // 1. The row lock — the first statement in the transaction.
+            $locked = MenuItem::onlyArchived()
+                ->whereKey($item->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if (!$locked) {
+                return $this->result(self::BLOCKED, $item, sprintf(
+                    '"%s" is no longer in the archive — it may have been restored or '
+                    . 'permanently deleted already. Nothing was changed.',
+                    $item->name
+                ));
+            }
+
+            // 2. Open-order lines: a LOCKING read, after the row lock.
+            $openLines = DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.menu_item_id', $locked->id)
+                ->whereIn('orders.status', InventoryDeductionService::COMMITTED_ORDER_STATUSES)
+                ->sharedLock()
+                ->count();
+
+            if ($openLines > 0) {
+                return $this->result(self::BLOCKED, $locked, sprintf(
+                    'Menu item "%s" cannot be permanently deleted yet — %s still on an open order '
+                    . '(pending, preparing or serving). Complete or cancel that order first, then '
+                    . 'try again. It stays archived; nothing was changed.',
+                    $locked->name,
+                    $this->plural($openLines, 'of its order lines is', 'of its order lines are')
+                ));
+            }
+
+            // 3. Everything the delete is about to touch.
+            $pastLineIds = DB::table('order_items')
+                ->where('menu_item_id', $locked->id)
+                ->orderBy('id')
+                ->sharedLock()
+                ->pluck('id')
+                ->all();
+
+            $uncostedLineIds = DB::table('order_items')
+                ->join('orders', 'orders.id', '=', 'order_items.order_id')
+                ->where('order_items.menu_item_id', $locked->id)
+                ->where('orders.status', 'completed')
+                ->where(fn ($q) => $q->whereNull('order_items.ingredient_cost')
+                    ->orWhere('order_items.ingredient_cost', '<=', 0))
+                ->sharedLock()
+                ->pluck('order_items.id')
+                ->all();
+
+            $optionLinks = DB::table('menu_item_options')->where('menu_item_id', $locked->id)->count();
+            $recipeLines = DB::table('menu_item_ingredients')->where('menu_item_id', $locked->id)->count();
+
+            // 4. Freeze the report's own estimate onto the uncosted lines,
+            //    while the recipe it is computed from still exists.
+            $frozenLines = 0;
+
+            if ($uncostedLineIds) {
+                $estimate = app(ProfitCalculationService::class)->estimatedUnitCostFor($locked);
+
+                if ($estimate > 0) {
+                    $frozenLines = DB::table('order_items')
+                        ->whereIn('id', $uncostedLineIds)
+                        ->update([
+                            'ingredient_cost'           => $estimate,
+                            'ingredient_cost_estimated' => true,
+                        ]);
+                }
+            }
+
+            // 5. The delete. The database cuts every past line's link.
+            $locked->delete();
+
+            // 6. Verify, and roll everything back on any surprise.
+            if (DB::table('menu_items')->where('id', $locked->id)->exists()) {
+                // Rolls the transaction back; HandlesSafeDeletes reports it
+                // as a failed delete rather than this method claiming success.
+                throw new \RuntimeException('Menu item #' . $locked->id . ' survived its permanent delete.');
+            }
+
+            $keptLines = DB::table('order_items')
+                ->whereIn('id', $pastLineIds)
+                ->whereNull('menu_item_id')
+                ->count();
+
+            if ($keptLines !== count($pastLineIds)) {
+                throw new \RuntimeException(sprintf(
+                    'Menu item #%d: expected %d past order lines to be kept with their link cut, found %d.',
+                    $locked->id,
+                    count($pastLineIds),
+                    $keptLines
+                ));
+            }
+
+            // SHORT ON PURPOSE (2026-09-24). This used to spell out every
+            // count (past lines, frozen costs, add-on/recipe cascade) in the
+            // flash message itself. Those counts already have a place the
+            // admin sees BEFORE clicking — the Archived page's warning text
+            // and the confirm() dialog, both built independently in
+            // archived.blade.php from the same withCount() query this method
+            // re-checks under lock. Repeating them in the SUCCESS message
+            // after the fact just made an auto-dismissing toast too long to
+            // read in time. $optionLinks/$recipeLines/$frozenLines are still
+            // computed above exactly as before (the freeze itself, and the
+            // $pastLineIds verification, are untouched) — only what gets
+            // written into $message has changed.
+            $message = $pastLineIds
+                ? sprintf('"%s" was permanently deleted. Past receipts and sales records were kept.', $locked->name)
+                : sprintf('"%s" was permanently deleted.', $locked->name);
+
+            return $this->result(self::DELETED, $locked, $message);
+        });
+
+        $outcome['cleanup_problem'] = $outcome['action'] === self::DELETED
+            ? $this->removeMenuItemImage($outcome['model'])
+            : null;
+
+        return $outcome;
+    }
+
+    /**
+     * Remove a permanently-deleted item's image file. Runs only after the row
+     * is gone and committed.
+     *
+     * Returns null when there was nothing to do or it worked, otherwise a
+     * sentence saying why the file is still there. Two cases deliberately
+     * leave the file alone rather than guess: another menu item row still
+     * points at the same path (never pull an image out from under a live
+     * item), and a path that does not resolve inside public/uploads/menu-items
+     * (where every menu image upload is written) — the stored path comes from
+     * the database, and an irreversible unlink should not trust it blindly.
+     */
+    private function removeMenuItemImage(MenuItem $deleted): ?string
+    {
+        $image = $deleted->image;
+
+        if (!$image) {
+            return null;
         }
 
-        $item->delete();
+        if (MenuItem::withArchived()->where('image', $image)->exists()) {
+            return null;
+        }
 
-        return $this->result(self::DELETED, $item, sprintf(
-            'Menu item "%s" was permanently deleted. Nothing had ever ordered it, so '
-            . 'there was no history to keep.',
-            $name
-        ));
+        $path = realpath(public_path($image));
+
+        if ($path === false) {
+            return null;
+        }
+
+        $uploads = realpath(public_path('uploads/menu-items'));
+
+        if ($uploads === false || !str_starts_with($path, $uploads . DIRECTORY_SEPARATOR)) {
+            return sprintf(
+                'The image file for "%s" was left in place because it is not in the menu image folder.',
+                $deleted->name
+            );
+        }
+
+        if (!@unlink($path)) {
+            \Illuminate\Support\Facades\Log::warning('Menu item image cleanup failed after permanent delete', [
+                'menu_item_id' => $deleted->id,
+                'image' => $image,
+            ]);
+
+            return sprintf(
+                'The menu item "%s" is deleted, but its image file (%s) could not be removed '
+                . 'from the server. It is no longer used by anything and can be removed by hand.',
+                $deleted->name,
+                $image
+            );
+        }
+
+        return null;
     }
 
     // ── Menu options ─────────────────────────────────────────────────────────
@@ -346,9 +608,42 @@ class CatalogueLifecycle
      * looks like a bug. Restoring a parent never touches its children: an
      * archived item under a restored category is still archived on purpose.
      *
-     * @return array{message: string, model: Model}
+     * RE-READ UNDER A LOCK FIRST (2026-09-24). $record was resolved by the
+     * caller before this transaction began, so it may already be stale: a
+     * permanent delete that committed in between used to leave this method
+     * un-archiving the item's category and reporting "was restored" for a row
+     * that no longer existed (unarchive() is a plain save(), which does not
+     * notice that its UPDATE matched nothing). The first statement now locks
+     * the row from the archived scope — the same lock
+     * permanentlyDeleteMenuItem() takes — so the two serialise: whichever
+     * commits second sees the other's result. Nothing else is touched unless
+     * that re-read succeeds. Shared by all four catalogue types; for them it
+     * changes nothing except closing the same race.
+     *
+     * @return array{action: string, message: string, model: Model}
      */
     public function restore(Model $record): array
+    {
+        return DB::transaction(function () use ($record) {
+            $locked = $record::onlyArchived()
+                ->whereKey($record->getKey())
+                ->lockForUpdate()
+                ->first();
+
+            if (!$locked) {
+                return $this->result(self::BLOCKED, $record, sprintf(
+                    '"%s" is no longer in the archive — it may have been restored or '
+                    . 'permanently deleted already. Nothing was changed.',
+                    $record->name
+                ));
+            }
+
+            return $this->restoreLocked($locked);
+        });
+    }
+
+    /** restore() after its locked re-read has confirmed the row is still archived. */
+    private function restoreLocked(Model $record): array
     {
         $alsoRestored = [];
 
@@ -398,7 +693,7 @@ class CatalogueLifecycle
                 . 'want customers to see it.';
         }
 
-        return ['message' => $message, 'model' => $record];
+        return $this->result(self::RESTORED, $record, $message);
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

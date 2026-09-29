@@ -299,6 +299,26 @@ class RateLimitServiceProvider extends ServiceProvider
      */
     public const CUSTOMER_IDLE_LOGOUT_PER_IP = 20;
 
+    /**
+     * PUT /customer/account — hardening pass F5 (2026-09-27). Changing the
+     * email or password now checks the current password, which would make an
+     * unthrottled route a password-guessing oracle for anyone holding a
+     * signed-in session, sidestepping the login throttle entirely. Same
+     * ceiling as customer-login, on its own counter so neither spends the
+     * other on a café's shared address.
+     */
+    public const CUSTOMER_ACCOUNT_UPDATE_PER_IP = 10;
+
+    /**
+     * Email-verification link click + its account-page resend button. A
+     * separate pair of counters from customer-verification /
+     * customer-verification-resend above despite the similar name — those
+     * belong to the unrelated OTP password-reset flow. See
+     * App\Http\Controllers\Concerns\HandlesEmailVerification.
+     */
+    public const CUSTOMER_EMAIL_VERIFY_PER_IP = 10;
+    public const CUSTOMER_EMAIL_VERIFY_RESEND_PER_IP = 3;
+
     public function boot(): void
     {
         /*
@@ -347,6 +367,9 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-add-points', self::CUSTOMER_ADD_POINTS_PER_IP);
         $this->perIp('customer-discount-lookup', self::CUSTOMER_DISCOUNT_LOOKUP_PER_IP);
         $this->perIp('customer-idle-logout', self::CUSTOMER_IDLE_LOGOUT_PER_IP);
+        $this->perIp('customer-account-update', self::CUSTOMER_ACCOUNT_UPDATE_PER_IP);
+        $this->perIp('customer-email-verify', self::CUSTOMER_EMAIL_VERIFY_PER_IP);
+        $this->perIp('customer-email-verify-resend', self::CUSTOMER_EMAIL_VERIFY_RESEND_PER_IP);
 
         $this->pair('place-order', self::PLACE_ORDER_PER_SESSION, self::PLACE_ORDER_PER_IP);
         $this->pair('gcash-paid', self::GCASH_PAID_PER_SESSION, self::GCASH_PAID_PER_IP);

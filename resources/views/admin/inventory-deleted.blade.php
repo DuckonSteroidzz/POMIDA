@@ -1,6 +1,6 @@
 @extends('admin.layout')
 
-@section('title', 'Deleted Inventory Items - Peachy Admin')
+@section('title', 'Archive - Peachy Admin')
 
 @section('content')
 
@@ -44,7 +44,7 @@
 <div class="pchy">
 
     <div class="pchy-head">
-        <h1 class="pchy-title">Deleted Inventory Items</h1>
+        <h1 class="pchy-title">Archive</h1>
         <div class="pchy-chips">
             <a href="{{ route('admin.inventory') }}" class="pchy-chip"><i class="bi bi-arrow-left"></i> Inventory</a>
         </div>
@@ -66,7 +66,7 @@
         <div class="pchy-card">
             <div class="pchy-empty">
                 <i class="bi bi-trash3"></i>
-                Nothing is deleted. Items you delete from Inventory show up here first, recoverable,
+                The archive is empty. Items you delete from Inventory show up here first, recoverable,
                 before they can be permanently removed.
             </div>
         </div>
@@ -77,7 +77,7 @@
                     <span class="pchy-ico"><i class="bi bi-box-seam"></i></span>
                     Inventory items
                 </h2>
-                <span class="pchy-count">{{ $deletedItems->count() }} deleted</span>
+                <span class="pchy-count">{{ $deletedItems->count() }} archived</span>
             </div>
 
             @foreach($deletedItems as $item)
@@ -89,7 +89,7 @@
                     <div class="pchy-row-main">
                         <p class="pchy-row-name">{{ $item->item_name }}</p>
                         <p class="pchy-row-meta">
-                            Deleted
+                            Archived
                             @if($item->archived_at)
                                 {{ $item->archived_at->format('M d, Y') }} at {{ $item->archived_at->format('g:i A') }}
                             @else

@@ -28,12 +28,12 @@
             </div>
             <div>
                 <label class="form-label-custom">Branch Code *</label>
-                <input type="text" name="code" class="form-control-custom" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" style="text-transform:uppercase;">
+                <input type="text" name="code" class="form-control-custom" required maxlength="10" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" style="text-transform:uppercase;">
                 <small style="font-size:0.7rem;color:#aaa;">Unique short code</small>
             </div>
             <div>
-                <label class="form-label-custom">Address</label>
-                <input type="text" name="address" class="form-control-custom" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
+                <label class="form-label-custom">Address *</label>
+                <input type="text" name="address" class="form-control-custom" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other">
             </div>
             <div>
                 <label class="form-label-custom">Contact Number</label>
@@ -219,8 +219,8 @@
                     <input type="text" name="name" class="form-control-custom" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" value="{{ $branch->name }}">
                 </div>
                 <div>
-                    <label class="form-label-custom">Address</label>
-                    <input type="text" name="address" class="form-control-custom" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" value="{{ $branch->address }}">
+                    <label class="form-label-custom">Address *</label>
+                    <input type="text" name="address" class="form-control-custom" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" value="{{ $branch->address }}">
                 </div>
                 <div>
                     <label class="form-label-custom">Contact Number</label>

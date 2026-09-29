@@ -39,11 +39,21 @@
     WHY A RELOAD ON 419
     -------------------
     A 419 means the session is gone; there is no client-side recovery, because
-    the new token can only come from the server. Reloading re-authenticates
-    from the "Remember me" cookie where one exists and lands on the login page
-    where it does not — either way the customer or the cashier sees a working
-    page instead of a raw "Page Expired" card that loses where they were. The
-    reload is latched so a burst of failing polls cannot loop it.
+    the new token can only come from the server. Reloading lands on the login
+    page (or the same page, for one that needs no login), so the customer or
+    the cashier sees a working page instead of a raw "Page Expired" card that
+    loses where they were. The reload is latched so a burst of failing polls
+    cannot loop it.
+
+    SIGNED IN ON ANOTHER DEVICE (Sept 2026)
+    ---------------------------------------
+    When the same account signs in somewhere else, the next request from this
+    browser is answered by App\Http\Middleware\EnforceSingleSession. For a
+    background request that answer is a 401 carrying an X-Session-Ended header
+    with the login URL. Most pages' own poll code quietly ignores a failed
+    poll (the admin board keeps its last state on purpose), so the move to the
+    login page happens here, once, for every page that includes this partial.
+    Same latch as the reload.
 
     Scope is deliberately same-origin only, so nothing here can leak a CSRF
     token to a third party.
@@ -75,6 +85,19 @@
     }
 
     window.handleExpiredSession = sessionExpired;
+
+    // The login URL from an X-Session-Ended header, or null. Same-origin only:
+    // a header pointing anywhere else is ignored rather than followed.
+    function endedLoginUrl(header) {
+        if (!header || !isSameOrigin(header)) { return null; }
+        return header;
+    }
+
+    function sessionEnded(url) {
+        if (reloadLatched) { return; }
+        reloadLatched = true;
+        window.location.href = url;
+    }
 
     function isSameOrigin(url) {
         try {
@@ -114,6 +137,10 @@
             return nativeFetch(input, options).then(function (response) {
                 if (response && response.status === 419) {
                     sessionExpired();
+                }
+                if (response && response.status === 401) {
+                    var endedUrl = endedLoginUrl(response.headers.get('X-Session-Ended'));
+                    if (endedUrl) { sessionEnded(endedUrl); }
                 }
                 return response;
             });
@@ -162,6 +189,10 @@
             xhr.addEventListener('load', function () {
                 if (xhr.status === 419) {
                     sessionExpired();
+                }
+                if (xhr.status === 401) {
+                    var endedUrl = endedLoginUrl(xhr.getResponseHeader('X-Session-Ended'));
+                    if (endedUrl) { sessionEnded(endedUrl); }
                 }
             });
 

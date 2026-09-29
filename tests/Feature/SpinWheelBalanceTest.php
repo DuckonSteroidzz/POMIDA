@@ -6,9 +6,12 @@ use App\Http\Controllers\Customer\AuthController;
 use App\Models\GamePlayed;
 use App\Models\Order;
 use App\Models\User;
+use App\Services\SpinWheel;
 use App\Support\GuestOrders;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\DB;
+use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
@@ -20,16 +23,19 @@ use Tests\TestCase;
  * winning anything — "scammy" rather than fun. Two changes: more spins per
  * order, and a rebalance of what the wheel lands on.
  *
- * This is a product decision about game balance. Nothing here touches
- * validation, rate limiting or access control: GAME_POINT_AWARDS still caps
- * which point VALUES the server will accept, and the per-order and per-day
+ * This is a product decision about game balance. Nothing here touched
+ * validation, rate limiting or access control: the per-order and per-day
  * spin gates are unchanged apart from the count itself.
  *
  * WHAT THE ODDS ACTUALLY ARE
  * --------------------------
- * Every segment is drawn the same size and the landing angle is uniform
- * (Math.random() * 2π), so a value's probability is exactly how many segments
- * carry it. Repeating a value in WHEEL_SEGMENTS is the weighting mechanism.
+ * Every segment is equally likely. Until hardening pass F3 (2026-09-27) the
+ * page landed at a uniform random angle over equal-sized segments. Since F3
+ * the server picks a uniform index instead (App\Services\SpinWheel), which is
+ * the same distribution. Either way a value's probability is exactly how many
+ * segments carry it, and repeating a value in WHEEL_SEGMENTS is the weighting
+ * mechanism. The request body no longer names a prize at all: see
+ * SpinOutcomeServerAuthoritativeTest.
  *
  *   BEFORE (8 segments)            AFTER (12 segments)
  *   3 pts      3/8 = 37.5%         3 pts      4/12 = 33.3%
@@ -48,6 +54,7 @@ use Tests\TestCase;
 class SpinWheelBalanceTest extends TestCase
 {
     use DatabaseTransactions;
+    use ForcesSpinOutcome;
 
     /** The distribution the wheel is configured for, as fractions. */
     private const EXPECTED = [
@@ -124,29 +131,35 @@ class SpinWheelBalanceTest extends TestCase
     }
 
     /**
-     * Every value the wheel can land on must be one the server will accept.
-     * If these drift apart, a legitimate spin gets a 422 and the customer
-     * loses a spin for nothing.
+     * The page must draw exactly the list the server picks from.
+     *
+     * This replaces a test that every segment value was in GAME_POINT_AWARDS,
+     * the allowlist the server checked a POSTed value against. F3 removed
+     * both the posted value and the allowlist. The drift that matters now is
+     * between the server's list and the page's: the page finds the server's
+     * pick by its index in this list, so if they differ it cannot show the
+     * right segment. (It then says "Spin recorded, refresh" rather than
+     * showing a wrong prize.)
      */
-    public function test_every_segment_value_is_in_the_server_allowlist(): void
+    public function test_the_page_draws_exactly_the_segments_the_server_picks_from(): void
     {
-        $allowed = (array) (new \ReflectionClass(AuthController::class))
-            ->getConstant('GAME_POINT_AWARDS');
+        $this->guestOrder();
+        DB::table('settings')->where('key', 'game_enabled')->delete();
+        DB::table('settings')->insert([
+            'key' => 'game_enabled', 'branch_id' => null, 'value' => '1',
+            'group' => 'business', 'label' => 'Spin & Win Enabled', 'type' => 'text',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
 
-        if (! $allowed) {
-            $r = new \ReflectionClassConstant(AuthController::class, 'GAME_POINT_AWARDS');
-            $r->setAccessible(true);
-            $allowed = (array) $r->getValue();
-        }
+        $page = $this->get('/customer/game')->assertOk();
 
-        foreach ($this->segments() as $segment) {
-            $this->assertContains(
-                (int) $segment['points'],
-                $allowed,
-                'segment "' . $segment['label'] . '" awards ' . $segment['points']
-                . ', which GAME_POINT_AWARDS would refuse'
-            );
-        }
+        $this->assertSame($this->segments(), $page->viewData('wheelSegments'));
+        $this->assertStringContainsString(
+            // Blade's @json flags, so the comparison is byte-for-byte.
+            'var segments = ' . json_encode($this->segments(), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_AMP | JSON_HEX_QUOT) . '.map(',
+            $page->getContent(),
+            'the wheel script is not built from the server list, so the page cannot find the segment the server picked'
+        );
     }
 
     /**
@@ -172,13 +185,16 @@ class SpinWheelBalanceTest extends TestCase
     // ══════════════════════════════════════════════════════════════════
 
     /**
-     * Simulate the real selection mechanism a large number of times and check
-     * the distribution lands near the configured weights.
+     * Run the real selection mechanism a large number of times and check the
+     * distribution lands near the configured weights.
      *
-     * The wheel picks by UNIFORM ANGLE over equal-sized segments, so this
-     * reproduces that exactly — a uniform draw over the segment count — rather
-     * than sampling the weights directly, which would only prove the weights
-     * equal themselves.
+     * Since F3 the real mechanism is the SERVER's picker,
+     * App\Services\SpinWheel, resolved from the container exactly as
+     * addPoints() resolves it. This test used to replay the page's
+     * uniform-angle formula instead, because the page picked the segment
+     * then. Either way it draws over the segment count rather than sampling
+     * the weights directly, which would only prove the weights equal
+     * themselves.
      *
      * Tolerance: 60,000 spins, ±2 percentage points. The standard error on a
      * p≈0.25 proportion at n=60,000 is about 0.18pp, so 2pp is roughly 11
@@ -189,19 +205,16 @@ class SpinWheelBalanceTest extends TestCase
     public function test_simulated_spins_land_close_to_the_configured_odds(): void
     {
         $segments = $this->segments();
-        $n = count($segments);
+        $wheel = app(SpinWheel::class);
         $spins = 60000;
         $tolerance = 0.02;
+
+        $this->assertSame(SpinWheel::class, get_class($wheel), 'setup: a test double is bound, not the real picker');
 
         $observed = [0 => 0, 3 => 0, 5 => 0, 8 => 0];
 
         for ($i = 0; $i < $spins; $i++) {
-            // Exactly what game.blade.php does: a uniform angle over the
-            // circle, floor-divided by the (equal) arc per segment.
-            $angle = mt_rand() / mt_getrandmax();          // [0,1)
-            $index = (int) floor($angle * $n) % $n;
-
-            $observed[(int) $segments[$index]['points']]++;
+            $observed[(int) $segments[$wheel->land($segments)]['points']]++;
         }
 
         $this->assertSame($spins, array_sum($observed), 'every spin should have landed somewhere');
@@ -274,10 +287,12 @@ class SpinWheelBalanceTest extends TestCase
      */
     public function test_the_eighth_spin_on_one_order_is_refused(): void
     {
+        // Every spin here is worth 3, as the old posted payload made it.
+        $this->forceSpinOutcome(3);
         $order = $this->guestOrder();
 
         for ($i = 1; $i <= 7; $i++) {
-            $response = $this->postJson('/customer/add-points', ['points' => 3]);
+            $response = $this->postJson('/customer/add-points');
 
             $response->assertOk();
             $this->assertTrue(
@@ -289,7 +304,7 @@ class SpinWheelBalanceTest extends TestCase
         // CONTROL: exactly seven were recorded against this order.
         $this->assertSame(7, GamePlayed::where('order_id', $order->id)->count());
 
-        $eighth = $this->postJson('/customer/add-points', ['points' => 3]);
+        $eighth = $this->postJson('/customer/add-points');
 
         $this->assertFalse($eighth->json('success'), 'an 8th spin was allowed on one order');
         $this->assertSame('window_exhausted', $eighth->json('blocked'));
@@ -316,11 +331,13 @@ class SpinWheelBalanceTest extends TestCase
      */
     public function test_unused_spins_accumulate_into_the_next_order(): void
     {
+        // Every spin here is worth 3, as the old posted payload made it.
+        $this->forceSpinOutcome(3);
         $first = $this->guestOrder();
 
         // Use 3 of 7, leaving 4 unused.
         for ($i = 0; $i < 3; $i++) {
-            $this->postJson('/customer/add-points', ['points' => 3])->assertOk();
+            $this->postJson('/customer/add-points')->assertOk();
         }
 
         $state = $this->get('/customer/game')->viewData('spinState');
@@ -348,11 +365,13 @@ class SpinWheelBalanceTest extends TestCase
      */
     public function test_a_completed_order_still_grants_its_spins(): void
     {
+        // Every spin here is worth 3, as the old posted payload made it.
+        $this->forceSpinOutcome(3);
         $order = $this->guestOrder();
 
         // Use 2 of 7 while it is active.
         for ($i = 0; $i < 2; $i++) {
-            $this->postJson('/customer/add-points', ['points' => 3])->assertOk();
+            $this->postJson('/customer/add-points')->assertOk();
         }
 
         Order::whereKey($order->id)->update(['status' => 'completed']);
@@ -363,7 +382,7 @@ class SpinWheelBalanceTest extends TestCase
         $this->assertSame(5, $state['spins_remaining'], '7 granted - 2 used = 5 still available');
 
         // And the server honours them.
-        $this->postJson('/customer/add-points', ['points' => 3])->assertOk()
+        $this->postJson('/customer/add-points')->assertOk()
             ->assertJson(['success' => true]);
     }
 
@@ -379,7 +398,7 @@ class SpinWheelBalanceTest extends TestCase
         $this->assertSame('no_active_order', $state['blocked']);
         $this->assertSame(0, $state['spins_total']);
 
-        $refused = $this->postJson('/customer/add-points', ['points' => 3]);
+        $refused = $this->postJson('/customer/add-points');
         $this->assertFalse($refused->json('success'), 'the server allowed a spin with no order');
     }
 
@@ -417,7 +436,7 @@ class SpinWheelBalanceTest extends TestCase
         $this->assertSame('no_active_order', $state['blocked']);
         $this->assertSame(0, $state['spins_total']);
 
-        $this->postJson('/customer/add-points', ['points' => 3])->assertStatus(422);
+        $this->postJson('/customer/add-points')->assertStatus(422);
     }
 
     // ══════════════════════════════════════════════════════════════════

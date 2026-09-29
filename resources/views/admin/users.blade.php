@@ -189,7 +189,7 @@
                 <option value="">-- Select branch --</option>
                 @foreach($branches as $b)
                     <option value="{{ $b->id }}" {{ old('branch_id') == $b->id ? 'selected' : '' }}>
-                        {{ $b->name }}
+                        {{ $b->name }}{{ $b->is_active ? '' : ' (closed)' }}
                     </option>
                 @endforeach
             </select>
@@ -198,7 +198,7 @@
                 <div>
                     <label class="form-label-custom" for="create-staff-pw">Password</label>
                     <div class="pw-field">
-                        <input type="password" id="create-staff-pw" name="password" required minlength="8"
+                        <input type="password" id="create-staff-pw" name="password" required minlength="8" maxlength="20"
                             autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
                             class="form-control-custom">
                         <button type="button" class="js-pw-toggle" data-target="create-staff-pw"
@@ -210,7 +210,7 @@
                 <div>
                     <label class="form-label-custom" for="create-staff-pw-confirm">Confirm Password</label>
                     <div class="pw-field">
-                        <input type="password" id="create-staff-pw-confirm" name="password_confirmation" required minlength="8"
+                        <input type="password" id="create-staff-pw-confirm" name="password_confirmation" required minlength="8" maxlength="20"
                             autocomplete="new-password" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
                             class="form-control-custom">
                         <button type="button" class="js-pw-toggle" data-target="create-staff-pw-confirm"
@@ -380,7 +380,7 @@
                                     <select name="branch_id" id="edit-branch-{{ $s->id }}" required class="form-control-custom">
                                         @foreach($branches as $b)
                                             <option value="{{ $b->id }}" {{ $s->branch_id == $b->id ? 'selected' : '' }}>
-                                                {{ $b->name }}
+                                                {{ $b->name }}{{ $b->is_active ? '' : ' (closed)' }}
                                             </option>
                                         @endforeach
                                     </select>
@@ -428,6 +428,7 @@
                                                 name="password"
                                                 required
                                                 minlength="8"
+                                                maxlength="20"
                                                 autocomplete="new-password"
                                                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
                                                 class="form-control-custom">
@@ -448,6 +449,7 @@
                                                 name="password_confirmation"
                                                 required
                                                 minlength="8"
+                                                maxlength="20"
                                                 autocomplete="new-password"
                                                 data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"
                                                 class="form-control-custom">

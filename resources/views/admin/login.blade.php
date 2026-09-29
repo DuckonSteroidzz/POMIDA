@@ -401,32 +401,9 @@
             display: flex;
 
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
 
             margin-bottom: 1.25rem;
-        }
-
-        .remember {
-            display: flex;
-
-            align-items: center;
-
-            gap: 0.45rem;
-
-            color: var(--muted);
-
-            font-size: 0.8rem;
-
-            cursor: pointer;
-        }
-
-        .remember input {
-            width: 15px;
-            height: 15px;
-
-            accent-color: var(--deep-red);
-
-            cursor: pointer;
         }
 
         /* =====================================================
@@ -792,24 +769,9 @@
                 </div>
 
 
-                {{-- Remember Me --}}
+                {{-- No "Remember me" (Sept 2026): closing the browser ends the
+                     login, for every role. See config/session.php. --}}
                 <div class="form-options">
-
-                    <label class="remember">
-
-                        <input
-                            type="checkbox"
-                            name="remember"
-                            value="1"
-                            {{ old('remember') ? 'checked' : '' }}
-                        >
-
-                        <span>
-                            Remember me
-                        </span>
-
-                    </label>
-
 
                     <a
                         href="{{ route('admin.forgot-password') }}"

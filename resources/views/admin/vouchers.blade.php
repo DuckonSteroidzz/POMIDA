@@ -192,7 +192,9 @@
      Owner only, and admin.game.toggle stays in the `role:admin` route group. --}}
 @if($isAdmin)
 @php
-$gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', 'game_enabled')->value('value');
+// The one global switch row, the same one toggleGame() flips and the spin
+// endpoint enforces — see Setting::gameEnabled().
+$gameEnabled = \App\Models\Setting::gameEnabled();
 @endphp
 <div class="content-card" style="margin-bottom:1rem;">
     <div style="display:flex;justify-content:space-between;align-items:center;">
@@ -203,8 +205,8 @@ $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', '
         <form action="{{ route('admin.game.toggle') }}" method="POST" style="margin:0;">
             @csrf
             <button type="submit"
-                style="background:{{ $gameEnabled === '1' ? '#4CAF50' : '#ccc' }};color:white;border:none;border-radius:20px;padding:0.4rem 1.2rem;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;">
-                {{ $gameEnabled === '1' ? '✓ Enabled' : '✗ Disabled' }}
+                style="background:{{ $gameEnabled ? '#4CAF50' : '#ccc' }};color:white;border:none;border-radius:20px;padding:0.4rem 1.2rem;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;">
+                {{ $gameEnabled ? '✓ Enabled' : '✗ Disabled' }}
             </button>
         </form>
     </div>

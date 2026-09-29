@@ -37,14 +37,25 @@ return [
     | came back as a 419 "Page Expired" with no explanation. One shift is the
     | number that matches how the app is actually used.
     |
-    | This is IDLE time, not a hard cap: every request slides it forward. It is
-    | also independent of "Remember me", which issues its own long-lived cookie
-    | and re-authenticates after this expires.
+    | This is IDLE time, not a hard cap: every request slides it forward.
+    |
+    | Closing the browser ends the login (Sept 2026). expire_on_close makes the
+    | session cookie a browser-session cookie with no expiry date, so a full
+    | browser close deletes it. Before this it was saved with a 480-minute
+    | expiry, and reopening Chrome within 8 hours was still signed in. The
+    | default is true HERE, not only in .env, because .env is not in git and
+    | every server has its own. A server whose .env never mentions it still
+    | gets the safe behaviour. "Remember me" is retired for the same reason.
+    |
+    | 'lifetime' above still applies on the server either way. A browser that
+    | restores its cookies on restart ("Continue where you left off") brings
+    | the cookie back, and the session behind it is still ended after 480
+    | idle minutes, or at once when the account signs in elsewhere.
     */
 
     'lifetime' => env('SESSION_LIFETIME', 480),
 
-    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
+    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', true),
 
     /*
     |--------------------------------------------------------------------------

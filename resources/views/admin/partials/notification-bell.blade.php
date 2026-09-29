@@ -277,10 +277,16 @@
         else { badge.hidden = true; }
     }
 
+    /*
+     * Quotes too: textContent -> innerHTML covers &, < and >, but this value is
+     * also interpolated into data-id="..." below, and an unescaped quote there
+     * would close the attribute. The ids are database integers today, so this
+     * is defence in depth rather than a live hole.
+     */
     function esc(s) {
         var d = document.createElement('div');
         d.textContent = s == null ? '' : s;
-        return d.innerHTML;
+        return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
     function render(items) {

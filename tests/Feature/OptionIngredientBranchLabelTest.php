@@ -149,17 +149,44 @@ class OptionIngredientBranchLabelTest extends TestCase
         return substr($html, $start, $end - $start);
     }
 
-    /** One saved ingredient row. The row holds only spans and a button, so its first </div> is its end. */
-    private function ingredientRow(string $block, MenuOptionIngredient $link): string
+    /**
+     * One saved ingredient link, as the option's row carries it.
+     *
+     * These used to be rendered <div class="pchy-ing-row"> markup, one copy
+     * of the whole recipe editor per option. There is one editor now, in the
+     * modal, and what each option's row carries is the DATA that editor is
+     * filled from — so this reads the same fields out of that payload
+     * instead of out of markup. Every field is still decided on the server,
+     * including can_remove; the browser is told what to draw, it does not
+     * work the branch rule out for itself.
+     */
+    private function ingredientPayload(string $block, MenuOptionIngredient $link): array
     {
-        $found = preg_match(
-            '/<div class="pchy-ing-row"[^>]*data-ingredient-id="' . $link->id . '".*?<\/div>/s',
-            $block,
-            $m
-        );
-        $this->assertSame(1, $found, "ingredient row #{$link->id} is not in the option's panel");
+        $found = preg_match('/data-ingredients="([^"]*)"/s', $block, $m);
+        $this->assertSame(1, $found, "the option's row carries no data-ingredients");
 
-        return $m[0];
+        $rows = json_decode(html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'), true);
+        $this->assertIsArray($rows, 'data-ingredients is not valid JSON');
+
+        foreach ($rows as $row) {
+            if ((int) ($row['id'] ?? 0) === $link->id) {
+                return $row;
+            }
+        }
+
+        $this->fail("ingredient link #{$link->id} is not in the option's payload");
+    }
+
+    /** Every saved link on one option's row, in payload order. */
+    private function ingredientPayloadAll(string $block): array
+    {
+        $found = preg_match('/data-ingredients="([^"]*)"/s', $block, $m);
+        $this->assertSame(1, $found, "the option's row carries no data-ingredients");
+
+        $rows = json_decode(html_entity_decode($m[1], ENT_QUOTES, 'UTF-8'), true);
+        $this->assertIsArray($rows);
+
+        return $rows;
     }
 
     private function statusBlock(string $block): string
@@ -277,16 +304,23 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $block = $this->optionBlock($this->pageHtml($this->admin()), $option);
 
-        $rowA = $this->ingredientRow($block, $linkA);
-        $rowB = $this->ingredientRow($block, $linkB);
+        $rowA = $this->ingredientPayload($block, $linkA);
+        $rowB = $this->ingredientPayload($block, $linkB);
 
-        $this->assertStringContainsString('<span class="pchy-ing-branch">' . e($a->name) . '</span>', $rowA);
-        $this->assertStringContainsString('data-branch-id="' . $a->id . '"', $rowA);
-        $this->assertStringNotContainsString(e($b->name), $rowA, "row A must not name branch B");
+        $this->assertSame($a->name, $rowA['branch_name']);
+        $this->assertSame($a->id, $rowA['branch_id']);
+        $this->assertNotSame($b->name, $rowA['branch_name'], 'link A must not name branch B');
 
-        $this->assertStringContainsString('<span class="pchy-ing-branch">' . e($b->name) . '</span>', $rowB);
-        $this->assertStringContainsString('data-branch-id="' . $b->id . '"', $rowB);
-        $this->assertStringNotContainsString(e($a->name), $rowB, "row B must not name branch A");
+        $this->assertSame($b->name, $rowB['branch_name']);
+        $this->assertSame($b->id, $rowB['branch_id']);
+        $this->assertNotSame($a->name, $rowB['branch_name'], 'link B must not name branch A');
+
+        // The one builder that draws both a restored row and a freshly added
+        // one still puts the branch on .pchy-ing-branch and the id on the
+        // row's dataset, which is what optSyncBranchBadges() reads back.
+        $view = file_get_contents(resource_path('views/admin/menu-options.blade.php'));
+        $this->assertStringContainsString("branch.className = 'pchy-ing-branch'", $view);
+        $this->assertStringContainsString('row.dataset.branchId = ing.branch_id', $view);
     }
 
     public function test_a_link_to_inventory_with_no_branch_renders_no_chip_and_no_branch_id(): void
@@ -294,10 +328,14 @@ class OptionIngredientBranchLabelTest extends TestCase
         $option = $this->option();
         $link   = $this->link($option, $this->inventoryIn(null, 'Orphan'));
 
-        $row = $this->ingredientRow($this->optionBlock($this->pageHtml($this->admin()), $option), $link);
+        $row = $this->ingredientPayload($this->optionBlock($this->pageHtml($this->admin()), $option), $link);
 
-        $this->assertStringNotContainsString('pchy-ing-branch', $row);
-        $this->assertStringNotContainsString('data-branch-id', $row);
+        // Null, not an empty string and not a guess: the builder draws no
+        // chip for a falsy branch_name and sets no dataset.branchId for a
+        // null branch_id, so the badge resync cannot credit this link to any
+        // branch.
+        $this->assertNull($row['branch_name']);
+        $this->assertNull($row['branch_id']);
     }
 
     public function test_the_row_builder_script_is_wired_to_the_branch_keys_and_the_badge_resync(): void
@@ -322,8 +360,25 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         // Hardening: a URL that comes back in the response is set as a
         // property, never concatenated into innerHTML (Phase 3b F11's rule).
-        $this->assertStringContainsString('.dataset.url = ing.delete_url', $view);
+        $this->assertStringContainsString('del.dataset.url = ing.delete_url', $view);
         $this->assertStringNotContainsString("data-url=\"' + ing.delete_url", $view);
+
+        // ONE BUILDER, for a row restored from the option's payload and for a
+        // row that has just come back from the server. They were two before —
+        // Blade rendered the saved ones and the script built the new ones —
+        // which is two descriptions of one row that can quietly stop
+        // matching.
+        $this->assertSame(
+            1,
+            substr_count($view, 'function optIngRow(ing) {'),
+            'there must be exactly one ingredient-row builder'
+        );
+        $this->assertStringContainsString('list.appendChild(optIngRow(ing));', $view);
+
+        // Free text from the server is set as text, never concatenated into
+        // markup.
+        $this->assertStringContainsString('name.textContent = ing.name;', $view);
+        $this->assertStringContainsString('branch.textContent = ing.branch_name;', $view);
     }
 
     // ══════════════════ 2. badges are live-updatable ══════════════════
@@ -344,18 +399,36 @@ class OptionIngredientBranchLabelTest extends TestCase
         $this->assertStringContainsString('data-title-ok="Has an ingredient link for this branch."', $status);
         $this->assertStringContainsString('data-title-off="', $status);
 
+        // Third title, for the third state: the amber "add inventory first"
+        // hint is a state of the badge itself now, not a second pill.
+        $this->assertStringContainsString('data-title-empty="', $status);
+
         // Each badge names its branch id + name in data-*, and keeps its
-        // visible "<name>: Mapped|Unmapped" text as one contiguous run.
+        // visible "<name> Ready|Needs Inventory|Add Inventory First" text as
+        // one contiguous run.
         $this->assertMatchesRegularExpression(
             '/pchy-branch-ok"\s+data-branch-id="' . $mapped->id . '"\s+data-branch-name="' . preg_quote(e($mapped->name), '/') . '"/',
             $status
         );
         $this->assertMatchesRegularExpression(
-            '/pchy-branch-off"\s+data-branch-id="' . $unmapped->id . '"\s+data-branch-name="' . preg_quote(e($unmapped->name), '/') . '"/',
+            '/pchy-branch-(off|empty)"\s+data-branch-id="' . $unmapped->id . '"\s+data-branch-name="' . preg_quote(e($unmapped->name), '/') . '"/',
             $status
         );
-        $this->assertStringContainsString(e($mapped->name) . ': Mapped</span>', $status);
-        $this->assertStringContainsString(e($unmapped->name) . ': Unmapped</span>', $status);
+        $this->assertStringContainsString(e($mapped->name) . ' Ready</span>', $status);
+        $this->assertMatchesRegularExpression(
+            '/' . preg_quote(e($unmapped->name), '/') . ' (Needs Inventory|Add Inventory First)<\/span>/',
+            $status
+        );
+
+        // data-empty-inventory is on EVERY badge, not only the empty ones:
+        // optSyncBranchBadges() reads it to decide which of the two not-ready
+        // wordings a badge falls to when its last ingredient link is removed,
+        // and a badge that is Ready today can be the one that falls.
+        $this->assertSame(
+            2,
+            substr_count($status, 'data-empty-inventory='),
+            'both badges must carry the flag the live update reads'
+        );
     }
 
     // ══════════════════ 3. "add inventory first" ══════════════════
@@ -372,21 +445,33 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $status = $this->statusBlock($this->optionBlock($this->pageHtml($this->admin()), $option));
 
-        $this->assertSame(1, substr_count($status, 'class="pchy-branch-hint"'), 'exactly one branch is empty');
+        // ONE pill per branch. The amber "add inventory first" hint used to be
+        // a SECOND pill beside a red one; it is the badge's own third state
+        // now, so the count below is the count of branches, not of branches
+        // plus hints.
+        // Counted on data-branch-id, which every badge carries exactly once:
+        // 'class="pchy-branch-badge' would also match the badge's inner
+        // .pchy-branch-badge-text span and quietly double the count.
+        $this->assertSame(2, substr_count($status, 'data-branch-id='), 'one pill per branch, no more');
+
+        $this->assertSame(1, substr_count($status, 'pchy-branch-empty'), 'exactly one branch is empty');
         $this->assertMatchesRegularExpression(
-            '/class="pchy-branch-hint"\s+data-branch-id="' . $empty->id . '"/',
+            '/pchy-branch-empty"\s+data-branch-id="' . $empty->id . '"/',
             $status,
-            'the hint must belong to the EMPTY branch'
+            'the empty state must belong to the EMPTY branch'
         );
-        $this->assertDoesNotMatchRegularExpression(
-            '/class="pchy-branch-hint"\s+data-branch-id="' . $stocked->id . '"/',
+        $this->assertMatchesRegularExpression(
+            '/pchy-branch-off"\s+data-branch-id="' . $stocked->id . '"/',
             $status,
             'a branch that has active inventory must never be told to add some'
         );
-        $this->assertStringContainsString('No active inventory — add inventory first', $status);
 
-        // Unmapped + empty: the hint is visible (no `hidden` attribute).
-        $this->assertDoesNotMatchRegularExpression('/pchy-branch-hint"[^>]*\shidden/s', $status);
+        // It still says what to do, in the badge's own text and title.
+        $this->assertStringContainsString(e($empty->name) . ' Add Inventory First</span>', $status);
+        $this->assertStringContainsString('data-empty-inventory="1"', $status);
+
+        // And the old two-pill markup is gone, not merely unused.
+        $this->assertStringNotContainsString('pchy-branch-hint', $status);
     }
 
     public function test_inventory_that_is_only_archived_still_counts_as_none(): void
@@ -399,7 +484,8 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $status = $this->statusBlock($this->optionBlock($this->pageHtml($this->admin()), $option));
 
-        $this->assertStringContainsString('class="pchy-branch-hint"', $status);
+        $this->assertStringContainsString('pchy-branch-empty', $status);
+        $this->assertStringContainsString('data-empty-inventory="1"', $status);
     }
 
     public function test_the_hint_stays_in_the_markup_but_hidden_while_the_branch_is_mapped(): void
@@ -416,8 +502,18 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $status = $this->statusBlock($this->optionBlock($this->pageHtml($this->admin()), $option));
 
+        // Mapped wins: the badge is green and reads Ready, NOT the amber
+        // "Add Inventory First" — the branch does have a link, it just runs
+        // through an archived inventory row.
         $this->assertStringContainsString('pchy-branch-ok', $status, 'fixture sanity: the branch is Mapped');
-        $this->assertMatchesRegularExpression('/class="pchy-branch-hint"[^>]*\shidden/s', $status);
+        $this->assertStringContainsString(e($branch->name) . ' Ready</span>', $status);
+
+        // But the flag that says "this branch has no ACTIVE inventory" stays
+        // on the badge, so optSyncBranchBadges() can fall to Add Inventory
+        // First — not to Needs Inventory — the moment that last link is
+        // removed, without a reload. This is the whole reason the flag is an
+        // attribute rather than something re-derived from the rows on screen.
+        $this->assertStringContainsString('data-empty-inventory="1"', $status);
     }
 
     public function test_a_branch_locked_supervisor_gets_the_hint_for_their_own_empty_branch_only(): void
@@ -436,8 +532,8 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $status = $this->statusBlock($this->optionBlock($this->pageHtml($this->supervisorAt($own->id)), $option));
 
-        $this->assertMatchesRegularExpression('/class="pchy-branch-hint"\s+data-branch-id="' . $own->id . '"/', $status);
-        $this->assertDoesNotMatchRegularExpression('/class="pchy-branch-hint"\s+data-branch-id="' . $other->id . '"/', $status);
+        $this->assertMatchesRegularExpression('/pchy-branch-empty"\s+data-branch-id="' . $own->id . '"/', $status);
+        $this->assertDoesNotMatchRegularExpression('/pchy-branch-empty"\s+data-branch-id="' . $other->id . '"/', $status);
     }
 
     public function test_a_branch_locked_supervisor_gets_no_hint_for_a_branch_they_cannot_act_on(): void
@@ -454,7 +550,7 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $status = $this->statusBlock($this->optionBlock($this->pageHtml($this->supervisorAt($own->id)), $option));
 
-        $this->assertStringNotContainsString('class="pchy-branch-hint"', $status);
+        $this->assertStringNotContainsString('pchy-branch-empty', $status);
     }
 
     // ══════════════════ 4. supervisor: no dead remove buttons ══════════════════
@@ -468,20 +564,30 @@ class OptionIngredientBranchLabelTest extends TestCase
 
         $block = $this->optionBlock($this->pageHtml($this->supervisorAt(self::HOME_BRANCH)), $option);
 
-        $ownRow = $this->ingredientRow($block, $own);
-        $this->assertStringContainsString('opt-ing-delete-btn', $ownRow);
-        $this->assertStringContainsString(
+        // Their own branch's link: removable, with the URL to do it.
+        $ownRow = $this->ingredientPayload($block, $own);
+        $this->assertTrue($ownRow['can_remove']);
+        $this->assertSame(
             route('admin.menu-options.ingredients.delete', [$option->id, $own->id]),
-            $ownRow
+            $ownRow['delete_url']
         );
 
-        $farRow = $this->ingredientRow($block, $other);
-        $this->assertStringNotContainsString('opt-ing-delete-btn', $farRow, "another branch's link must not offer a dead button");
+        // The other branch's: not removable, and the URL is WITHHELD rather
+        // than handed over to be ignored — the markup this replaced rendered
+        // neither a button nor a URL, and the payload keeps that promise.
+        $farRow = $this->ingredientPayload($block, $other);
+        $this->assertFalse($farRow['can_remove'], "another branch's link must not be offered for removal");
+        $this->assertNull($farRow['delete_url']);
         $this->assertStringNotContainsString(
             route('admin.menu-options.ingredients.delete', [$option->id, $other->id]),
-            $farRow
+            $block,
+            "another branch's delete URL must not be anywhere on the option's row"
         );
-        $this->assertStringContainsString('pchy-ing-lock', $farRow);
+
+        // And the builder draws the lock, not a dead button, for that state.
+        $view = file_get_contents(resource_path('views/admin/menu-options.blade.php'));
+        $this->assertStringContainsString("if (ing.can_remove === false) {", $view);
+        $this->assertStringContainsString("lock.className = 'pchy-ing-lock'", $view);
     }
 
     public function test_an_admin_is_offered_remove_on_every_link(): void
@@ -494,10 +600,15 @@ class OptionIngredientBranchLabelTest extends TestCase
         $block = $this->optionBlock($this->pageHtml($this->admin()), $option);
 
         foreach ([$own, $other] as $link) {
-            $row = $this->ingredientRow($block, $link);
-            $this->assertStringContainsString('opt-ing-delete-btn', $row);
-            $this->assertStringNotContainsString('pchy-ing-lock', $row);
+            $row = $this->ingredientPayload($block, $link);
+            $this->assertTrue($row['can_remove'], 'an admin may remove any branch\'s link');
+            $this->assertSame(
+                route('admin.menu-options.ingredients.delete', [$option->id, $link->id]),
+                $row['delete_url']
+            );
         }
+
+        $this->assertCount(2, $this->ingredientPayloadAll($block));
     }
 
     public function test_the_hidden_button_is_cosmetic_the_endpoint_still_refuses_the_supervisor(): void

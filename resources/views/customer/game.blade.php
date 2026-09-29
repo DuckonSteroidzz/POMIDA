@@ -531,11 +531,9 @@
 
         <section class="game-shell">
 
-            @php
-            $gameEnabled = \Illuminate\Support\Facades\DB::table('settings')->where('key', 'game_enabled')->value('value');
-            @endphp
-
-            @if($gameEnabled === '1')
+            {{-- The one global switch row the owner's toggle flips and the spin
+                 endpoint enforces — see Setting::gameEnabled(). --}}
+            @if(\App\Models\Setting::gameEnabled())
             @php $gameVouchers = $vouchers->where('points_required', '>', 0)->sortBy('points_required'); @endphp
             <div class="game-layout">
 
@@ -693,16 +691,22 @@
             if (btn) btn.disabled = !(spinState && spinState.can_spin);
         }
 
-        /* The odds live on the server — App\Http\Controllers\Customer\AuthController::WHEEL_SEGMENTS.
-           They used to be a literal array here, which meant nothing could
-           test them and they had to be kept in step by hand with the
-           GAME_POINT_AWARDS allowlist sitting right next to them.
+        /* The segments and their odds live on the server, in
+           App\Http\Controllers\Customer\AuthController::WHEEL_SEGMENTS, and
+           since hardening pass F3 so does the SPIN ITSELF. This page does not
+           choose where the wheel lands. It asks /customer/add-points, which
+           picks a segment, credits it and replies with outcome.segment (the
+           segment's index in that server list). The page then animates the
+           wheel to land on that segment. It sends no prize and has no say in
+           the result.
 
-           Every segment is drawn the same size and the landing angle is
-           uniform, so a value's probability is just how many segments
-           carry it. The shuffle below only changes where they sit on the
-           wheel, never how likely any of them is. */
-        var segments = @json($wheelSegments);
+           Each segment is tagged with its server index BEFORE the shuffle
+           below, so the page can find the server's segment wherever the
+           shuffle happened to draw it. The shuffle is looks only. */
+        var segments = @json($wheelSegments).map(function(s, i) {
+            s.segment = i;
+            return s;
+        });
 
         for (var i = segments.length - 1; i > 0; i--) {
             var j = Math.floor(Math.random() * (i + 1));
@@ -771,7 +775,7 @@
             if (isSpinning) return;
 
             // UX gate only. The authoritative refusal is the 422 from
-            // /customer/add-points, which is handled in showResult().
+            // /customer/add-points, which is handled just below.
             if (!spinState || !spinState.can_spin) {
                 renderSpinState(spinState);
                 return;
@@ -787,12 +791,107 @@
             // the spin lands, instead of being blocked by autoplay policy.
             if (window.primeCelebrationAudio) window.primeCelebrationAudio();
 
-            var extra = (Math.floor(Math.random() * 5) + 5) * 2 * Math.PI;
-            var stop = Math.random() * 2 * Math.PI;
-            var total = extra + stop;
+            /* Ask first, then animate. The server decides the outcome, so
+               there is nothing to spin towards until it answers. A refused
+               spin (cap reached, order cancelled, game switched off) is
+               therefore reported straight away instead of after a 4-second
+               spin that won nothing. EVERY spin is sent, "Try Again"
+               included, because the server's ledger is what counts spins.
+               The body is empty on purpose: the server ignores any prize a
+               client names. */
+            fetch('{{ route('customer.add-points') }}', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                    },
+                    body: '{}'
+                })
+                .then(function(r) {
+                    return r.json();
+                })
+                .then(function(data) {
+                    /* Server refused this spin — cap reached, or the order
+                       finished mid-session. Nothing was awarded, so say so
+                       plainly. The reply still carries the corrected counter. */
+                    if (data && data.success === false) {
+                        isSpinning = false;
+                        renderSpinState(data);
+                        showSpinToast('🚫', 'Spin not counted',
+                            esc(data.message || 'You have no spins left right now.'));
+                        releaseSpinButton();
+                        return;
+                    }
+
+                    var idx = drawnIndexOf(data && data.outcome);
+
+                    if (idx === -1) {
+                        /* The spin WAS recorded, but this page's wheel does
+                           not match the server's any more (the segments
+                           changed after the page loaded). Showing the wrong
+                           prize would be worse than showing none. */
+                        isSpinning = false;
+                        renderSpinState(data);
+                        updatePointsDisplay(data);
+                        showSpinToast('🔄', 'Spin recorded',
+                            'Refresh the page to see your result.');
+                        releaseSpinButton();
+                        return;
+                    }
+
+                    landOn(idx, function() {
+                        isSpinning = false;
+                        showResult(data, segments[idx]);
+                    });
+                })
+                .catch(function() {
+                    /* Network/parse failure — we do NOT know whether the spin
+                       was recorded, so claim nothing was won and let the next
+                       page load resync the counter from the server. */
+                    isSpinning = false;
+                    showSpinToast('⚠️', 'Connection problem',
+                        'Could not reach the server. Refresh to see your spins.');
+                    releaseSpinButton();
+                });
+        }
+
+        /* Where the server's segment sits on THIS page's shuffled wheel, or
+           -1. Matched on the server index, and the points must agree too, so
+           a wheel that changed after the page loaded is never shown landing
+           on the wrong prize. */
+        function drawnIndexOf(outcome) {
+            if (!outcome) return -1;
+            for (var i = 0; i < segments.length; i++) {
+                if (segments[i].segment === outcome.segment && segments[i].points === outcome.points) {
+                    return i;
+                }
+            }
+            return -1;
+        }
+
+        /* Spin the wheel so the pointer stops inside drawn segment `idx`.
+           Same feel as before: 5-9 full turns plus the remainder, over 4s
+           with a quartic ease-out.
+
+           Geometry, from drawWheel(): segment i covers
+           [angle + i*arc, angle + (i+1)*arc], and the pointer sits at the top
+           (3π/2 on the canvas). The pointer is inside segment i when
+           (3π/2 - angle) mod 2π lands in [i*arc, (i+1)*arc). So the wheel
+           must stop at an angle equal to 3π/2 - (i*arc + offset), mod 2π.
+           The offset keeps clear of the segment's edges (15%-85% of its
+           width), so the result never looks like a borderline call. */
+        function landOn(idx, done) {
+            var TAU = 2 * Math.PI;
+            var pointer = 3 * Math.PI / 2;
+            var offset = arc * (0.15 + Math.random() * 0.7);
+            var target = pointer - (idx * arc + offset);
+
+            var startAngle = currentAngle;
+            var remainder = (((target - startAngle) % TAU) + TAU) % TAU;
+            var extra = (Math.floor(Math.random() * 5) + 5) * TAU;
+            var total = extra + remainder;
             var duration = 4000;
             var startTime = performance.now();
-            var startAngle = currentAngle;
 
             function animate(now) {
                 var elapsed = now - startTime;
@@ -804,11 +903,17 @@
                 } else {
                     currentAngle = startAngle + total;
                     drawWheel(currentAngle);
-                    isSpinning = false;
-                    showResult();
+                    done();
                 }
             }
             requestAnimationFrame(animate);
+        }
+
+        function updatePointsDisplay(data) {
+            var pointsEl = document.getElementById('pointsDisplay');
+            if (pointsEl && data && typeof data.total_points !== 'undefined') {
+                pointsEl.textContent = data.total_points + ' pts';
+            }
         }
 
         /* Centre popup for a points win / Try Again / blocked spin. Replaces the
@@ -833,104 +938,56 @@
             document.getElementById('spinResultModal').style.display = 'none';
         }
 
-        function showResult() {
-            var norm = ((currentAngle % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-            var ptr = (3 * Math.PI / 2);
-            var segA = ((ptr - norm) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
-            var idx = Math.floor(segA / arc) % numSegments;
-            var won = segments[idx];
+        /* The spin has landed on the server's segment (`won`); now show what
+           the server credited. Runs only after the animation, so the counter
+           and the points badge do not give the result away mid-spin. */
+        function showResult(data, won) {
+            renderSpinState(data);
+            updatePointsDisplay(data);
 
-            /* EVERY spin is reported to the server, including a "Try Again"
-               (0 points). It used to short-circuit client-side and never call
-               the endpoint at all, which under a spin cap would have made
-               losing spins free and left the on-screen counter drifting away
-               from the server's ledger. 0 is already an allowlisted value in
-               GAME_POINT_AWARDS, so a loss records a spin and awards nothing. */
-            fetch('{{ route('customer.add-points') }}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    body: JSON.stringify({
-                        points: won.points
-                    })
-                })
-                .then(function(r) {
-                    return r.json();
-                })
-                .then(function(data) {
-                    /* Server refused this spin — cap reached, or the order
-                       finished mid-session. Nothing was awarded, so say so
-                       plainly instead of showing a win that did not happen.
-                       The reply still carries the corrected counter. */
-                    if (data && data.success === false) {
-                        renderSpinState(data);
-                        showSpinToast('🚫', 'Spin not counted',
-                            esc(data.message || 'You have no spins left right now.'));
-                        releaseSpinButton();
-                        return;
-                    }
+            if (won.type === 'points' && data.voucher) {
+                /* Won a voucher — the claim code is the whole point, so
+                   it gets the dedicated centre modal, not a toast. A
+                   guest win carries claim_code (the only way they can
+                   ever redeem it); a signed-in win also gets one now so
+                   the prize can be handed to a Dine-In friend. */
+                var isGuestPrize = !!data.voucher.claim_code;
+                var shownCode = data.voucher.claim_code || data.voucher.code;
 
-                    renderSpinState(data);
+                showVoucherWinModal(
+                    shownCode,
+                    data.voucher.description || '',
+                    isGuestPrize
+                        ? 'You have no account, so this code is the only way to use this voucher. Type it into the voucher box in your cart. It works once.'
+                        : 'Type this 1-time code into the voucher box at checkout. It works once.',
+                    data.voucher.message || ''
+                );
+                if (window.celebrateWin) window.celebrateWin();
 
-                    var pointsEl = document.getElementById('pointsDisplay');
-                    if (pointsEl && typeof data.total_points !== 'undefined') {
-                        pointsEl.textContent = data.total_points + ' pts';
-                    }
+                setTimeout(releaseSpinButton, 3000);
+            } else if (won.type === 'points') {
+                var line = 'Total Points: ' + data.total_points;
+                if (data.next_voucher) {
+                    line += '<br>' + data.points_needed +
+                        ' more pts to win: ' + esc(data.next_voucher) + '!';
+                }
+                showSpinToast('⭐', '+' + won.points + ' Points!', line);
+                if (window.celebrateWin) window.celebrateWin();
+                releaseSpinButton();
+            } else {
+                showSpinToast('😅', 'Try Again!', 'Better luck next time!');
+                releaseSpinButton();
+            }
 
-                    if (won.type === 'points' && data.voucher) {
-                        /* Won a voucher — the claim code is the whole point, so
-                           it gets the dedicated centre modal, not a toast. A
-                           guest win carries claim_code (the only way they can
-                           ever redeem it); a signed-in win also gets one now so
-                           the prize can be handed to a Dine-In friend. */
-                        var isGuestPrize = !!data.voucher.claim_code;
-                        var shownCode = data.voucher.claim_code || data.voucher.code;
-
-                        showVoucherWinModal(
-                            shownCode,
-                            data.voucher.description || '',
-                            isGuestPrize
-                                ? 'You have no account, so this code is the only way to use this voucher. Type it into the voucher box in your cart. It works once.'
-                                : 'Type this 1-time code into the voucher box at checkout. It works once.',
-                            data.voucher.message || ''
-                        );
-                        if (window.celebrateWin) window.celebrateWin();
-
-                        setTimeout(releaseSpinButton, 3000);
-                    } else if (won.type === 'points') {
-                        var line = 'Total Points: ' + data.total_points;
-                        if (data.next_voucher) {
-                            line += '<br>' + data.points_needed +
-                                ' more pts to win: ' + esc(data.next_voucher) + '!';
-                        }
-                        showSpinToast('⭐', '+' + won.points + ' Points!', line);
-                        if (window.celebrateWin) window.celebrateWin();
-                        releaseSpinButton();
-                    } else {
-                        showSpinToast('😅', 'Try Again!', 'Better luck next time!');
-                        releaseSpinButton();
-                    }
-
-                    /* Ad popup. Driven by the server's spin_number, not by a
-                       page-local counter: show_ad is true on the last spin of
-                       each order window, so it fires exactly once per window
-                       and survives a page refresh mid-window. */
-                    if (data.show_ad) {
-                        setTimeout(function() {
-                            showAdPopup();
-                        }, won.type === 'points' ? 2500 : 2000);
-                    }
-                })
-                .catch(function() {
-                    /* Network/parse failure — we do NOT know whether the spin
-                       was recorded, so claim nothing was won and let the next
-                       page load resync the counter from the server. */
-                    showSpinToast('⚠️', 'Connection problem',
-                        'Could not reach the server. Refresh to see your spins.');
-                    releaseSpinButton();
-                });
+            /* Ad popup. Driven by the server's spin_number, not by a
+               page-local counter: show_ad is true on the last spin of
+               each order window, so it fires exactly once per window
+               and survives a page refresh mid-window. */
+            if (data.show_ad) {
+                setTimeout(function() {
+                    showAdPopup();
+                }, won.type === 'points' ? 2500 : 2000);
+            }
         }
 
         /* The win panel builds HTML from a server response, so anything from it

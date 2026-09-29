@@ -10,6 +10,7 @@ use App\Models\Voucher;
 use App\Services\VoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
+use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
@@ -55,6 +56,7 @@ use Tests\TestCase;
 class VoucherBearerRedemptionTest extends TestCase
 {
     use DatabaseTransactions;
+    use ForcesSpinOutcome;
 
     protected function setUp(): void
     {
@@ -401,8 +403,9 @@ class VoucherBearerRedemptionTest extends TestCase
             'total'          => 500,
         ]);
 
+        $this->forceSpinOutcome(8); // the server picks the prize since F3
         $body = $this->actingAs($customer, 'customer')
-            ->postJson('/customer/add-points', ['points' => 8])
+            ->postJson('/customer/add-points')
             ->assertOk()
             ->json();
 

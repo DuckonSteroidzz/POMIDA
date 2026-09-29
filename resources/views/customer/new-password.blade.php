@@ -24,6 +24,8 @@
                     name="password"
                     class="form-control @error('password') is-invalid @enderror"
                     autocomplete="new-password"
+                    minlength="8"
+                    maxlength="20"
                     required
                     autofocus
                 >
@@ -39,6 +41,8 @@
                 </button>
 
             </div>
+
+            <p class="hint">{{ \App\Support\PasswordPolicy::describe() }}</p>
 
             @error('password')
                 <div class="invalid-feedback">{{ $message }}</div>
@@ -60,6 +64,8 @@
                     name="password_confirmation"
                     class="form-control"
                     autocomplete="new-password"
+                    minlength="8"
+                    maxlength="20"
                     required
                 >
 

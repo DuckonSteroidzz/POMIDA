@@ -78,6 +78,24 @@ Route::prefix('customer')->name('customer.')->group(function () {
         ->name('terms');
 
 
+    // ══════════ EMAIL VERIFICATION (Laravel MustVerifyEmail) ══════════
+    // Separate from the "PASSWORD / VERIFICATION" OTP block below — that one
+    // is the hand-rolled forgot-password code flow, not this. See
+    // App\Http\Controllers\Concerns\HandlesEmailVerification.
+
+    // `signed` rejects a tampered or expired link before the controller runs.
+    Route::get('/email-verification/verify/{id}/{hash}', [AuthController::class, 'verifyEmail'])
+        ->whereNumber('id')
+        ->middleware(['signed', 'throttle:customer-email-verify'])
+        ->name('email-verification.verify');
+
+    // The account page's "resend" button — acts only on the caller's own
+    // logged-in session, never on an email address supplied by the request.
+    Route::post('/email-verification/resend', [AuthController::class, 'resendEmailVerification'])
+        ->middleware('throttle:customer-email-verify-resend')
+        ->name('email-verification.resend');
+
+
     // ══════════ PASSWORD / VERIFICATION ══════════
 
     Route::get('/forgot-password', [AuthController::class, 'showForgotPassword'])
@@ -337,7 +355,10 @@ Route::prefix('customer')->name('customer.')->group(function () {
     Route::get('/account', [AuthController::class, 'showAccount'])
         ->name('account');
 
+    // Hardening pass F5: an email or password change checks the current
+    // password here, so guessing it is capped like every other password check.
     Route::put('/account', [AuthController::class, 'updateAccount'])
+        ->middleware('throttle:customer-account-update')
         ->name('account.update');
 
     Route::delete('/account', [AuthController::class, 'deleteAccount'])
@@ -1035,7 +1056,8 @@ Route::prefix('admin')
             //
             // Add, Edit and Enable/Disable are Y | Y | N. Delete is
             // Y | LIMITED | N and carries its own branch check inside
-            // deleteMenuItem().
+            // deleteMenuItem(). Delete ALWAYS archives (never a physical
+            // delete) — see archived.menu-item.force-delete, owner only.
             //
             // Add and Edit both happen inside the modal on the Menu Items list
             // (menu-items.blade.php) — there is no standalone page for either
@@ -1071,12 +1093,60 @@ Route::prefix('admin')
                 ->name('menu-items.ingredients.delete');
 
 
+            // ══════════ MENU ITEM SIZES (Phase 1) ══════════
+            //
+            // Regular / Large only. Sizes are part of the menu item, so they
+            // follow "Edit Menu Items" (Y | Y | N) like the recipe routes
+            // above — and every action resolves the PARENT item through
+            // AdminOrderAccess::resolveRecordInScope() before touching a size,
+            // so a supervisor is held to their own branch's items. Restoring
+            // an archived size is the one exception: owner only, the same as
+            // every other Restore in the catalogue (admin.archived.restore).
+
+            Route::post('/menu-items/{menuItem}/sizes', [AdminController::class, 'enableMenuItemSizes'])
+                ->whereNumber('menuItem')
+                ->name('menu-items.sizes.enable');
+
+            Route::put('/menu-items/{menuItem}/sizes/{size}', [AdminController::class, 'updateMenuItemSize'])
+                ->whereNumber(['menuItem', 'size'])
+                ->name('menu-items.sizes.update');
+
+            Route::delete('/menu-items/{menuItem}/sizes/{size}', [AdminController::class, 'archiveMenuItemSize'])
+                ->whereNumber(['menuItem', 'size'])
+                ->name('menu-items.sizes.archive');
+
+            Route::post('/menu-items/{menuItem}/sizes/{size}/restore', [AdminController::class, 'restoreMenuItemSize'])
+                ->whereNumber(['menuItem', 'size'])
+                ->middleware('role:admin')
+                ->name('menu-items.sizes.restore');
+
+            Route::post('/menu-items/{menuItem}/sizes/{size}/ingredients', [AdminController::class, 'addSizeIngredient'])
+                ->whereNumber(['menuItem', 'size'])
+                ->name('menu-items.sizes.ingredients.add');
+
+            Route::delete('/menu-items/{menuItem}/sizes/{size}/ingredients/{ingredient}', [AdminController::class, 'deleteSizeIngredient'])
+                ->whereNumber(['menuItem', 'size', 'ingredient'])
+                ->name('menu-items.sizes.ingredients.delete');
+
+
             // ══════════ CATEGORIES ══════════
             //
             // "Manage Categories" is Y | Y | N — the whole CRUD, delete
             // included. The matrix gives categories no LIMITED entry, unlike
             // menu items, so no per-row branch rule is added here: doing so
             // would be inventing a narrowing that was not specified.
+            //
+            // RENAME IS THE ONE EXCEPTION (Branch parity audit B8,
+            // 2026-09-27). categories has no per-row branch owner at all —
+            // every category is shared across every branch, unlike a menu
+            // item's nullable-but-real branch_id — so "own branch only"
+            // cannot be expressed for it the way deleteMenuItem() expresses
+            // it for menu items. A supervisor renaming one was renaming it
+            // for every branch at once with no branch check possible, so
+            // this route alone drops out of the group's role:admin,supervisor
+            // and is gated role:admin — plain Y | N | N, same shape RoleMiddleware
+            // already gives every other owner-only route, no controller-level
+            // check needed.
 
             Route::get('/add-category', [AdminController::class, 'showAddCategory'])
                 ->name('add-category');
@@ -1090,6 +1160,7 @@ Route::prefix('admin')
 
             Route::put('/add-category/{id}', [AdminController::class, 'updateCategory'])
                 ->whereNumber('id')
+                ->middleware('role:admin')
                 ->name('add-category.update');
 
             Route::delete('/add-category/{id}', [AdminController::class, 'deleteCategory'])
@@ -1266,7 +1337,8 @@ Route::prefix('admin')
         | What is left after the manager tier above: the owner's own account,
         | the four DESTRUCTIVE actions a manager does not get (delete a
         | voucher, delete an inventory record, restore an archived catalogue
-        | row), the shape of the business (branches, the "Viewing:" picker),
+        | row, permanently delete an archived menu item), the shape of the
+        | business (branches, the "Viewing:" picker),
         | and system configuration.
         |
         | Three routes here are deliberately NOT widened to the manager tier
@@ -1338,6 +1410,16 @@ Route::prefix('admin')
             Route::put('/archived/{type}/{id}/restore', [AdminController::class, 'restoreArchivedCatalogue'])
                 ->whereNumber('id')
                 ->name('archived.restore');
+
+            // Permanent Delete — archived MENU ITEMS only, owner only, and only
+            // an item nothing has ever ordered (checked in the controller and
+            // again under a row lock in CatalogueLifecycle). This is the ONLY
+            // route that physically removes a menu item: menu-items.delete
+            // always archives. A literal "menu-item" segment rather than
+            // {type}, so no other catalogue type can reach it.
+            Route::delete('/archived/menu-item/{id}/force', [AdminController::class, 'forceDeleteArchivedMenuItem'])
+                ->whereNumber('id')
+                ->name('archived.menu-item.force-delete');
 
             Route::delete('/inventory/{id}', [AdminController::class, 'deleteInventory'])
                 ->whereNumber('id')

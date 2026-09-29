@@ -7,6 +7,7 @@ use App\Models\User;
 use App\Models\UserVoucher;
 use App\Models\Voucher;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
@@ -28,6 +29,7 @@ use Tests\TestCase;
 class VoucherValidFromTest extends TestCase
 {
     use DatabaseTransactions;
+    use ForcesSpinOutcome;
 
     private function customer(int $skip = 0): User
     {
@@ -71,8 +73,9 @@ class VoucherValidFromTest extends TestCase
         $user->save();
         $spinOrder = $this->activeOrderFor($user);
 
+        $this->forceSpinOutcome(5); // the server picks the prize since F3
         $this->actingAs($user, 'customer')
-            ->postJson('/customer/add-points', ['points' => 5])
+            ->postJson('/customer/add-points')
             ->assertOk();
 
         // The spin needed a live order to attach to, but placeOrder() refuses a

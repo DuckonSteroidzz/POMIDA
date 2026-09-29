@@ -100,13 +100,13 @@
         <button type="button" class="iv-btn iv-btn-ghost" onclick="printInventory()">
             <i class="bi bi-printer"></i> Print
         </button>
-        {{-- Deleted Items is the second half of the two-stage delete: an item
+        {{-- Archive is the second half of the two-stage delete: an item
              "Delete" moves here first, recoverable, rather than being gone
              outright. Owner-only, matching "Delete Inventory Records"
              (Y | N | N) — same gate as the Delete column itself. --}}
         @if($isAdmin)
         <a href="{{ route('admin.inventory.deleted') }}" class="iv-btn iv-btn-ghost">
-            <i class="bi bi-trash3"></i> Deleted Items ({{ $deletedInventoryCount ?? 0 }})
+            <i class="bi bi-trash3"></i> Archive ({{ $deletedInventoryCount ?? 0 }})
         </a>
         @endif
         {{-- "Add Inventory" is Y | Y | N — a manager gets this, staff do not. --}}
@@ -582,7 +582,7 @@
     <div class="iv-modal-box iv-modal-sm">
         <div class="iv-confirm-ico"><i class="bi bi-trash3"></i></div>
         <p class="iv-confirm-text">Delete this inventory item?</p>
-        <p class="iv-modal-note" style="text-align:center;">It moves to Deleted Items — you can restore it or permanently delete it from there.</p>
+        <p class="iv-modal-note" style="text-align:center;">It moves to Archive — you can restore it or permanently delete it from there.</p>
         <div class="iv-confirm-actions">
             <form id="deleteForm" method="POST">
                 @csrf @method('DELETE')

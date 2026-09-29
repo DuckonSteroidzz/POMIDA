@@ -139,6 +139,9 @@ class AdminBootstrap
                     'role'      => 'admin',
                     'is_active' => true,
                     'branch_id' => null,
+                    // No confirmation-email loop for portal accounts — see
+                    // the Email Verification report. Pre-verified.
+                    'email_verified_at' => now(),
                 ]);
 
                 /*

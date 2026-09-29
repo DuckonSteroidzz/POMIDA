@@ -16,7 +16,8 @@ use Tests\TestCase;
  * gets — only whether a NON-numeric id can reach the controller at all:
  *   - findOrFail() routes 404 via ModelNotFoundException for a valid-but-
  *     missing numeric id (same as the other route-id-constraint tests).
- *   - restoreArchivedCatalogue/restoreInventory/forceDeleteInventory instead
+ *   - restoreArchivedCatalogue/restoreInventory/forceDeleteInventory (and,
+ *     since 2026-09-24, forceDeleteArchivedMenuItem) instead
  *     use ->find($id) and redirect back with a flashed error when it is
  *     null — a deliberate design choice (see the controllers), not a bug
  *     this pass touches. Their non-numeric-id case still 404s at the ROUTE,
@@ -35,6 +36,7 @@ class AdminOwnerRouteIdConstraintTest extends TestCase
     {
         return [
             'archived.restore'      => ['PUT',    'archived/menu-item/%s/restore'],
+            'archived.menu-item.force-delete' => ['DELETE', 'archived/menu-item/%s/force'],
             'inventory.delete'      => ['DELETE', 'inventory/%s'],
             'inventory.restore'     => ['PUT',    'inventory/%s/restore'],
             'inventory.force-delete' => ['DELETE', 'inventory/%s/force'],
@@ -87,6 +89,7 @@ class AdminOwnerRouteIdConstraintTest extends TestCase
     {
         return [
             'archived.restore'       => ['PUT',    'archived/menu-item/%s/restore'],
+            'archived.menu-item.force-delete' => ['DELETE', 'archived/menu-item/%s/force'],
             'inventory.restore'      => ['PUT',    'inventory/%s/restore'],
             'inventory.force-delete' => ['DELETE', 'inventory/%s/force'],
         ];

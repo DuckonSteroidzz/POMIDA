@@ -12,6 +12,7 @@ use App\Support\GuestOrders;
 use App\Support\GuestVoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\RateLimiter;
+use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
@@ -38,6 +39,7 @@ use Tests\TestCase;
 class GuestVoucherClaimTest extends TestCase
 {
     use DatabaseTransactions;
+    use ForcesSpinOutcome;
 
     protected function setUp(): void
     {
@@ -136,9 +138,12 @@ class GuestVoucherClaimTest extends TestCase
         return $order;
     }
 
+    /** One spin whose SERVER outcome is $points (the request names no prize since F3). */
     private function spin(int $points = 8)
     {
-        return $this->postJson('/customer/add-points', ['points' => $points]);
+        $this->forceSpinOutcome($points);
+
+        return $this->postJson('/customer/add-points');
     }
 
     /** Apply a code on the cart, as the cart page's Apply button does. */
@@ -625,6 +630,7 @@ class GuestVoucherClaimTest extends TestCase
         $voucher  = $this->wheelVoucher(['points_required' => 5]);
         $customer = $this->winnableCustomer();
         $this->onlyWinnableVoucherIs($voucher);
+        $this->forceSpinOutcome(8);
 
         $order = Order::create([
             'order_number'   => 'GVA-' . substr(uniqid(), -8),
@@ -639,7 +645,7 @@ class GuestVoucherClaimTest extends TestCase
         ]);
 
         $body = $this->actingAs($customer, 'customer')
-            ->postJson('/customer/add-points', ['points' => 8])
+            ->postJson('/customer/add-points')
             ->assertOk()
             ->json();
 
@@ -678,6 +684,7 @@ class GuestVoucherClaimTest extends TestCase
         $voucher  = $this->wheelVoucher(['points_required' => 5, 'max_uses' => 0]);
         $customer = $this->winnableCustomer();
         $this->onlyWinnableVoucherIs($voucher);
+        $this->forceSpinOutcome(8);
 
         Order::create([
             'order_number'   => 'DUP-' . substr(uniqid(), -8),
@@ -693,7 +700,7 @@ class GuestVoucherClaimTest extends TestCase
 
         // First qualifying spin wins it.
         $first = $this->actingAs($customer, 'customer')
-            ->postJson('/customer/add-points', ['points' => 8])->assertOk()->json();
+            ->postJson('/customer/add-points')->assertOk()->json();
         $this->assertNotNull($first['voucher'], 'CONTROL: the first spin should have won the voucher');
 
         // Spin back up past the threshold — the only wheel voucher is one they
@@ -701,7 +708,7 @@ class GuestVoucherClaimTest extends TestCase
         $wonAgain = false;
         for ($i = 0; $i < 6; $i++) {
             $body = $this->actingAs($customer, 'customer')
-                ->postJson('/customer/add-points', ['points' => 8])->assertOk()->json();
+                ->postJson('/customer/add-points')->assertOk()->json();
             if (!empty($body['voucher'])) {
                 $wonAgain = true;
             }

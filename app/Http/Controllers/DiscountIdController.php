@@ -36,8 +36,10 @@ class DiscountIdController extends Controller
      * a row somehow held "../../.env", it would not match and the request
      * would 404 rather than read an arbitrary file off the disk.
      *
-     * `discount_ids/` is where OrderController::placeOrder() writes a
-     * per-transaction upload, and is the only one in use today.
+     * `discount_ids/` is where OrderController::placeOrder() wrote a
+     * per-transaction upload until September 2026, when checkout stopped
+     * collecting an ID photo (it now records ID number + full name only).
+     * Orders placed before then still reference files here, so it stays.
      *
      * `discount_cards/` is listed for the saved-discount-card branch at
      * OrderController line ~310, which copies DiscountCard::id_image into the
@@ -91,8 +93,9 @@ class DiscountIdController extends Controller
          *
          * The Content-Type is taken from the stored file rather than echoed
          * from anything the client sent, and it is pinned to an image type.
-         * Upload validation already restricts this to jpeg/jpg/png/webp
-         * (see OrderController::placeOrder), so a stored file that reports
+         * Upload validation restricted every stored file to jpeg/jpg/png/webp
+         * at the time it was uploaded (checkout no longer accepts uploads at
+         * all — see OrderController::placeOrder), so a stored file that reports
          * anything else is a sign something is wrong and is refused rather
          * than served — that stops a file that somehow got in as text/html
          * being rendered as a page on this origin.

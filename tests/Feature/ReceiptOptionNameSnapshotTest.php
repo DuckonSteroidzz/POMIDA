@@ -71,6 +71,9 @@ class ReceiptOptionNameSnapshotTest extends TestCase
             'quantity_used'  => 1,
         ]);
 
+        // Checkout only accepts an item's own add-ons (hardening pass F7).
+        $item->options()->attach($option->id);
+
         return [$item, $option];
     }
 

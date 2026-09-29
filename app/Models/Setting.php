@@ -52,4 +52,21 @@ class Setting extends Model
             ['value' => $value]
         );
     }
+
+    /**
+     * The Spin & Win on/off switch: ONE global row, branch_id NULL.
+     *
+     * The owner gets a single switch on the Vouchers page with no branch
+     * picker, and AdminController::toggleGame() writes the global row. This
+     * reads that same row, and the game page, the Vouchers-page label and the
+     * spin endpoint all read it through here. A game_enabled row with a
+     * branch_id is not the switch and is ignored. On only when the value is
+     * exactly '1'. A missing row is off.
+     */
+    public const GAME_ENABLED = 'game_enabled';
+
+    public static function gameEnabled(): bool
+    {
+        return self::get(self::GAME_ENABLED) === '1';
+    }
 }

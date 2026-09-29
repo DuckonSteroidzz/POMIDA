@@ -375,7 +375,9 @@ class MassAssignmentEscalationTest extends TestCase
                 'discount_type'                   => 'pwd',
                 'discount_beneficiary_name'       => 'Juan Dela Cruz',
                 'discount_beneficiary_id'         => 'PWD-123',
-                'discount_beneficiary_expiration' => now()->addYear()->toDateString(),
+                // Customer-typed M/D/Y text, not Y-m-d — see
+                // DiscountCard::normalizeTypedExpiration().
+                'discount_beneficiary_expiration' => now()->addYear()->format('n/j/Y'),
                 'discount_beneficiary_image'      => $upload,
 
                 // The smuggled payload: skip staff verification entirely.
@@ -535,19 +537,56 @@ class MassAssignmentEscalationTest extends TestCase
 
     /**
      * The wheel endpoint from Pass 1 §4 — the escalation that WAS real. This
-     * pins that fix: an arbitrary points value must still be refused.
+     * pins that fix: an arbitrary points value must never be credited.
+     *
+     * Pass 1 fixed it with an allowlist, so 99999 got a 422. Since hardening
+     * pass F3 the endpoint reads no points value at all and credits the
+     * segment the server picked, so the same request is now a normal spin.
+     * The guarantee is the same or stronger: at most the wheel's top prize
+     * (8), never the posted amount. It runs with a real open spin window
+     * (a fresh account with an order today, the switch on) so the request
+     * actually reaches the crediting code instead of being refused earlier.
      */
-    public function test_the_points_award_endpoint_still_rejects_an_arbitrary_value(): void
+    public function test_the_points_award_endpoint_never_credits_an_arbitrary_value(): void
     {
-        $customer = $this->customer();
-        $before = (int) $customer->fresh()->points;
+        \Illuminate\Support\Facades\DB::table('settings')->where('key', 'game_enabled')->delete();
+        \Illuminate\Support\Facades\DB::table('settings')->insert([
+            'key' => 'game_enabled', 'branch_id' => null, 'value' => '1',
+            'group' => 'business', 'label' => 'Spin & Win Enabled', 'type' => 'text',
+            'created_at' => now(), 'updated_at' => now(),
+        ]);
+
+        $customer = User::create([
+            'name'      => 'Wheel Escalation Probe',
+            'email'     => 'mae-wheel-' . strtolower(\Illuminate\Support\Str::random(12)) . '@invalid.local',
+            'password'  => 'WheelProbe!1',
+            'role'      => 'customer',
+            'is_active' => true,
+        ]);
+        $customer->forceFill(['points' => 0])->save();
+
+        \App\Models\Order::create([
+            'order_number'   => 'MAE-' . substr(uniqid(), -8),
+            'user_id'        => $customer->id,
+            'branch_id'      => 1,
+            'type'           => 'pick_up',
+            'status'         => 'pending',
+            'payment_method' => 'cash',
+            'payment_status' => 'pending',
+            'subtotal'       => 500,
+            'total'          => 500,
+        ]);
 
         $this->actingAs($customer, 'customer')
             ->postJson('/customer/add-points', ['points' => 99999])
-            ->assertStatus(422);
+            ->assertOk();
 
-        $this->assertSame(
-            $before,
+        $awarded = \App\Models\GamePlayed::where('user_id', $customer->id)->pluck('points_awarded')->map('intval')->all();
+
+        $this->assertCount(1, $awarded, 'setup: the request should have been one real spin');
+        $this->assertContains($awarded[0], [0, 3, 5, 8], 'ESCALATION: the ledger recorded a value the wheel does not have');
+        $this->assertLessThanOrEqual(
+            8,
             (int) $customer->fresh()->points,
             'ESCALATION: Pass 1 §4 regressed — an arbitrary points value was credited'
         );

@@ -39,6 +39,14 @@ return Application::configure(basePath: dirname(__DIR__))
          * exception listener.
          */
         $middleware->append(\App\Http\Middleware\LogHttpErrors::class);
+
+        /*
+         * One signed-in session per account: a login on a second device ends
+         * the first one on its next request. In the `web` group so it runs
+         * after StartSession and before the `admin` door, role checks and
+         * every controller. See App\Support\SingleSession.
+         */
+        $middleware->web(append: \App\Http\Middleware\EnforceSingleSession::class);
     })
     ->withExceptions(function (Exceptions $exceptions) {
         /*

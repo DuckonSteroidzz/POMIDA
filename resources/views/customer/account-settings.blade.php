@@ -156,12 +156,34 @@
                             <label for="acc-email" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">Email Address</label>
                             <input id="acc-email" class="field-input" type="email" name="email" value="{{ $customer?->email ?? '' }}" autocomplete="email">
                         </div>
+                        @if($customer && ! $customer->hasVerifiedEmail())
+                        {{-- A real <form> here would nest inside the page's
+                             account-update form (invalid HTML), so this posts
+                             via fetch instead, same pattern as confirmDelete()
+                             below. --}}
+                        <div class="sm:col-span-2 flex flex-col gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 sm:flex-row sm:items-center sm:justify-between">
+                            <p id="verify-email-status" class="text-xs font-medium text-amber-800">
+                                <i class="bi bi-exclamation-triangle"></i> Your email address is not verified yet.
+                            </p>
+                            <button type="button" onclick="resendVerification()" class="inline-flex shrink-0 items-center justify-center gap-1.5 rounded-full border border-amber-300 bg-white px-4 py-1.5 text-xs font-bold text-amber-700 transition hover:bg-amber-100">
+                                <i class="bi bi-envelope"></i> Resend Verification Email
+                            </button>
+                        </div>
+                        @endif
                         <div class="sm:col-span-2">
                             <label for="acc-password" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">
                                 Password
                                 <span class="ml-1 font-medium normal-case tracking-normal text-peach-deep/40">(leave blank to keep current)</span>
                             </label>
-                            <input id="acc-password" class="field-input" type="password" name="password" autocomplete="new-password">
+                            <input id="acc-password" class="field-input" type="password" name="password" maxlength="20" autocomplete="new-password">
+                        </div>
+                        {{-- Checked by updateAccount() only when the email or password is changing. --}}
+                        <div class="sm:col-span-2">
+                            <label for="acc-current-password" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">
+                                Current Password
+                                <span class="ml-1 font-medium normal-case tracking-normal text-peach-deep/40">(needed only to change your email or password)</span>
+                            </label>
+                            <input id="acc-current-password" class="field-input" type="password" name="current_password" autocomplete="current-password">
                         </div>
                     </div>
                 </section>
@@ -192,6 +214,20 @@
     @include('customer.partials.navbar')
 
     <script>
+        function resendVerification() {
+            const status = document.getElementById('verify-email-status');
+            fetch('{{ route("customer.email-verification.resend") }}', {
+                method: 'POST',
+                headers: {
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                }
+            }).then(function() {
+                if (status) {
+                    status.innerHTML = '<i class="bi bi-check-circle"></i> Verification email sent! Please check your inbox.';
+                }
+            });
+        }
+
         function confirmDelete() {
             if (confirm('Are you sure you want to delete your account? This cannot be undone.')) {
                 fetch('{{ route("customer.account.delete") }}', {

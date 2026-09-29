@@ -956,6 +956,7 @@
                                 type="password"
                                 name="password"
                                 required
+                                maxlength="20"
                                 autocomplete="new-password"
                                 class="@error('password') is-invalid @enderror"
                             >
@@ -983,6 +984,7 @@
                                 type="password"
                                 name="password_confirmation"
                                 required
+                                maxlength="20"
                                 autocomplete="new-password"
                                 class="@error('password_confirmation') is-invalid @enderror"
                             >
@@ -1321,10 +1323,11 @@
 
             var pw = form.querySelector('input[name="password"]');
 
-            // Same as PasswordPolicy::rule(): >= 8 chars, mixed case, a number
+            // Same as PasswordPolicy::rule(): 8-20 chars, mixed case, a number
             // and a symbol.
             function passwordOk(v) {
                 return v.length >= {{ \App\Support\PasswordPolicy::MIN_LENGTH }}
+                    && v.length <= {{ \App\Support\PasswordPolicy::MAX_LENGTH }}
                     && /[a-z]/.test(v)
                     && /[A-Z]/.test(v)
                     && /[0-9]/.test(v)

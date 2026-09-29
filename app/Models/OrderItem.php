@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
+use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class OrderItem extends Model
 {
@@ -14,18 +15,24 @@ class OrderItem extends Model
     protected $fillable = [
         'order_id',
         'menu_item_id',
+        'menu_item_size_id',
         'item_name',
+        'size_name',
         'item_price',
         'quantity',
         'subtotal',
         'special_instructions',
         'ingredient_cost',
+        'ingredient_cost_estimated',
     ];
 
     protected $casts = [
         'item_price' => 'decimal:2',
         'subtotal' => 'decimal:2',
         'ingredient_cost' => 'decimal:2',
+        // True when ingredient_cost was not recorded at the time of sale but
+        // frozen from the recipe when the menu item was permanently deleted.
+        'ingredient_cost_estimated' => 'boolean',
     ];
 
     /**
@@ -58,7 +65,9 @@ class OrderItem extends Model
     | from here to a menu, a cart, or an order form.
     */
 
-    // Belongs to a menu item
+    // Belongs to a menu item — NULL once that item has been permanently
+    // deleted (order_items.menu_item_id is ON DELETE SET NULL). The line's
+    // own item_name / item_price snapshot is what history reads.
     public function menuItem(): BelongsTo
     {
         return $this->belongsTo(MenuItem::class)
@@ -74,5 +83,51 @@ class OrderItem extends Model
             ->withoutGlobalScope(\App\Models\Concerns\NotArchivedScope::class)
             ->withPivot('option_name', 'additional_price')
             ->withTimestamps();
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | MENU ITEM SIZES (Phase 2)
+    |--------------------------------------------------------------------------
+    |
+    | size_name is the snapshot and THE marker of a sized line: it is written
+    | once, when the order is placed, and never changes. menu_item_size_id is
+    | only the live link (ON DELETE SET NULL), so it can be NULL on a line
+    | that was sold by size. Nothing that decides behaviour or prints history
+    | reads the size row itself.
+    */
+
+    public function isSized(): bool
+    {
+        return $this->size_name !== null;
+    }
+
+    /**
+     * The name every receipt and order list prints: "Iced Latte (Large)" for
+     * a sized line, the plain item_name for any other — so an unsized line
+     * reads exactly as it always has. Built from the two snapshots only.
+     */
+    public function displayName(): string
+    {
+        return $this->size_name !== null
+            ? $this->item_name . ' (' . $this->size_name . ')'
+            : (string) $this->item_name;
+    }
+
+    /**
+     * The size recipe frozen when this line was placed — what completion
+     * deducts for a sized line, never the size's live recipe. See
+     * InventoryDeductionService::requirementsForOrderLine().
+     */
+    public function sizeIngredients(): HasMany
+    {
+        return $this->hasMany(OrderItemSizeIngredient::class);
+    }
+
+    /** The live size row, archived included; NULL once it is deleted. Reference only. */
+    public function size(): BelongsTo
+    {
+        return $this->belongsTo(MenuItemSize::class, 'menu_item_size_id')
+            ->withoutGlobalScope(\App\Models\Concerns\NotArchivedScope::class);
     }
 }

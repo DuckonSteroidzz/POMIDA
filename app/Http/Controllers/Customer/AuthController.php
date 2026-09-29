@@ -2,11 +2,14 @@
 
 namespace App\Http\Controllers\Customer;
 
+use App\Http\Controllers\Concerns\HandlesEmailVerification;
 use App\Http\Controllers\Concerns\HandlesPasswordReset;
 use App\Http\Controllers\Controller;
 use App\Models\GamePlayed;
+use App\Models\Setting;
 use App\Models\User;
 use App\Models\Order;
+use App\Services\SpinWheel;
 use App\Services\VoucherClaims;
 use App\Support\GuestVoucherClaims;
 use Illuminate\Http\Request;
@@ -14,7 +17,6 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Validation\Rule;
 
 class AuthController extends Controller
 {
@@ -29,6 +31,19 @@ class AuthController extends Controller
     |
     */
     use HandlesPasswordReset;
+
+    /*
+    |--------------------------------------------------------------------------
+    | EMAIL VERIFICATION
+    |--------------------------------------------------------------------------
+    |
+    | verifyEmail() / resendEmailVerification() come from this trait — the
+    | signed-link click and the account-page "resend" button. Unrelated to
+    | the PASSWORD RESET trait above despite the similar route names; see
+    | HandlesEmailVerification's docblock.
+    |
+    */
+    use HandlesEmailVerification;
 
     protected function resettableRoles(): array
     {
@@ -67,7 +82,13 @@ class AuthController extends Controller
             session()->forget('table_number');
         }
 
-        return view('customer.login');
+        // "Your account was signed in on another device." See
+        // AdminAuthController::showLogin() — same alert box, same key.
+        $notice = \App\Support\SingleSession::loginNotice($request);
+
+        return $notice === null
+            ? view('customer.login')
+            : view('customer.login')->withErrors(['session' => $notice]);
     }
 
     public function showRegister()
@@ -202,6 +223,9 @@ class AuthController extends Controller
                     // eager-loaded so hasIngredientStock() costs no extra query.
                     'recipeIngredients.inventory',
                     'inventoryItem',
+                    // Menu Item Sizes (Phase 2): a sized card is judged by its
+                    // own sizes (MenuItem::menuCardState()), not the base recipe.
+                    'allSizes.ingredients.inventory',
                 ])
                 ->where('is_available', true)
                 ->where(function ($q) use ($selectedBranchId) {
@@ -691,6 +715,9 @@ private function switchBranch($branchId): void
             // Automatic out-of-stock check on the item-details page.
             'recipeIngredients.inventory',
             'inventoryItem',
+            // Menu Item Sizes (Phase 2): the Regular/Large picker and each
+            // size's own stock state.
+            'allSizes.ingredients.inventory',
         ])->findOrFail($id);
 
         /*
@@ -724,7 +751,20 @@ private function switchBranch($branchId): void
 
         $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
 
-        return view('customer.item-details', compact('item', 'availableOptions', 'reserved'));
+        /*
+         * Menu Item Sizes (Phase 2). A sized item is ordered by size, so the
+         * page offers each LIVE size with its own price and its own
+         * orderability — every verdict from the Phase 1 size functions, never
+         * the base recipe (MenuItem::sizeChoices()). Empty for an unsized
+         * item, whose page renders exactly as before.
+         */
+        // Sized even when every size is archived (MenuItem::hasSizes()): such
+        // an item has an empty picker and nothing to add, never a fall-back to
+        // its base price.
+        $itemIsSized = $item->hasSizes();
+        $sizeChoices = $itemIsSized ? $item->sizeChoices($reserved) : [];
+
+        return view('customer.item-details', compact('item', 'availableOptions', 'reserved', 'sizeChoices', 'itemIsSized'));
     }
 
     public function showItems($id)
@@ -762,6 +802,8 @@ private function switchBranch($branchId): void
         $itemsQuery = \App\Models\MenuItem::with([
                 'recipeIngredients.inventory',
                 'inventoryItem',
+                // Sized cards are judged by their own sizes (Phase 2).
+                'allSizes.ingredients.inventory',
             ])
             ->where('category_id', $id)
             ->where('is_available', true);
@@ -820,18 +862,69 @@ private function switchBranch($branchId): void
             // Security review 2026-08-31: blank still means "keep my current
             // password", but anything typed must meet the shared policy.
             'password' => \App\Support\PasswordPolicy::optional(),
+            // Only demanded below, when the email or password is changing.
+            'current_password' => 'nullable|string',
         ]);
+
+        $changingEmail    = $validated['email'] !== $user->email;
+        $changingPassword = !empty($validated['password']);
+
+        /*
+         * RE-AUTHENTICATION (hardening pass F5, 2026-09-27).
+         *
+         * The email and the password are what take an account over, and this
+         * used to change both on nothing more than a live session — a phone
+         * left unlocked at the table, or a copied session cookie, was enough.
+         * The current password is now required for either, the same rule
+         * AdminController::updateOwnPassword() applies to staff. Name,
+         * address and contact edits still need nothing. A refusal saves
+         * nothing at all, not the rest of the form. Guessing is capped by the
+         * route's `customer-account-update` limiter.
+         */
+        if ($changingEmail || $changingPassword) {
+            if (empty($validated['current_password'])) {
+                return back()->withErrors([
+                    'current_password' => 'Enter your current password to change your email or password.',
+                ]);
+            }
+
+            if (!Hash::check($validated['current_password'], $user->password)) {
+                return back()->withErrors([
+                    'current_password' => 'That is not your current password.',
+                ]);
+            }
+        }
 
         $user->name = $validated['name'];
         $user->email = $validated['email'];
         $user->contact_number = $validated['contact_number'] ?? $user->contact_number;
         $user->address = $validated['address'] ?? $user->address;
 
-        if (!empty($validated['password'])) {
+        if ($changingPassword) {
             $user->password = Hash::make($validated['password']);
         }
 
         $user->save();
+
+        if ($changingPassword) {
+            /*
+             * Rotate this account out of every other session.
+             *
+             * One session per account (App\Support\SingleSession) already
+             * ends every OTHER device at login, so the only other live
+             * session left is a copy of this session's own cookie — which
+             * shares this session and would pick up any new fingerprint too.
+             * A new session id leaves that copy holding the old id and the
+             * old fingerprint. claim() then writes a fresh remember_token (the
+             * single-session token) and fingerprints only THIS session with
+             * it, so the copy's next request is signed out and this device
+             * stays — exactly the regenerate() + claim() the customer login
+             * does. (updateOwnPassword() also sets a random token first; claim()
+             * overwrites it at once, so it is not repeated here.)
+             */
+            $request->session()->regenerate();
+            \App\Support\SingleSession::claim($request, 'customer');
+        }
 
         return redirect()->back()
             ->with('success', 'Account updated successfully!');
@@ -920,6 +1013,14 @@ private function switchBranch($branchId): void
             $request->validate([
                 'item_id' => 'required|exists:menu_items,id',
                 'quantity' => 'required|integer|min:1',
+                // Same shape storeManualOrder() requires. Also keeps the
+                // assignment check below honest: (int) of an array is 1, so a
+                // nested array would otherwise pass it as option #1.
+                'options' => 'nullable|array',
+                'options.*' => 'integer',
+                // Menu Item Sizes (Phase 2). Required for a sized item — see
+                // the size block below; a scalar integer or nothing.
+                'size_id' => 'nullable|integer',
             ]);
 
             $selectedBranchId = session('branch_id');
@@ -950,6 +1051,40 @@ private function switchBranch($branchId): void
                     ->with('error', 'This item is not available for your selected branch.');
             }
 
+            /*
+             * Menu Item Sizes (Phase 2) — enforced here, server-side, not just
+             * by the item page's radio buttons.
+             *
+             * A sized item cannot reach the cart without a size: its
+             * menu_items.price is only the "starting from" figure and is never
+             * charged, and its base recipe is not what any size deducts. The
+             * size must be one of THIS item's own, live and active — decided by
+             * MenuItem::resolveOrderableSize(), the Phase 1 resolver, whose
+             * refusal is already a customer-facing sentence. A size posted for
+             * an unsized item is refused the same way rather than ignored.
+             */
+            $item->loadMissing('allSizes.ingredients.inventory');
+            $size = null;
+            $postedSizeId = $request->input('size_id');
+
+            if ($item->hasSizes()) {
+                if ($postedSizeId === null || $postedSizeId === '') {
+                    return redirect()->back()
+                        ->with('error', 'Please choose a size for ' . $item->name . ' first.');
+                }
+
+                try {
+                    $size = $item->resolveOrderableSize((int) $postedSizeId);
+                } catch (\App\Exceptions\MenuItemSizeUnavailableException $e) {
+                    return redirect()->back()->with('error', $e->getMessage());
+                }
+            } elseif ($postedSizeId !== null && $postedSizeId !== '') {
+                return redirect()->back()->with(
+                    'error',
+                    \App\Exceptions\MenuItemSizeUnavailableException::notFound($item)->getMessage()
+                );
+            }
+
             $cart = session()->get('cart', []);
 
             $itemId = $request->input('item_id');
@@ -960,6 +1095,21 @@ private function switchBranch($branchId): void
             $optionsTotal = 0;
 
             if (!empty($selectedOptions)) {
+                /*
+                 * Each add-on must be one of THIS item's own (hardening pass
+                 * F7, 2026-09-27). The branch check below only proves the
+                 * add-on can be made at this branch, not that it belongs on
+                 * this item — without this, any other item's add-on could be
+                 * posted, carted and charged. Same check, same order, as the
+                 * counter's storeManualOrder(). A missing id fails it too.
+                 */
+                foreach ($selectedOptions as $optionId) {
+                    if (! $item->options->firstWhere('id', (int) $optionId)) {
+                        return redirect()->back()
+                            ->with('error', 'Sorry, that add-on is not available for "' . $item->name . '".');
+                    }
+                }
+
                 $options = \App\Models\MenuOption::with('ingredients.inventory')->whereIn('id', $selectedOptions)->get();
 
                 foreach ($options as $opt) {
@@ -984,11 +1134,14 @@ private function switchBranch($branchId): void
                 }
             }
 
-            $cartKey = $itemId;
+            // One line per distinct selection. A size is part of the selection
+            // ("26_s5", "26_s5_8"), so Regular and Large are separate lines;
+            // an unsized item keeps its "26" / "26_8" keys exactly as before.
+            $cartKey = $size !== null ? $itemId . '_s' . $size->id : $itemId;
 
             if (!empty($selectedOptions)) {
                 sort($selectedOptions);
-                $cartKey = $itemId . '_' . implode('_', $selectedOptions);
+                $cartKey = $cartKey . '_' . implode('_', $selectedOptions);
             }
 
             $menuItem = \App\Models\MenuItem::findOrFail($itemId);
@@ -1001,7 +1154,14 @@ private function switchBranch($branchId): void
             $wanted = $alreadyInCart + $quantity;
 
             // No recipe set at all is an admin problem with its own wording.
-            if ($menuItem->isMissingRecipe()) {
+            // A sized line asks about ITS size's recipe (Phase 2) — the base
+            // recipe says nothing about whether a Large can be made.
+            if ($size !== null) {
+                if (! $menuItem->hasRecipe($size)) {
+                    return redirect()->back()
+                        ->with('error', $menuItem->orderBlockedReason($wanted, $size));
+                }
+            } elseif ($menuItem->isMissingRecipe()) {
                 return redirect()->back()
                     ->with('error', $menuItem->orderBlockedReason($wanted));
             }
@@ -1017,17 +1177,25 @@ private function switchBranch($branchId): void
             $available = $deduction->unitsAvailableFor(
                 $menuItem,
                 (int) $selectedBranchId,
-                $selectedOptions ?: []
+                $selectedOptions ?: [],
+                null,
+                $size // null for an unsized item: the base recipe, as before
             );
 
             if ($available !== null && $wanted > $available) {
                 return redirect()->back()->with(
                     'error',
-                    $deduction->shortfallMessage($menuItem->name, $available, $wanted)
+                    $deduction->shortfallMessage(
+                        $size !== null ? $menuItem->name . ' (' . $size->name . ')' : $menuItem->name,
+                        $available,
+                        $wanted
+                    )
                 );
             }
 
-            $unitPrice = $menuItem->price + $optionsTotal;
+            // A sized line costs its size's own price; add-ons stay flat.
+            $basePrice = $size !== null ? $size->price : $menuItem->price;
+            $unitPrice = $basePrice + $optionsTotal;
 
             if (isset($cart[$cartKey])) {
                 $cart[$cartKey]['quantity'] += $quantity;
@@ -1036,11 +1204,16 @@ private function switchBranch($branchId): void
                     'menu_item_id' => $itemId,
                     'name' => $menuItem->name,
                     'price' => $unitPrice,
-                    'base_price' => $menuItem->price,
+                    'base_price' => $basePrice,
                     'quantity' => $quantity,
                     'image' => $menuItem->image,
                     'options' => $optionDetails,
                 ];
+
+                if ($size !== null) {
+                    $cart[$cartKey]['size_id'] = (int) $size->id;
+                    $cart[$cartKey]['size_name'] = $size->name;
+                }
             }
 
             session()->put('cart', $cart);
@@ -1075,7 +1248,14 @@ private function switchBranch($branchId): void
     // regardless.
     $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
 
-    $outOfStockItemIds = collect($priced['lines'])
+    // Menu Item Sizes (Phase 2): sized lines, and lines CartPricing could not
+    // price by size, are judged separately below — per cart line, since
+    // Regular and Large of one item are two lines of the same menu_item_id.
+    // Every other line goes through the two lists exactly as before.
+    $unsizedLines = collect($priced['lines'])
+        ->filter(fn ($line) => ($line['size'] ?? null) === null && ($line['size_problem'] ?? null) === null);
+
+    $outOfStockItemIds = $unsizedLines
         ->filter(fn ($line) => $line['menu_item']
             && $line['menu_item']->hasRecipe()
             && ! $line['menu_item']->hasIngredientStock((int) $line['quantity'], $reserved))
@@ -1083,18 +1263,50 @@ private function switchBranch($branchId): void
         ->values()
         ->all();
 
-    $cartHasOutOfStockItem = ! empty($outOfStockItemIds);
-
     // Recipe guard: cart lines for an item that has no recipe set at all.
     // Separate list and banner from out-of-stock because the fix is different
     // (an admin must enter a recipe, not restock an ingredient).
-    $noRecipeItemIds = collect($priced['lines'])
+    $noRecipeItemIds = $unsizedLines
         ->filter(fn ($line) => $line['menu_item'] && $line['menu_item']->isMissingRecipe())
         ->map(fn ($line) => (int) $line['menu_item_id'])
         ->values()
         ->all();
 
+    /*
+     * Sized lines (Phase 2), keyed by cart key. A size that can no longer be
+     * sold as chosen — no size at all, not this item's, inactive, archived,
+     * no recipe — carries its own refusal sentence (the Phase 1 resolver's,
+     * via orderBlockedReason()), the same words checkout would refuse with.
+     * A sellable size short of stock joins the existing out-of-stock flag,
+     * judged against ITS recipe and what open orders already hold.
+     */
+    $outOfStockCartKeys = [];
+    $sizeIssueByCartKey = [];
+
+    foreach ($priced['lines'] as $line) {
+        $cartKey = (string) $line['cart_key'];
+
+        if (($line['size_problem'] ?? null) !== null) {
+            $sizeIssueByCartKey[$cartKey] = $line['size_problem'];
+            continue;
+        }
+
+        $size = $line['size'] ?? null;
+
+        if ($size === null || ! $line['menu_item']) {
+            continue;
+        }
+
+        if (! $line['menu_item']->hasRecipe($size)) {
+            $sizeIssueByCartKey[$cartKey] = $line['menu_item']->orderBlockedReason((int) $line['quantity'], $size);
+        } elseif (! $line['menu_item']->hasIngredientStock((int) $line['quantity'], $reserved, $size)) {
+            $outOfStockCartKeys[] = $cartKey;
+        }
+    }
+
+    $cartHasOutOfStockItem = ! empty($outOfStockItemIds) || ! empty($outOfStockCartKeys);
     $cartHasNoRecipeItem = ! empty($noRecipeItemIds);
+    $cartHasSizeIssue = ! empty($sizeIssueByCartKey);
 
     $activeOrder = $this->getActiveCustomerOrder();
 
@@ -1208,6 +1420,9 @@ private function switchBranch($branchId): void
         'outOfStockItemIds',
         'cartHasNoRecipeItem',
         'noRecipeItemIds',
+        'outOfStockCartKeys',
+        'sizeIssueByCartKey',
+        'cartHasSizeIssue',
         'sessionOrderType'
     ));
 }
@@ -1256,7 +1471,54 @@ private function switchBranch($branchId): void
             $menuItemId = $cart[$itemId]['menu_item_id'] ?? $itemId;
             $menuItem = \App\Models\MenuItem::find($menuItemId);
 
-            if ($menuItem && $menuItem->isMissingRecipe()) {
+            /*
+             * Menu Item Sizes (Phase 2): a sized line is measured as its size —
+             * same resolver, same refusals as addToCart(). A line with no size
+             * for an item that has since gained sizes cannot grow: it has to
+             * be removed and re-added with a size.
+             */
+            $lineSize = null;
+            $lineSizeId = $cart[$itemId]['size_id'] ?? null;
+
+            if ($menuItem && $lineSizeId !== null) {
+                try {
+                    $lineSize = $menuItem->resolveOrderableSize((int) $lineSizeId);
+                } catch (\App\Exceptions\MenuItemSizeUnavailableException $e) {
+                    $blockedReason = $e->getMessage();
+                    $maxQuantity = 0;
+                }
+            } elseif ($menuItem && $menuItem->hasSizes()) {
+                $blockedReason = 'Please choose a size for ' . $menuItem->name
+                    . ' — remove it from your cart and add it again from the menu.';
+                $maxQuantity = 0;
+            }
+
+            if ($blockedReason !== null) {
+                // Refused above; nothing more to measure.
+            } elseif ($menuItem && $lineSize !== null) {
+                if (! $menuItem->hasRecipe($lineSize)) {
+                    $blockedReason = $menuItem->orderBlockedReason($newQty, $lineSize);
+                    $maxQuantity = 0;
+                } else {
+                    $deduction = app(\App\Services\InventoryDeductionService::class);
+                    $available = $deduction->unitsAvailableFor(
+                        $menuItem,
+                        (int) (session('branch_id') ?? $menuItem->branch_id),
+                        collect($cart[$itemId]['options'] ?? [])->pluck('id')->filter()->all(),
+                        null,
+                        $lineSize
+                    );
+
+                    if ($available !== null && $newQty > $available) {
+                        $blockedReason = $deduction->shortfallMessage(
+                            $menuItem->name . ' (' . $lineSize->name . ')',
+                            $available,
+                            $newQty
+                        );
+                        $maxQuantity = $available;
+                    }
+                }
+            } elseif ($menuItem && $menuItem->isMissingRecipe()) {
                 $blockedReason = $menuItem->orderBlockedReason($newQty);
                 $maxQuantity = 0;
             } elseif ($menuItem) {
@@ -1407,6 +1669,14 @@ private function switchBranch($branchId): void
         'is_active' => true,
     ]);
 
+    /*
+     * Confirmation email. Never blocks or fails registration — a mail
+     * transport failure is caught and logged inside the model method
+     * itself. There is no login/order gate on verification; this only
+     * starts the "check your inbox" loop for the account page.
+     */
+    $user->sendEmailVerificationNotification();
+
     // Automatically log the newly registered customer in.
     Auth::guard('customer')->login($user);
 
@@ -1414,6 +1684,10 @@ private function switchBranch($branchId): void
      * Regenerate the session for security.
      */
     $request->session()->regenerate();
+
+    // Registration signs the new account in, so it is that account's one
+    // session from the start. See App\Support\SingleSession.
+    \App\Support\SingleSession::claim($request, 'customer');
 
     /*
      * Hand over any wheel prizes won as a guest in this browser.
@@ -1458,7 +1732,8 @@ private function switchBranch($branchId): void
             . ($adopted > 0
                 ? ' Your ' . ($adopted === 1 ? 'voucher has' : $adopted . ' vouchers have')
                     . ' been moved to your account.'
-                : ''));
+                : '')
+            . ' We\'ve sent a confirmation link to your email.');
 }
         public function login(Request $request)
         {
@@ -1467,11 +1742,9 @@ private function switchBranch($branchId): void
                 'password' => 'required',
             ]);
 
-            // boolean(), not has() — see AdminAuthController::login() for why
-            // a present-but-falsey remember value must not count as checked.
-            $remember = $request->boolean('remember');
-
-            if (Auth::guard('customer')->attempt($credentials, $remember)) {
+            // Never "remember me": closing the browser ends the login. See
+            // AdminAuthController::login().
+            if (Auth::guard('customer')->attempt($credentials, false)) {
                 $user = Auth::guard('customer')->user();
 
                 if (!$user->is_active) {
@@ -1483,7 +1756,11 @@ private function switchBranch($branchId): void
                 }
 
                 if ($user->role !== 'customer') {
-                    Auth::guard('customer')->logout();
+                    // logoutCurrentDevice(), not logout(): logout() rotates
+                    // remember_token, the account's single-session token. Staff
+                    // typing their password here must not sign the counter PC
+                    // out. See App\Support\SingleSession.
+                    Auth::guard('customer')->logoutCurrentDevice();
 
                     return back()->withErrors([
                         'email' => 'This is an administrator account. Please use the Admin Login page..',
@@ -1502,6 +1779,11 @@ private function switchBranch($branchId): void
                 $branchId = session('branch_id');
 
                 $request->session()->regenerate();
+
+                // This is now the account's only session; any other phone or
+                // browser signed in as this customer is signed out on its next
+                // request. See App\Support\SingleSession.
+                \App\Support\SingleSession::claim($request, 'customer');
 
                 // Same hand-over as registration: a prize won as a guest in
                 // this browser follows the customer into the account they just
@@ -1775,7 +2057,8 @@ private function switchBranch($branchId): void
     | logged-in customer who had never placed a single order could spin forever
     | and mint real, redeemable vouchers out of nothing. (Reproduced live: 15
     | spins, 0 orders, one DISCCCCCCC voucher awarded.) The point VALUES were
-    | already allowlisted by GAME_POINT_AWARDS; the number of spins was not.
+    | already allowlisted then; the number of spins was not. (Since F3 the
+    | server picks the prize itself — see WHEEL_SEGMENTS and addPoints().)
     |
     | The rule:
     |   - A spin needs an order of the visitor's own in a non-terminal status
@@ -2065,9 +2348,9 @@ private function switchBranch($branchId): void
             : GuestVoucherClaims::forDisplay();
 
         // The wheel's segments come from the server so the odds live in one
-        // place and can be tested — see WHEEL_SEGMENTS. The view still shuffles
-        // them for display; order on the wheel does not change any probability
-        // because every segment is the same size.
+        // place and can be tested — see WHEEL_SEGMENTS. The view shuffles them
+        // for display only: addPoints() picks the segment and returns its
+        // index, and the view animates to wherever that segment was drawn.
         $wheelSegments = self::WHEEL_SEGMENTS;
 
         return view('customer.game', compact(
@@ -2081,46 +2364,36 @@ private function switchBranch($branchId): void
     }
 
     /**
-     * The only point values the spin-the-wheel game can legitimately award.
-     * Mirrors the `segments` array in resources/views/customer/game.blade.php.
-     *
-     * The score is reported by the browser, so it is attacker-controlled by
-     * definition. This allowlist is what stops a crafted POST to
-     * /customer/add-points from awarding an arbitrary balance: before it
-     * existed, a single request with points=99999 credited the account and
-     * immediately minted a real, redeemable discount voucher.
-     */
-    private const GAME_POINT_AWARDS = [0, 3, 5, 8];
-
-    /**
      * The wheel's segments — the ODDS, in one place.
      *
-     * Every segment is drawn the same size and the landing angle is uniform
-     * (`Math.random() * 2π` in game.blade.php), so a value's probability is
-     * simply how many segments carry it. Repeating a value is how it is
-     * weighted; there is no separate weight field to fall out of step with the
-     * drawing.
+     * Every segment is equally likely: App\Services\SpinWheel picks an index
+     * uniformly, and the page draws every segment the same size. So a value's
+     * probability is simply how many segments carry it. Repeating a value is
+     * how it is weighted; there is no separate weight field to fall out of
+     * step with the drawing.
      *
      * WHY THIS MOVED OUT OF THE BLADE — 2026-09-01
      * ---------------------------------------------
      * It used to be a literal `var segments = [...]` inside game.blade.php.
      * Two problems: nothing server-side could describe the odds, so they could
      * not be tested at all; and the list had to be kept in step by hand with
-     * GAME_POINT_AWARDS just above, which is the allowlist that actually
-     * decides what the server will accept. Now the view renders from this and
-     * a test can assert the distribution.
+     * the GAME_POINT_AWARDS allowlist the server checked posted values
+     * against. Now the view renders from this and a test can assert the
+     * distribution.
      *
-     * THIS IS PRESENTATION, NOT A SECURITY CONTROL
-     * --------------------------------------------
-     * Worth being explicit, because moving it server-side makes it look more
-     * authoritative than it is. The browser still decides which segment it
-     * landed on and posts that value. What stops a crafted POST is
-     * GAME_POINT_AWARDS, which caps the VALUE — a tampered client can still
-     * claim 8 every time. That was true before this change and is unchanged by
-     * it; the allowlist is the control, and this table is the odds an honest
-     * client plays by. Making the distribution itself server-authoritative
-     * would mean the server picking the segment, which is a different piece of
-     * work and is not in this pass.
+     * THE SERVER PICKS THE SEGMENT — hardening pass F3, 2026-09-27
+     * ------------------------------------------------------------
+     * Until F3 this table was only the odds an honest client played by. The
+     * browser chose the landing angle, read off the segment and POSTed its
+     * points, and the server checked them against GAME_POINT_AWARDS
+     * [0, 3, 5, 8]. That capped the VALUE, but a tampered client could claim 8
+     * on every spin and get it. Now addPoints() ignores the request body and
+     * asks App\Services\SpinWheel for a uniform index into this table. It
+     * credits that segment and returns it for the page to animate to. The
+     * odds are the same as before, because the page's uniform angle over
+     * equal segments was already a uniform pick over indexes. The allowlist
+     * was removed because the server no longer accepts a prize value from
+     * anyone.
      *
      * BALANCE, 2026-09-01
      * -------------------
@@ -2227,6 +2500,24 @@ private function switchBranch($branchId): void
         });
     }
 
+    /**
+     * Whether the owner has Spin & Win switched on.
+     *
+     * Setting::gameEnabled() is the one global switch row. customer/game.blade.php
+     * reads it to decide whether to draw the wheel, admin/vouchers.blade.php
+     * reads it to label the toggle, and AdminController::toggleGame() flips it.
+     * It is on only when the value is exactly '1'. A missing row is off.
+     *
+     * Until 2026-09-27 every reader took the first game_enabled row with no
+     * branch filter while the toggle wrote the branch_id NULL row. In both
+     * databases the first row was a legacy branch_id = 1 row, so the owner's
+     * "switch off" never reached any reader. See GameSwitchSingleRowTest.
+     */
+    private function gameIsEnabled(): bool
+    {
+        return Setting::gameEnabled();
+    }
+
     /** "10% off" / "₱50.00 off", for the win panel. */
     private function voucherDiscountText(\App\Models\Voucher $voucher): string
     {
@@ -2237,11 +2528,37 @@ private function switchBranch($branchId): void
 
     public function addPoints(Request $request)
     {
-        $validated = $request->validate([
-            'points' => ['required', 'integer', Rule::in(self::GAME_POINT_AWARDS)],
-        ]);
+        /*
+         * THE OWNER'S ON/OFF SWITCH — enforced here, not only on the page
+         * (hardening pass F4, 2026-09-27).
+         *
+         * The Spin & Win toggle on the Vouchers page was only ever read by
+         * customer/game.blade.php, which hides the wheel. This endpoint never
+         * looked, so with the game switched OFF a plain POST still recorded a
+         * spin and credited points (and could mint a voucher). Refused first,
+         * before validation and before the spin ledger is touched: no spin is
+         * used and no points move. Same 422 + `blocked` shape as the other
+         * refusals below, so the page's existing handler renders it.
+         */
+        if (! $this->gameIsEnabled()) {
+            return response()->json([
+                'success'         => false,
+                'blocked'         => 'game_disabled',
+                'can_spin'        => false,
+                'spins_remaining' => 0,
+                'message'         => 'Spin & Win is turned off right now.',
+            ], 422);
+        }
 
-        $points = (int) $validated['points'];
+        /*
+         * NOTHING IN THE REQUEST BODY IS READ (hardening pass F3, 2026-09-27).
+         *
+         * This endpoint used to take `points` from the browser, which had
+         * picked its own landing segment, and only checked it against an
+         * allowlist. Posting 8 therefore won 8 on every spin. The outcome is
+         * now picked below, by the server, once every gate has passed. Any
+         * `points`, `segment` or anything else a client sends is ignored.
+         */
 
         /*
          * SPIN CAP — the server is the only thing that decides.
@@ -2263,7 +2580,7 @@ private function switchBranch($branchId): void
             : null;
 
         try {
-            $spinNumber = DB::transaction(function () use ($spinUserId, $points) {
+            [$spinNumber, $segment] = DB::transaction(function () use ($spinUserId) {
                 $orders = $this->eligibleSpinOrders();
 
                 if ($orders->isEmpty()) {
@@ -2306,14 +2623,24 @@ private function switchBranch($branchId): void
                 // order, so the once-per-window ad trigger still works.
                 $spinInOrder = GamePlayed::where('order_id', $locked->id)->count() + 1;
 
+                // THE OUTCOME. Drawn only now that the switch, the order window
+                // and the daily cap have all let this spin through, so a
+                // refused spin never draws one. Same odds the page used to
+                // play by — see WHEEL_SEGMENTS.
+                $segment = app(SpinWheel::class)->land(self::WHEEL_SEGMENTS);
+
+                if (! isset(self::WHEEL_SEGMENTS[$segment])) {
+                    throw new \LogicException("SpinWheel landed on segment {$segment}, which the wheel does not have.");
+                }
+
                 GamePlayed::create([
                     'user_id'        => $spinUserId,
                     'order_id'       => $locked->id,
                     'spin_number'    => $spinInOrder,
-                    'points_awarded' => $points,
+                    'points_awarded' => (int) self::WHEEL_SEGMENTS[$segment]['points'],
                 ]);
 
-                return $spinInOrder;
+                return [$spinInOrder, $segment];
             });
         } catch (\DomainException $e) {
             // Nothing was written and no points were awarded. Report the state
@@ -2324,6 +2651,11 @@ private function switchBranch($branchId): void
                 $this->spinWindowState()
             ), 422);
         }
+
+        // What the server's wheel awarded. Everything below (guest points,
+        // account points, the reward threshold, a wheel voucher and its
+        // "valid starting tomorrow" window) runs on this value, unchanged.
+        $points = (int) self::WHEEL_SEGMENTS[$segment]['points'];
 
         /*
          * GUEST WIN.
@@ -2393,7 +2725,7 @@ private function switchBranch($branchId): void
                 'guest_notice' => $voucherData
                     ? 'Save your claim code — it is the only way to use this voucher later.'
                     : 'Keep spinning to win a voucher!',
-            ], $this->spinResultState($spinNumber)));
+            ], $this->spinResultState($spinNumber, $segment)));
         }
 
         /** @var \App\Models\User $user */
@@ -2549,13 +2881,18 @@ private function switchBranch($branchId): void
             }
         }
 
-        // Next voucher to earn
-        $nextVoucher = \App\Models\Voucher::where('is_active', true)
+        // Next voucher to earn. Branch-scoped (Branch parity audit B6,
+        // 2026-09-27) — the two other Voucher queries on this same page
+        // ($vouchers above and winnableVoucherFor()) already run through
+        // scopeToCustomerBranch(); this one didn't, so a branch-3-only
+        // voucher's description could be shown as the "next voucher" hint to
+        // a customer at branch 1, who could never actually earn or redeem it.
+        $nextVoucher = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
             ->where('points_required', '>', $totalPoints)
             ->where(function ($q) {
                 $q->whereNull('expires_at')
                     ->orWhere('expires_at', '>', now());
-            })
+            }))
             ->orderBy('points_required', 'asc')
             ->first();
 
@@ -2568,7 +2905,7 @@ private function switchBranch($branchId): void
                 ? ($nextVoucher->points_required - $totalPoints)
                 : 0,
             'voucher_slots'  => 2 - $existingVoucherCount,
-        ], $this->spinResultState($spinNumber)));
+        ], $this->spinResultState($spinNumber, $segment)));
     }
 
     /**
@@ -2582,12 +2919,17 @@ private function switchBranch($branchId): void
      * server's spin_number instead: it fires on the last spin of every window,
      * once per window, and survives refreshes because the number comes from the
      * ledger rather than from page-local state.
+     *
+     * `outcome` is the segment the server picked (F3): its index into
+     * WHEEL_SEGMENTS plus that segment's type/points/label. The page animates
+     * the wheel to land on it and shows it as the result.
      */
-    private function spinResultState(int $spinNumber): array
+    private function spinResultState(int $spinNumber, int $segment): array
     {
         return array_merge([
             'spin_number' => $spinNumber,
             'show_ad'     => $spinNumber === self::SPINS_PER_ORDER,
+            'outcome'     => ['segment' => $segment] + self::WHEEL_SEGMENTS[$segment],
         ], $this->spinWindowState());
     }
 }

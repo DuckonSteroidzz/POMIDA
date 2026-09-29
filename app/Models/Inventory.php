@@ -158,7 +158,14 @@ class Inventory extends Model
         $codeRestored = false;
 
         if ($this->archived_item_code) {
+            // Scoped to this item's OWN branch (Branch parity audit B5,
+            // 2026-09-27) — the unique index this guards against is now
+            // composite(branch_id, item_code), not a bare item_code, so an
+            // unscoped check here would refuse to restore a code that
+            // another BRANCH has since reused even though that reuse is now
+            // perfectly legal and cannot actually collide.
             $taken = self::where('item_code', $this->archived_item_code)
+                ->where('branch_id', $this->branch_id)
                 ->where('id', '!=', $this->id)
                 ->exists();
 

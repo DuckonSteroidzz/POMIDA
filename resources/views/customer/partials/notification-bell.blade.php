@@ -217,10 +217,15 @@
         }
     }
 
+    /*
+     * Quotes too — same reasoning as the admin bell: this value also lands in
+     * data-id="..." below, where textContent -> innerHTML alone would leave a
+     * quote able to close the attribute.
+     */
     function esc(s) {
         var d = document.createElement('div');
         d.textContent = s == null ? '' : s;
-        return d.innerHTML;
+        return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
     function render(items) {

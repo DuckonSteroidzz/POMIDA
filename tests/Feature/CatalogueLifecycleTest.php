@@ -42,6 +42,10 @@ use Tests\TestCase;
  * that did not exist before (a real hard delete) is the one the owner cares
  * about, and the branch that did (keeping the row) is the one the panel will
  * ask about.
+ *
+ * EXCEPT MENU ITEMS, since 2026-09-24: their Delete always archives, and the
+ * hard delete moved to an owner-only Permanent Delete on the Archived page —
+ * see MenuItemPermanentDeleteTest.
  */
 class CatalogueLifecycleTest extends TestCase
 {
@@ -116,7 +120,16 @@ class CatalogueLifecycleTest extends TestCase
 
     // ── MENU ITEMS ───────────────────────────────────────────────────────────
 
-    public function test_an_unreferenced_menu_item_is_genuinely_deleted(): void
+    /**
+     * This asserted the opposite until 2026-09-24: an unreferenced menu item
+     * was hard-deleted by the normal Delete button. That made the button a
+     * permanent-delete door with no UI and no warning about the add-on and
+     * recipe rows it cascaded away. Menu items now ALWAYS archive; the
+     * irreversible step is the owner's Permanent Delete on the Archived page
+     * (MenuItemPermanentDeleteTest). Add-ons, categories and subcategories
+     * keep the hybrid rule, pinned by their own tests in this class.
+     */
+    public function test_an_unreferenced_menu_item_is_archived_not_deleted(): void
     {
         $item = $this->freshItem();
         $id = $item->id;
@@ -124,11 +137,14 @@ class CatalogueLifecycleTest extends TestCase
         $res = $this->actingAs($this->admin(), 'admin')->delete('/admin/menu-items/' . $id);
 
         $res->assertSessionHasNoErrors();
-        $this->assertStringContainsString('permanently deleted', session('success'));
+        $this->assertStringContainsString('was archived', session('success'));
+        $this->assertStringNotContainsString('was permanently deleted', session('success'));
 
-        // Not archived, not hidden — gone. Checked against the raw table so a
-        // scope cannot make an existing row merely look absent.
-        $this->assertSame(0, DB::table('menu_items')->where('id', $id)->count());
+        // Checked against the raw table so a scope cannot make a deleted row
+        // look merely hidden, or a hidden row look deleted.
+        $this->assertSame(1, DB::table('menu_items')->where('id', $id)->count(), 'the row must survive');
+        $this->assertNull(MenuItem::find($id), 'it must leave the normal list');
+        $this->assertTrue(MenuItem::withArchived()->find($id)->isArchived());
     }
 
     public function test_a_referenced_menu_item_is_archived_and_leaves_the_list(): void

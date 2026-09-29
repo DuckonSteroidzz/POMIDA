@@ -178,6 +178,8 @@ class InventoryDeductionEndToEndTest extends TestCase
 
         $coffee = $this->menuItem('Brewed Coffee', [[$beans, 15], [$sugar, 5]]);
         $extra  = $this->optionUsing($creamer, 1);
+        // Checkout only accepts an item's own add-ons (hardening pass F7).
+        $coffee->options()->attach($extra->id);
 
         $order = $this->checkout(
             $this->cartLine($coffee, 2, [$extra]),

@@ -236,7 +236,7 @@
                     <label class="form-label" for="password">Password</label>
                     <div class="pw-field">
                         <input type="password" id="password" name="password" class="form-control"
-                            required autocomplete="new-password">
+                            required minlength="8" maxlength="20" autocomplete="new-password">
                         <button type="button" class="js-pw-toggle" data-target="password"
                             aria-label="Show password" aria-pressed="false" title="Show password">
                             <i class="bi bi-eye" aria-hidden="true"></i>
@@ -249,7 +249,7 @@
                     <label class="form-label" for="password_confirmation">Confirm password</label>
                     <div class="pw-field">
                         <input type="password" id="password_confirmation" name="password_confirmation"
-                            class="form-control" required autocomplete="new-password">
+                            class="form-control" required minlength="8" maxlength="20" autocomplete="new-password">
                         <button type="button" class="js-pw-toggle" data-target="password_confirmation"
                             aria-label="Show password" aria-pressed="false" title="Show password">
                             <i class="bi bi-eye" aria-hidden="true"></i>

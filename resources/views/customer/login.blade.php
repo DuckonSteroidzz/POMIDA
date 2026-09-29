@@ -392,41 +392,18 @@
         }
 
         /* =====================================================
-           REMEMBER + FORGOT
+           FORGOT PASSWORD
         ===================================================== */
 
         .form-options {
             display: flex;
 
             align-items: center;
-            justify-content: space-between;
+            justify-content: flex-end;
 
             gap: 1rem;
 
             margin-bottom: 1.25rem;
-        }
-
-        .remember {
-            display: flex;
-
-            align-items: center;
-
-            gap: 0.45rem;
-
-            font-size: 0.8rem;
-
-            color: var(--muted);
-
-            cursor: pointer;
-        }
-
-        .remember input {
-            width: 15px;
-            height: 15px;
-
-            accent-color: var(--deep-red);
-
-            cursor: pointer;
         }
 
         .auth-link {
@@ -712,25 +689,10 @@
                 </div>
 
 
-                {{-- Remember Me + Forgot Password --}}
+                {{-- Forgot Password. The "Save Password" box was removed in
+                     Sept 2026: it was a remember-me cookie that kept the phone
+                     signed in after the browser closed. See config/session.php. --}}
                 <div class="form-options">
-
-                    <label class="remember">
-
-                        <input
-                            type="checkbox"
-                            name="remember"
-                            id="rememberMe"
-                            value="1"
-                            {{ old('remember') ? 'checked' : '' }}
-                        >
-
-                        <span>
-                            Save Password
-                        </span>
-
-                    </label>
-
 
                     <a
                         href="{{ route('customer.forgot-password') }}"

@@ -576,10 +576,24 @@
         }
     }
 
+    /*
+     * textContent -> innerHTML escapes &, < and > but NOT quotes, and the
+     * result of this is interpolated into a QUOTED ATTRIBUTE below
+     * (data-table="..."). A table_number containing a double quote would
+     * therefore close that attribute early and let extra attributes be
+     * injected onto the button.
+     *
+     * Not reachable as script today — the manual-order table_number that feeds
+     * this is capped by orders.table_number being varchar(10), and < and > are
+     * already escaped, so there is no room to break out of the tag. It is
+     * escaped anyway because "the column is narrow" is a terrible thing for an
+     * escaping decision to depend on. See UploadFilenameHardeningTest's sibling
+     * note in the security report.
+     */
     function escapeHtml(value) {
         const d = document.createElement('div');
         d.textContent = value == null ? '' : String(value);
-        return d.innerHTML;
+        return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#039;');
     }
 
     document.addEventListener('click', async function (event) {

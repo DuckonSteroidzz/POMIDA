@@ -998,7 +998,7 @@
                             'quantity' => (int) $item->quantity,
 
 
-                            'name' => $item->item_name,
+                            'name' => $item->displayName(),
 
 
                             'subtotal' => number_format((float) $item->subtotal, 2),
@@ -1023,7 +1023,7 @@
                     <p class="pc-item">
 
 
-                        <span><span class="qty">{{ $item->quantity }}×</span> {{ $item->item_name }}</span>
+                        <span><span class="qty">{{ $item->quantity }}×</span> {{ $item->displayName() }}</span>
 
 
                         <span class="price">₱{{ number_format($item->subtotal, 2) }}</span>
@@ -1294,8 +1294,26 @@
                                 ?? $discountCard?->card_number
                                 ?? $order->discount_beneficiary_card_number
                                 ?? 'Not provided';
-                            $modalDiscountExpiry = $discountCard?->expiration_date
-                                ? \Carbon\Carbon::parse($discountCard->expiration_date)->format('M d, Y')
+                            /*
+                             * Every PWD/Senior ID listed on this order (one
+                             * per eligible person), for the modal's list.
+                             * Order::discountBeneficiaryList() falls back to
+                             * the single legacy pair for older orders.
+                             */
+                            $modalDiscountBeneficiaries = $order->discountBeneficiaryList();
+
+                            /*
+                             * The saved card's date when there is one, else
+                             * the date typed at checkout. This used to read
+                             * ONLY $discountCard — and no order has one (the
+                             * saved-card path is unused) — so staff always saw
+                             * "Not provided" even for a PWD order whose
+                             * expiration checkout had just validated.
+                             */
+                            $modalExpirationSource = $discountCard?->expiration_date
+                                ?? $order->discount_beneficiary_expiration;
+                            $modalDiscountExpiry = $modalExpirationSource
+                                ? \Carbon\Carbon::parse($modalExpirationSource)->format('M d, Y')
                                 : 'Not provided';
                             /*
                              * Security review 2026-08-31 (Pass 4, item #10):
@@ -1327,6 +1345,7 @@
                             data-type="{{ $modalDiscountType }}"
                             data-name="{{ $modalDiscountName }}"
                             data-id-number="{{ $modalDiscountId }}"
+                            data-beneficiaries="{{ json_encode($modalDiscountBeneficiaries) }}"
                             data-expiration="{{ $modalDiscountExpiry }}"
                             data-status="{{ $modalDiscountStatus }}"
                             data-image="{{ $modalDiscountImage }}"
@@ -1609,17 +1628,21 @@
                 <span class="label">Discount Type</span>
                 <span class="value" id="pcDiscountType">-</span>
             </div>
-            <div class="pc-discount-detail">
-                <span class="label">Name</span>
-                <span class="value" id="pcDiscountName">-</span>
+            {{-- Every ID listed on the order (September 2026), one row per
+                 person — filled by openDiscountModal() with textContent. The
+                 discount itself is applied once per order, whatever the
+                 count. --}}
+            <div class="pc-discount-detail" style="align-items:flex-start;">
+                <span class="label" id="pcDiscountIdsLabel">IDs listed</span>
+                <ol class="value" id="pcDiscountIdList" style="margin:0;padding-left:1.1rem;text-align:left;"></ol>
             </div>
             <div class="pc-discount-detail">
-                <span class="label">ID / Card Number</span>
-                <span class="value" id="pcDiscountIdNumber">-</span>
-            </div>
-            <div class="pc-discount-detail">
-                <span class="label">Expiration</span>
+                <span class="label">PWD ID Expiration</span>
                 <span class="value" id="pcDiscountExpiration">-</span>
+            </div>
+            <div style="font-size:0.75rem;color:#8B1A1A;opacity:0.75;margin-top:0.35rem;">
+                <i class="bi bi-person-vcard"></i>
+                Check each physical ID against the list before approving.
             </div>
 
             <div id="pcDiscountStatus" class="pc-discount-modal-status pending">
@@ -1930,13 +1953,87 @@ function filterManualItems()
     });
 }
 
+/*
+ * [option_id => [branch_id, ...]] — the branches each add-on has an ingredient
+ * link in, and therefore the only branches storeManualOrder() will accept it
+ * for. See the $optionBranchIds docblock in AdminController::showHome().
+ */
+const MANUAL_OPTION_BRANCH_IDS = @json($optionBranchIds ?? []);
+
+/*
+ * May this add-on be sold at the branch the walk-in form is currently set to?
+ *
+ * Fails OPEN on anything it cannot answer — no branch chosen yet, or an option
+ * this page shipped no mapping for. The server refusal in storeManualOrder()
+ * is the authoritative check; this only avoids offering staff a choice that
+ * cannot succeed, so being unsure must never hide a sellable add-on.
+ */
+function manualOptionIsSellableHere(optionId)
+{
+    const branchField = document.getElementById('manualBranch');
+    const branchId = parseInt((branchField || {}).value, 10);
+
+    if (!branchId) {
+        return true;
+    }
+
+    const mapped = MANUAL_OPTION_BRANCH_IDS[optionId];
+
+    if (!Array.isArray(mapped)) {
+        return true;
+    }
+
+    return mapped.indexOf(branchId) !== -1;
+}
+
 function getManualCardOptions(card)
 {
+    let parsed;
+
     try {
-        return JSON.parse(card.dataset.options || '[]');
+        parsed = JSON.parse(card.dataset.options || '[]');
     } catch (error) {
         return [];
     }
+
+    // Narrowed to what the chosen branch can actually supply. Filtering HERE
+    // rather than inside openManualOptions() means addManualItem()'s
+    // "any options at all?" test sees the narrowed list too, so an item whose
+    // every add-on is unmapped for this branch drops straight into the cart
+    // instead of opening an empty modal.
+    return parsed.filter(function (option) {
+        return manualOptionIsSellableHere(Number(option.id));
+    });
+}
+
+/*
+ * Menu Item Sizes (Phase 2): the card's live sizes, as shipped by the page —
+ * [{id, name, price, orderable, label}]. Empty for an unsized item.
+ */
+function getManualCardSizes(card)
+{
+    try {
+        const parsed = JSON.parse(card.dataset.sizes || '[]');
+        return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+/* The size ticked in the modal, or null. */
+function selectedManualSize()
+{
+    const radio = document.querySelector('.manual-size-radio:checked');
+
+    if (!radio) {
+        return null;
+    }
+
+    return {
+        id: parseInt(radio.value, 10),
+        name: radio.dataset.name,
+        price: parseFloat(radio.dataset.price) || 0
+    };
 }
 
 function addManualItem(id)
@@ -1950,26 +2047,93 @@ function addManualItem(id)
     }
 
     const options = getManualCardOptions(card);
+    const sizes = getManualCardSizes(card);
 
-    if (options.length > 0) {
-        openManualOptions(card, options);
+    // A sized item always goes through the modal: a size must be picked
+    // (storeManualOrder() refuses a sized line without one).
+    if (options.length > 0 || sizes.length > 0) {
+        openManualOptions(card, options, sizes);
         return;
     }
 
-    addManualItemToCart(card, []);
+    addManualItemToCart(card, [], null);
 }
 
-function openManualOptions(card, options)
+function openManualOptions(card, options, sizes)
 {
     manualOptionTarget = card;
+    sizes = sizes || [];
 
     const modal = document.getElementById('manualOptionsModal');
     const title = document.getElementById('manualOptionsTitle');
     const price = document.getElementById('manualOptionsBasePrice');
     const list = document.getElementById('manualOptionsList');
+    const sizesWrap = document.getElementById('manualSizesWrap');
+    const sizesList = document.getElementById('manualSizesList');
+    const optionsWrap = document.getElementById('manualOptionsWrap');
+    const sizeError = document.getElementById('manualSizeError');
 
     title.textContent = card.querySelector('.manual-item-name').textContent.trim();
     price.textContent = 'Base price: ₱' + (parseFloat(card.dataset.price) || 0).toFixed(2);
+
+    // Sizes: one radio each, each at its own price. A size that cannot be
+    // sold is shown but disabled, with the reason; the first sellable one
+    // starts ticked.
+    sizesList.innerHTML = '';
+    sizeError.style.display = 'none';
+    sizesWrap.style.display = sizes.length > 0 ? 'block' : 'none';
+
+    let firstSellable = true;
+
+    sizes.forEach(function(size) {
+        const sizePrice = parseFloat(size.price) || 0;
+        const sellable = !!size.orderable;
+
+        const label = document.createElement('label');
+        label.style.cssText = `
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:0.75rem;
+            padding:0.65rem 0.75rem;
+            border:1px solid #ead8d2;
+            border-radius:8px;
+            background:#fff;
+            cursor:${sellable ? 'pointer' : 'not-allowed'};
+            opacity:${sellable ? '1' : '0.55'};
+        `;
+
+        label.innerHTML = `
+            <span style="display:flex;align-items:center;gap:0.55rem;flex:1;">
+                <input
+                    type="radio"
+                    name="manual_size_choice"
+                    class="manual-size-radio"
+                    value="${escapeManualHtml(size.id)}"
+                    data-name="${escapeManualHtml(size.name)}"
+                    data-price="${sizePrice}"
+                    ${sellable ? '' : 'disabled'}
+                    ${sellable && firstSellable ? 'checked' : ''}
+                    style="width:17px;height:17px;accent-color:#C0392B;"
+                >
+                <span style="font-weight:700;color:#5A2920;font-size:0.8rem;">
+                    ${escapeManualHtml(size.name)}
+                    ${sellable ? '' : '<span style="display:block;font-size:0.62rem;color:#C0392B;text-transform:uppercase;">' + escapeManualHtml(size.label || 'Unavailable') + '</span>'}
+                </span>
+            </span>
+            <strong style="color:#C0392B;font-size:0.78rem;">
+                ₱${sizePrice.toFixed(2)}
+            </strong>
+        `;
+
+        if (sellable && firstSellable) {
+            firstSellable = false;
+        }
+
+        sizesList.appendChild(label);
+    });
+
+    optionsWrap.style.display = options.length > 0 ? 'block' : 'none';
 
     list.innerHTML = '';
 
@@ -2021,12 +2185,20 @@ function updateManualOptionPreview()
         return;
     }
 
-    const basePrice = parseFloat(manualOptionTarget.dataset.price) || 0;
+    // A sized item is priced at the ticked size's own price (Phase 2).
+    const size = selectedManualSize();
+    const basePrice = size
+        ? size.price
+        : (parseFloat(manualOptionTarget.dataset.price) || 0);
     let optionTotal = 0;
 
     document.querySelectorAll('.manual-option-check:checked').forEach(function(check) {
         optionTotal += parseFloat(check.dataset.price) || 0;
     });
+
+    document.getElementById('manualOptionsBasePrice').textContent = size
+        ? size.name + ': ₱' + size.price.toFixed(2)
+        : 'Base price: ₱' + basePrice.toFixed(2);
 
     document.getElementById('manualOptionsFinalPrice').textContent =
         '₱' + (basePrice + optionTotal).toFixed(2);
@@ -2049,6 +2221,15 @@ function confirmManualOptions()
         return;
     }
 
+    // A sized item cannot be added without a size (Phase 2) — the server
+    // refuses it too; this just says so before staff submit.
+    const size = selectedManualSize();
+
+    if (getManualCardSizes(manualOptionTarget).length > 0 && !size) {
+        document.getElementById('manualSizeError').style.display = 'block';
+        return;
+    }
+
     const selectedOptions = [];
 
     document.querySelectorAll('.manual-option-check:checked').forEach(function(check) {
@@ -2059,15 +2240,17 @@ function confirmManualOptions()
         });
     });
 
-    addManualItemToCart(manualOptionTarget, selectedOptions);
+    addManualItemToCart(manualOptionTarget, selectedOptions, size);
     closeManualOptions();
 }
 
-function addManualItemToCart(card, selectedOptions)
+function addManualItemToCart(card, selectedOptions, size)
 {
     const id = parseInt(card.dataset.id, 10);
-    const displayName = card.querySelector('.manual-item-name').textContent.trim();
-    const basePrice = parseFloat(card.dataset.price) || 0;
+    const itemName = card.querySelector('.manual-item-name').textContent.trim();
+    // A sized line is named and priced by its size (Phase 2).
+    const displayName = size ? itemName + ' (' + size.name + ')' : itemName;
+    const basePrice = size ? size.price : (parseFloat(card.dataset.price) || 0);
 
     const optionIds = selectedOptions
         .map(function(option) {
@@ -2077,7 +2260,8 @@ function addManualItemToCart(card, selectedOptions)
             return a - b;
         });
 
-    const cartKey = id + '_' + (optionIds.length ? optionIds.join('-') : 'none');
+    // Regular and Large are separate lines; an unsized key is unchanged.
+    const cartKey = id + (size ? '_s' + size.id : '') + '_' + (optionIds.length ? optionIds.join('-') : 'none');
 
     let optionTotal = 0;
 
@@ -2094,7 +2278,8 @@ function addManualItemToCart(card, selectedOptions)
             name: displayName,
             price: finalPrice,
             quantity: 1,
-            options: selectedOptions
+            options: selectedOptions,
+            sizeId: size ? size.id : null
         };
     } else {
         manualCart[cartKey].quantity++;
@@ -2272,6 +2457,12 @@ function renderManualCart()
             >
 
             ${
+                item.sizeId
+                    ? `<input type="hidden" name="items[${safeKey}][size_id]" value="${escapeManualHtml(item.sizeId)}">`
+                    : ''
+            }
+
+            ${
                 item.options.map(function(option) {
                     return `
                         <input
@@ -2323,6 +2514,95 @@ function setManualDiscountEnabled(on)
                 el.required = on;
             }
         });
+
+    // The extra ID rows and their "+ Add another ID" button follow the box
+    // exactly like the first row does: disabled controls are not submitted.
+    document.querySelectorAll('#manualDiscountExtraRows input, #manualDiscountExtraRows button')
+        .forEach(function (el) {
+            el.disabled = !on;
+        });
+
+    const addRow = document.getElementById('manualDiscountAddRow');
+
+    if (addRow) {
+        addRow.disabled = !on;
+    }
+}
+
+/*
+ * One more PWD / Senior Citizen ID for the same order (September 2026):
+ * ID number + full name, with its own remove button. Posts as
+ * discount_beneficiaries[n][...], which storeManualOrder() reads after the
+ * first-row fields through App\Support\DiscountBeneficiaries. The discount is
+ * NOT touched: it is applied once per order however many IDs are listed, so
+ * updateManualTotals() never looks at these rows.
+ *
+ * The index only ever increases, so a removed row's name is never reused.
+ * Built with DOM calls and .value, never innerHTML, because a restored row
+ * carries text a person typed.
+ */
+let manualDiscountRowSeq = 0;
+
+function addManualDiscountIdRow(idNumber, fullName)
+{
+    const holder = document.getElementById('manualDiscountExtraRows');
+
+    if (!holder || holder.children.length >= @json(\App\Support\DiscountBeneficiaries::MAX_ROWS - 1)) {
+        return;
+    }
+
+    const index = manualDiscountRowSeq++;
+    const row = document.createElement('div');
+    row.setAttribute('data-manual-discount-row', '');
+    row.style.cssText = 'display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:0.5rem;align-items:end;';
+
+    [['id_number', 'ID Number', idNumber], ['full_name', 'Full Name', fullName]].forEach(function (field) {
+        const wrap = document.createElement('div');
+        const label = document.createElement('label');
+        const input = document.createElement('input');
+
+        label.className = 'form-label-custom';
+        label.textContent = field[1];
+
+        input.type = 'text';
+        input.name = 'discount_beneficiaries[' + index + '][' + field[0] + ']';
+        input.className = 'form-control-custom';
+        input.autocomplete = 'off';
+        input.maxLength = 100;
+        input.required = true;
+        input.value = field[2] || '';
+
+        wrap.appendChild(label);
+        wrap.appendChild(input);
+        row.appendChild(wrap);
+    });
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.setAttribute('aria-label', 'Remove this ID');
+    remove.innerHTML = '<i class="bi bi-trash3"></i>';
+    remove.style.cssText = 'height:38px;width:38px;border:1px solid #f2d8cf;border-radius:8px;background:#fff;color:#C0392B;cursor:pointer;';
+    remove.addEventListener('click', function () {
+        row.remove();
+    });
+
+    row.appendChild(remove);
+    holder.appendChild(row);
+
+    const first = row.querySelector('input');
+
+    if (first && idNumber === undefined) {
+        first.focus();
+    }
+}
+
+function removeAllManualDiscountIdRows()
+{
+    const holder = document.getElementById('manualDiscountExtraRows');
+
+    if (holder) {
+        holder.innerHTML = '';
+    }
 }
 
 function toggleManualDiscount()
@@ -2466,8 +2746,11 @@ function updateManualTotals()
      */
     const discountOn = document.getElementById('manualDiscountToggle').checked;
 
+    // The rate is the server's own constant, not a copy of it. And it is ONE
+    // discount for the order however many ID rows are listed below the first
+    // — no row count is read here, exactly as on the server.
     const cardDiscount = discountOn
-        ? Math.round(Math.min(subtotal * 0.20, subtotal) * 100) / 100
+        ? Math.round(Math.min(subtotal * @json(\App\Models\Order::PWD_SENIOR_DISCOUNT_RATE), subtotal) * 100) / 100
         : null;
 
     /*
@@ -2638,10 +2921,44 @@ function openDiscountModal(button) {
         button.dataset.order || '-';
     document.getElementById('pcDiscountType').textContent =
         button.dataset.type || 'PWD / Senior Citizen';
-    document.getElementById('pcDiscountName').textContent =
-        button.dataset.name || 'Not provided';
-    document.getElementById('pcDiscountIdNumber').textContent =
-        button.dataset.idNumber || 'Not provided';
+    /*
+     * Every ID listed on the order, one line each: "Full name — ID number".
+     * textContent only: these are what a customer typed. Falls back to the
+     * single name/ID pair if the list attribute is missing or unreadable.
+     */
+    let beneficiaries = [];
+
+    try {
+        beneficiaries = JSON.parse(button.dataset.beneficiaries || '[]');
+    } catch (error) {
+        beneficiaries = [];
+    }
+
+    if (!Array.isArray(beneficiaries) || beneficiaries.length === 0) {
+        beneficiaries = (button.dataset.name || button.dataset.idNumber)
+            ? [{ full_name: button.dataset.name || '', id_number: button.dataset.idNumber || '' }]
+            : [];
+    }
+
+    const idList = document.getElementById('pcDiscountIdList');
+    idList.textContent = '';
+
+    if (beneficiaries.length === 0) {
+        const none = document.createElement('li');
+        none.textContent = 'Not provided';
+        idList.appendChild(none);
+    }
+
+    beneficiaries.forEach(function (person) {
+        const item = document.createElement('li');
+        item.textContent = (person.full_name || 'Name not provided')
+            + ' — ' + (person.id_number || 'ID not provided');
+        idList.appendChild(item);
+    });
+
+    document.getElementById('pcDiscountIdsLabel').textContent =
+        beneficiaries.length > 1 ? 'IDs listed (' + beneficiaries.length + ')' : 'ID listed';
+
     document.getElementById('pcDiscountExpiration').textContent =
         button.dataset.expiration || 'Not provided';
 
@@ -2722,7 +3039,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     document.addEventListener('change', function(event) {
-        if (event.target.classList.contains('manual-option-check')) {
+        if (
+            event.target.classList.contains('manual-option-check') ||
+            event.target.classList.contains('manual-size-radio')
+        ) {
+            if (event.target.classList.contains('manual-size-radio')) {
+                document.getElementById('manualSizeError').style.display = 'none';
+            }
             updateManualOptionPreview();
         }
     });
@@ -2915,14 +3238,25 @@ document.addEventListener('DOMContentLoaded', function() {
             }, 0);
 
             const nameEl = card.querySelector('.manual-item-name');
+            const itemName = nameEl ? nameEl.textContent.trim() : 'Item';
+
+            // The line's size, if it had one (Phase 2): name and price from
+            // the card's own size list, so the rebuilt line reads and prices
+            // exactly as it did before the refusal.
+            const rowSize = row.size_id
+                ? getManualCardSizes(card).find(function (size) {
+                    return Number(size.id) === Number(row.size_id);
+                })
+                : null;
 
             manualCart[key] = {
                 key: key,
                 id: parseInt(row.menu_item_id, 10),
-                name: nameEl ? nameEl.textContent.trim() : 'Item',
-                price: (parseFloat(card.dataset.price) || 0) + optionTotal,
+                name: rowSize ? itemName + ' (' + rowSize.name + ')' : itemName,
+                price: (rowSize ? (parseFloat(rowSize.price) || 0) : (parseFloat(card.dataset.price) || 0)) + optionTotal,
                 quantity: parseInt(row.quantity, 10) || 1,
-                options: chosen
+                options: chosen,
+                sizeId: rowSize ? rowSize.id : null
             };
         });
 
@@ -2939,6 +3273,19 @@ document.addEventListener('DOMContentLoaded', function() {
             setValue('manualDiscountType', @json(old('discount_type')));
             setValue('manualDiscountName', @json(old('discount_beneficiary_name')));
             setValue('manualDiscountIdNumber', @json(old('discount_beneficiary_id')));
+
+            // Every extra ID row staff had listed, so a refusal does not cost
+            // them the whole group's IDs. Rebuilt with .value, never HTML.
+            removeAllManualDiscountIdRows();
+
+            (@json(array_values((array) old('discount_beneficiaries', []))) || []).forEach(function (oldRow) {
+                if (oldRow && typeof oldRow === 'object') {
+                    addManualDiscountIdRow(
+                        typeof oldRow.id_number === 'string' ? oldRow.id_number : '',
+                        typeof oldRow.full_name === 'string' ? oldRow.full_name : ''
+                    );
+                }
+            });
         }
 
         /*
@@ -3187,7 +3534,30 @@ document.addEventListener('DOMContentLoaded', function() {
                             // bill of materials is refused server-side by
                             // storeManualOrder() too, so staff never get a
                             // mid-order surprise.
-                            $itemMissingRecipe = $item->isMissingRecipe();
+                            //
+                            // Menu Item Sizes (Phase 2): a sized card offers its
+                            // live sizes and is judged by THEM (sellable + own
+                            // recipe — MenuItem::sizeChoices(), no stock verdict,
+                            // exactly like the unsized cards), never by the base
+                            // recipe. storeManualOrder() re-checks all of it.
+                            $itemIsSized = $item->hasSizes();
+                            $manualSizes = $itemIsSized
+                                ? collect($item->sizeChoices(null, false))
+                                    ->map(fn ($choice) => [
+                                        'id'        => $choice['id'],
+                                        'name'      => $choice['name'],
+                                        'price'     => $choice['price'],
+                                        'orderable' => $choice['orderable'],
+                                        'label'     => $choice['label'],
+                                    ])
+                                    ->values()
+                                : collect();
+                            $itemMissingRecipe = $itemIsSized
+                                ? $manualSizes->where('orderable', true)->isEmpty()
+                                : $item->isMissingRecipe();
+                            $itemBlockedText = ($itemIsSized && ! $manualSizes->contains('label', 'No Recipe Set'))
+                                ? 'Unavailable'
+                                : 'No Recipe Set';
                         @endphp
 
                         <button
@@ -3200,9 +3570,10 @@ document.addEventListener('DOMContentLoaded', function() {
                             data-branch="{{ $item->branch_id ?? 'all' }}"
                             data-price="{{ $item->price }}"
                             data-options="{{ $item->options->toJson() }}"
+                            data-sizes="{{ $manualSizes->toJson() }}"
                             @if($itemMissingRecipe)
                                 disabled
-                                title="No recipe set — this item cannot be added to an order yet."
+                                title="{{ $itemIsSized ? 'No size of this item can be sold yet — each size needs its own recipe.' : 'No recipe set — this item cannot be added to an order yet.' }}"
                             @else
                                 onclick="addManualItem({{ $item->id }})"
                             @endif
@@ -3282,6 +3653,9 @@ document.addEventListener('DOMContentLoaded', function() {
                                         font-size:0.8rem;
                                     "
                                 >
+                                    @if($itemIsSized)
+                                        <span style="font-size:0.62rem;color:#8A6A61;font-weight:700;">From</span>
+                                    @endif
                                     ₱{{ number_format($item->price, 2) }}
                                 </div>
 
@@ -3311,7 +3685,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                             margin-top:0.15rem;
                                         "
                                     >
-                                        No Recipe Set
+                                        {{ $itemBlockedText }}
                                     </div>
                                 @endif
 
@@ -3509,6 +3883,35 @@ document.addEventListener('DOMContentLoaded', function() {
                                 autocomplete="off"
                                 disabled
                             >
+                        </div>
+
+                        {{--
+                            More PWD / Senior Citizen diners in the same group
+                            (September 2026). The fields above are the first
+                            ID; each extra row posts as
+                            discount_beneficiaries[n][id_number|full_name] and
+                            is built by addManualDiscountIdRow(). They are a
+                            RECORD for the receipt — the 20% is applied once
+                            per order however many IDs are listed
+                            (Order::pwdSeniorDiscountFor(), server-side).
+                            Rows ship none and are disabled with the rest of
+                            the box, so an unticked box submits nothing.
+                        --}}
+                        <div id="manualDiscountExtraRows" style="grid-column:1 / -1;display:grid;gap:0.5rem;"></div>
+
+                        <div style="grid-column:1 / -1;">
+                            <button
+                                type="button"
+                                id="manualDiscountAddRow"
+                                onclick="addManualDiscountIdRow()"
+                                style="background:none;border:0;padding:0.2rem 0;font-size:0.72rem;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#8B1A1A;opacity:0.55;cursor:pointer;"
+                                disabled
+                            >
+                                <i class="bi bi-plus-lg"></i> Add another ID
+                            </button>
+                            <div style="font-size:0.72rem;color:#8B1A1A;opacity:0.6;margin-top:0.15rem;">
+                                One person per ID. The discount is applied once per order, however many IDs are listed.
+                            </div>
                         </div>
 
                     </div>
@@ -3751,6 +4154,42 @@ document.addEventListener('DOMContentLoaded', function() {
         </div>
 
         <div style="padding:1rem;">
+            {{-- Menu Item Sizes (Phase 2): Regular / Large for a sized item,
+                 each at its own price; filled by openManualOptions(). --}}
+            <div id="manualSizesWrap" style="display:none;margin-bottom:0.9rem;">
+                <div
+                    style="
+                        font-size:0.78rem;
+                        color:#8A6A61;
+                        margin-bottom:0.65rem;
+                    "
+                >
+                    Choose the size <strong style="color:#C0392B;">(required)</strong>.
+                </div>
+
+                <div
+                    id="manualSizesList"
+                    style="
+                        display:grid;
+                        gap:0.5rem;
+                    "
+                ></div>
+
+                <div
+                    id="manualSizeError"
+                    style="
+                        display:none;
+                        margin-top:0.5rem;
+                        font-size:0.75rem;
+                        font-weight:700;
+                        color:#C0392B;
+                    "
+                >
+                    Please choose a size first.
+                </div>
+            </div>
+
+            <div id="manualOptionsWrap">
             <div
                 style="
                     font-size:0.78rem;
@@ -3768,6 +4207,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     gap:0.5rem;
                 "
             ></div>
+            </div>
 
             <div
                 style="

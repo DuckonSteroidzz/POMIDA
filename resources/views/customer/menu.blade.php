@@ -242,14 +242,15 @@
                     // $reserved = stock open orders have already committed but
                     // that has not been deducted yet, so these badges show what
                     // is genuinely still orderable. See the controller.
-                    $itemMissingRecipe = $item->isMissingRecipe();
-                    $itemOutOfStock = ! $itemMissingRecipe && ! $item->hasIngredientStock(1, $reserved ?? null);
-                    $itemUnavailable = $itemMissingRecipe || $itemOutOfStock;
-                    $itemUnavailableLabel = $itemMissingRecipe ? 'No Recipe Set' : 'Out of Stock';
-                    // Threshold is config('inventory.low_stock_threshold') — see
-                    // MenuItem::isLowOnIngredientStock().
-                    $itemLowStock = ! $itemUnavailable && $item->isLowOnIngredientStock($reserved ?? null);
-                    $itemRemainingServings = $itemLowStock ? $item->remainingServings($reserved ?? null) : null;
+                    // One decision for both grids, sized or not — an unsized
+                    // item gets exactly the checks it always did, a sized one
+                    // is judged by its own sizes (Menu Item Sizes, Phase 2).
+                    // See MenuItem::menuCardState().
+                    $cardState = $item->menuCardState($reserved ?? null);
+                    $itemUnavailable = $cardState['unavailable'];
+                    $itemUnavailableLabel = $cardState['label'];
+                    $itemLowStock = $cardState['low_stock'];
+                    $itemRemainingServings = $cardState['remaining'];
                 @endphp
                 <a href="{{ route('customer.item', $item->id) }}"
                     class="item-grid-card card-surface group relative flex flex-col overflow-hidden no-underline transition duration-200 hover:-translate-y-0.5 hover:border-peach"
@@ -275,11 +276,14 @@
                     </div>
                     <div class="flex flex-1 flex-col gap-1 p-3">
                         <p class="line-clamp-2 text-sm font-bold leading-snug text-peach-deep">{{ $item->name }}</p>
-                        <p class="mt-auto font-display text-base font-black text-peach-red">₱{{ number_format($item->price, 2) }}</p>
-                        @if($itemMissingRecipe)
-                        <p class="text-[0.66rem] font-bold text-peach-red">Unavailable — no recipe set</p>
-                        @elseif($itemOutOfStock)
-                        <p class="text-[0.66rem] font-bold text-peach-red">Currently unavailable — ingredients out of stock</p>
+                        <p class="mt-auto font-display text-base font-black text-peach-red">
+                            @if($cardState['sized'])
+                            <span class="text-[0.68rem] font-bold text-peach-deep/50">From</span>
+                            @endif
+                            ₱{{ number_format($item->price, 2) }}
+                        </p>
+                        @if($itemUnavailable)
+                        <p class="text-[0.66rem] font-bold text-peach-red">{{ $cardState['detail'] }}</p>
                         @elseif($itemLowStock)
                         <p class="text-[0.66rem] font-bold text-amber-600">
                             @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left! @else Low stock! @endif
@@ -398,12 +402,12 @@
                                 @endphp
 
                                 @php
-                                    $itemMissingRecipe = $item->isMissingRecipe();
-                                    $itemOutOfStock = ! $itemMissingRecipe && ! $item->hasIngredientStock(1, $reserved ?? null);
-                                    $itemUnavailable = $itemMissingRecipe || $itemOutOfStock;
-                                    $itemUnavailableLabel = $itemMissingRecipe ? 'No Recipe Set' : 'Out of Stock';
-                                    $itemLowStock = ! $itemUnavailable && $item->isLowOnIngredientStock($reserved ?? null);
-                                    $itemRemainingServings = $itemLowStock ? $item->remainingServings($reserved ?? null) : null;
+                                    // Same single decision as the category grid above.
+                                    $cardState = $item->menuCardState($reserved ?? null);
+                                    $itemUnavailable = $cardState['unavailable'];
+                                    $itemUnavailableLabel = $cardState['label'];
+                                    $itemLowStock = $cardState['low_stock'];
+                                    $itemRemainingServings = $cardState['remaining'];
                                 @endphp
                                 <a href="{{ route('customer.item', $item->id) }}"
                                     class="menu-search-card card-surface group relative flex flex-col overflow-hidden no-underline transition duration-200 hover:-translate-y-0.5 hover:border-peach"
@@ -445,13 +449,14 @@
                                         @endif
 
                                         <p class="mt-auto font-display text-base font-black text-peach-red">
+                                            @if($cardState['sized'])
+                                            <span class="text-[0.68rem] font-bold text-peach-deep/50">From</span>
+                                            @endif
                                             ₱{{ number_format($item->price, 2) }}
                                         </p>
 
-                                        @if($itemMissingRecipe)
-                                        <p class="text-[0.66rem] font-bold text-peach-red">Unavailable — no recipe set</p>
-                                        @elseif($itemOutOfStock)
-                                        <p class="text-[0.66rem] font-bold text-peach-red">Currently unavailable — ingredients out of stock</p>
+                                        @if($itemUnavailable)
+                                        <p class="text-[0.66rem] font-bold text-peach-red">{{ $cardState['detail'] }}</p>
                                         @elseif($itemLowStock)
                                         <p class="text-[0.66rem] font-bold text-amber-600">
                                             @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left! @else Low stock! @endif

@@ -226,6 +226,22 @@
         have no recorded cost from the time of sale, so they are costed at today&rsquo;s
         ingredient prices. COGS and Gross Profit for those lines are an estimate,
         not a record of what the ingredients cost then.
+        @if (($uncostedDeletedLineCount ?? 0) > 0)
+            {{ number_format($uncostedDeletedLineCount) }} of them belong to permanently deleted
+            menu items with nothing left to price them from, so they count as ₱0.
+        @endif
+    </p>
+@endif
+
+{{-- Lines whose menu item was permanently deleted carry the cost frozen at
+     that moment (the same figure this page showed for them before), flagged
+     ingredient_cost_estimated. Disclosed the same quiet way. Silent at zero. --}}
+@if (($estimatedCostLineCount ?? 0) > 0)
+    <p class="sellers-empty" style="margin-top:0.5rem;" data-testid="estimated-cost-caveat">
+        <i class="bi bi-info-circle"></i>
+        {{ number_format($estimatedCostLineCount) }} of {{ number_format($soldLineCount) }} sold lines
+        belong to permanently deleted menu items; their cost was estimated from the recipe
+        when the item was deleted, not recorded at the time of sale.
     </p>
 @endif
 
@@ -252,7 +268,16 @@
                     @foreach ($bestSellers as $i => $row)
                         <tr>
                             <td>{{ $i + 1 }}</td>
-                            <td>{{ $row->menuItem->name ?? '(deleted item)' }}</td>
+                            {{-- A permanently deleted item has no menu row left; its
+                                 lines' own name snapshot stands in, labelled. --}}
+                            <td>
+                                @if ($row->menuItem)
+                                    {{ $row->menuItem->name }}
+                                @else
+                                    {{ $row->deleted_item_name ?: 'Deleted item' }}
+                                    <span class="sellers-deleted" data-testid="top-seller-deleted">(deleted)</span>
+                                @endif
+                            </td>
                             <td style="text-align:right;font-weight:700;color:#16A34A;">{{ number_format($row->total_qty) }}</td>
                             <td style="text-align:right;">₱{{ number_format($row->total_revenue, 2) }}</td>
                         </tr>
@@ -447,6 +472,18 @@
             sold lines have no recorded cost from the time of sale, so they are costed at
             today&rsquo;s ingredient prices. COGS and Gross Profit for those lines are an
             estimate, not a record of what the ingredients cost then.
+            @if (($uncostedDeletedLineCount ?? 0) > 0)
+                {{ number_format($uncostedDeletedLineCount) }} of them belong to permanently
+                deleted menu items with nothing left to price them from, so they count as ₱0.
+            @endif
+        </p>
+    @endif
+
+    @if (($estimatedCostLineCount ?? 0) > 0)
+        <p class="print-note" data-testid="print-estimated-cost-caveat">
+            Estimated cost: {{ number_format($estimatedCostLineCount) }} of {{ number_format($soldLineCount) }}
+            sold lines belong to permanently deleted menu items; their cost was estimated from
+            the recipe when the item was deleted, not recorded at the time of sale.
         </p>
     @endif
 
@@ -589,6 +626,13 @@
     }
 
     .sellers-table tbody tr:last-child td { border-bottom: none; }
+
+    .sellers-deleted {
+        font-size: 0.7rem;
+        font-weight: 600;
+        color: #9CA3AF;
+        white-space: nowrap;
+    }
 
     @media (max-width: 768px) {
         .summary-sellers-grid { grid-template-columns: 1fr; }

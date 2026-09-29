@@ -42,6 +42,28 @@ class AdminDeleteGuardsTest extends TestCase
         return User::where('role', 'admin')->orderBy('id')->first();
     }
 
+    /**
+     * A menu item that really has order lines AND still exists AND is live.
+     *
+     * order_items.menu_item_id is nullable since 2026-09-24 (a permanently
+     * deleted item's lines keep a NULL link), and value() on it used to take
+     * whatever row came first: a NULL cast to 0 aimed the delete at
+     * /admin/menu-items/0, and an already-archived item was refused as
+     * "already archived" — both passing or failing for the wrong reason.
+     */
+    private function soldLiveMenuItemId(): int
+    {
+        $id = (int) DB::table('order_items')
+            ->join('menu_items', 'menu_items.id', '=', 'order_items.menu_item_id')
+            ->whereNull('menu_items.archived_at')
+            ->orderBy('order_items.id')
+            ->value('order_items.menu_item_id');
+
+        $this->assertGreaterThan(0, $id, 'setup: needs a live menu item with at least one order line');
+
+        return $id;
+    }
+
     // ── the reported crash ───────────────────────────────────────────────────
 
     /**
@@ -128,7 +150,7 @@ class AdminDeleteGuardsTest extends TestCase
 
         // Targets deliberately chosen to be the awkward ones: rows that other
         // rows point at.
-        $usedMenuItemId = (int) DB::table('order_items')->value('menu_item_id');
+        $usedMenuItemId = $this->soldLiveMenuItemId();
         $usedOptionId = (int) DB::table('order_item_options')->value('menu_option_id');
         $categoryWithItems = (int) MenuItem::whereNotNull('category_id')->value('category_id');
 
@@ -170,8 +192,7 @@ class AdminDeleteGuardsTest extends TestCase
      */
     public function test_a_menu_item_used_in_past_orders_is_archived_rather_than_deleted(): void
     {
-        $itemId = (int) DB::table('order_items')->value('menu_item_id');
-        $this->assertNotSame(0, $itemId);
+        $itemId = $this->soldLiveMenuItemId();
 
         $this->actingAs($this->admin(), 'admin')->delete('/admin/menu-items/' . $itemId);
 

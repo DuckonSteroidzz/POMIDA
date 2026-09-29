@@ -203,6 +203,13 @@ class Order extends Model
     {
         return $this->belongsTo(DiscountCard::class, 'discount_card_id');
     }
+
+    // Every PWD/Senior ID listed on this order, in the order it was listed.
+    // A record only — see App\Support\DiscountBeneficiaries.
+    public function discountBeneficiaries(): HasMany
+    {
+        return $this->hasMany(OrderDiscountBeneficiary::class)->orderBy('position');
+    }
         public function voucher()
     {
         return $this->belongsTo(\App\Models\Voucher::class, 'voucher_id');
@@ -250,6 +257,38 @@ class Order extends Model
             'voucher' => 'Voucher',
             default => $this->discount_amount > 0 ? 'Discount' : '',
         };
+    }
+
+    /**
+     * Every PWD/Senior ID recorded on this order, as a list of
+     * ['full_name' => ..., 'id_number' => ...] in the order they were listed.
+     *
+     * The SINGLE source for every screen that lists them — the order board's
+     * discount modal and the receipt. Orders placed before multi-ID capture
+     * (September 2026) have no order_discount_beneficiaries rows: their one
+     * beneficiary lives only in the two legacy columns, so they fall back to
+     * that pair. Empty when the order records nobody — no PWD/Senior claim,
+     * or it lost to a bigger voucher (both paths clear it then).
+     */
+    public function discountBeneficiaryList(): array
+    {
+        $rows = $this->discountBeneficiaries;
+
+        if ($rows->isNotEmpty()) {
+            return $rows->map(fn (OrderDiscountBeneficiary $row) => [
+                'full_name' => $row->full_name,
+                'id_number' => $row->id_number,
+            ])->all();
+        }
+
+        $name = trim((string) $this->discount_beneficiary_name);
+        $idNumber = trim((string) $this->discount_beneficiary_card_number);
+
+        if ($name === '' && $idNumber === '') {
+            return [];
+        }
+
+        return [['full_name' => $name, 'id_number' => $idNumber]];
     }
 
     /**

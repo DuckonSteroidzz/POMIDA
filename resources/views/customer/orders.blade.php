@@ -390,11 +390,19 @@
                                 </div>
                                 <div class="item-details min-w-0">
                                     <h6 class="truncate text-sm font-bold text-peach-deep sm:text-[0.95rem]">
-                                        {{ $item->item_name }}
+                                        {{-- displayName(): the item_name snapshot, plus the size_name
+                                             snapshot for a line sold by size ("… (Large)") — never
+                                             a live size lookup, so it survives the size being archived
+                                             or deleted. An unsized line reads exactly as before. --}}
+                                        {{ $item->displayName() }}
                                         <span class="font-medium text-peach-deep/45">x{{ $item->quantity }}</span>
                                     </h6>
                                     @if($item->options && $item->options->count() > 0)
-                                    <p class="item-options mt-0.5 truncate text-[0.7rem] font-medium text-peach-red/80">{{ $item->options->pluck('option_name')->implode(', ') }}</p>
+                                    {{-- The sale-time snapshot, not the live relationship — same
+                                         reasoning as receipt.blade.php: order_item_options.option_name
+                                         is frozen at order time so renaming an add-on later cannot
+                                         change what an in-progress order card says was ordered. --}}
+                                    <p class="item-options mt-0.5 truncate text-[0.7rem] font-medium text-peach-red/80">{{ $item->options->map(fn($option) => $option->pivot->option_name ?? $option->name)->implode(', ') }}</p>
                                     @endif
                                     <span class="item-price mt-0.5 block text-[0.72rem] text-peach-deep/45">₱{{ number_format($item->item_price, 2) }} each</span>
                                 </div>

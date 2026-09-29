@@ -18,11 +18,17 @@ use Tests\TestCase;
  * INVESTIGATION
  * -------------
  * Create path (storeMenuOption): 'name' => 'required|string|max:255',
- * 'price' => 'nullable|numeric|min:0'. The edit form and updateMenuOption()
- * mirror exactly these two rules on exactly these two fields — 'description'
- * is in storeMenuOption()'s validate() array but the Add Option FORM never
- * actually sends one, so the edit form matches what create really does, not
- * just what it theoretically allows.
+ * 'price' => 'required|numeric|gt:0|max:99999999.99' (tightened 2026-09-23 —
+ * used to be 'nullable|numeric|min:0', which let a blank or $0 price through).
+ * The edit form and updateMenuOption() mirror exactly these two rules on
+ * exactly these two fields — 'description' is in storeMenuOption()'s
+ * validate() array but the Add Option FORM never actually sends one, so the
+ * edit form matches what create really does, not just what it theoretically
+ * allows. Price-validation coverage (positive int/decimal accepted; empty,
+ * zero, negative, non-numeric rejected; direct-endpoint bypass attempts) is
+ * in MenuOptionPriceValidationTest, not duplicated here — this file keeps
+ * only the assignment-safety and name-validation cases plus the one
+ * price case (negative) that predates that split.
  *
  * PAST ORDERS — SNAPSHOT, NOT LIVE. order_item_options has its own
  * option_name and additional_price columns, explicitly commented "// Snapshot"
@@ -118,10 +124,12 @@ class MenuOptionEditTest extends TestCase
         $this->assertSame('35.00', (string) $option->additional_price);
     }
 
-    public function test_editing_an_option_to_free_is_allowed(): void
+    public function test_editing_an_option_to_zero_price_is_rejected(): void
     {
-        // price is nullable|numeric|min:0 on create; the edit path must
-        // accept the same range, including dropping to free.
+        // Price must stay > 0 on every save, create or edit — dropping an
+        // option to free by editing it is no longer allowed. See
+        // MenuOptionPriceValidationTest for the full acceptance/rejection
+        // matrix; this pins the specific "was priced, edited to free" path.
         $option = $this->freshOption('extra sauce', 15);
 
         $this->actingAs($this->admin(), 'admin')
@@ -129,9 +137,9 @@ class MenuOptionEditTest extends TestCase
                 'name'  => 'Extra Sauce',
                 'price' => 0,
             ])
-            ->assertSessionHasNoErrors();
+            ->assertSessionHasErrors('price');
 
-        $this->assertSame('0.00', (string) $option->fresh()->additional_price);
+        $this->assertSame('15.00', (string) $option->fresh()->additional_price);
     }
 
     // ══════════ the main regression risk: assignments must survive ══════════

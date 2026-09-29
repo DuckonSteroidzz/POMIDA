@@ -87,14 +87,21 @@ class AdminAuthController extends Controller
 
     // ══════════ SHOW PAGES ══════════
 
-    public function showLogin()
+    public function showLogin(Request $request)
     {
-        return view('admin.login', [
+        $view = view('admin.login', [
             // Drives the "Create the first admin account" link. False on every
             // installation that already has an admin, which is all of them
             // after the first few minutes of their life.
             'canBootstrapAdmin' => \App\Services\AdminBootstrap::isAvailable(),
         ]);
+
+        // "Your account was signed in on another device." Shown in the same
+        // alert box as every other login message, under its own key so the
+        // email field is not marked as wrong.
+        $notice = \App\Support\SingleSession::loginNotice($request);
+
+        return $notice === null ? $view : $view->withErrors(['session' => $notice]);
     }
 
     // The live CSRF token, so the admin/staff login form on a long-open tab
@@ -209,18 +216,14 @@ class AdminAuthController extends Controller
             'password' => 'required',
         ]);
 
-        // 2. Get remember me checkbox value
-        //
-        // boolean(), not has(): has() is true for ANY present value, so a
-        // client that posts remember=0 (or an empty hidden companion field,
-        // the usual way a form makes an unchecked box explicit) would have
-        // been remembered against the user's wishes. boolean() runs the value
-        // through FILTER_VALIDATE_BOOLEAN, so "1"/"on"/"true" mean yes and
-        // "0"/""/absent mean no.
-        $remember = $request->boolean('remember');
+        // 2. Never "remember me" (Sept 2026). Closing the browser must end the
+        // login, and a remember cookie would sign the browser straight back in
+        // for up to 400 days. A `remember` field posted by an old cached form
+        // is ignored. EnforceSingleSession also refuses any remember cookie
+        // issued before this change.
 
         // 3. Try to login
-        if (Auth::guard('admin')->attempt($credentials, $remember)) {
+        if (Auth::guard('admin')->attempt($credentials, false)) {
             $user = Auth::guard('admin')->user();
 
             // 4. Check if account is active
@@ -233,7 +236,11 @@ class AdminAuthController extends Controller
 
             // 5. Check if user is admin or staff (NOT customer)
             if ($user->role === 'customer') {
-                Auth::guard('admin')->logout();
+                // logoutCurrentDevice(), not logout(): logout() rotates
+                // remember_token, which is the account's single-session token.
+                // A customer typing their password at the wrong door must not
+                // sign their own phone out. See App\Support\SingleSession.
+                Auth::guard('admin')->logoutCurrentDevice();
                 return back()->withErrors([
                     'email' => 'Customer accounts cannot login here. Please use the customer login page.',
                 ]);
@@ -242,12 +249,16 @@ class AdminAuthController extends Controller
             // 6. Regenerate session for security
             $request->session()->regenerate();
 
-            // 7. Redirect to admin home
+            // 7. This is now the account's only session. Any other browser
+            // signed in as this user is signed out on its next request.
+            \App\Support\SingleSession::claim($request, 'admin');
+
+            // 8. Redirect to admin home
             return redirect()->route('admin.home')
                 ->with('success', 'Welcome back, ' . ucfirst($user->role) . ' ' . $user->name . '!');
         }
 
-        // 8. Invalid credentials
+        // 9. Invalid credentials
         return back()->withErrors([
             'email' => 'Invalid email or password.',
         ])->withInput($request->only('email'));

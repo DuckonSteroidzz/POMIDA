@@ -130,7 +130,17 @@ class AnalyticsService
 
     // ══════════ Best / Least sellers (last 30 days, completed only) ══════════
 
-    public function bestSellers(int $limit = 5)
+    /**
+     * $includeDeleted — the Summary's Top Selling table only. Lines whose
+     * menu item was permanently deleted (menu_item_id NULL) are grouped by
+     * their own item_name snapshot and come back with deleted_item_name set,
+     * so a dish that sold and was later deleted keeps its place in the sales
+     * ranking instead of silently dropping out of it. Two deleted items that
+     * shared a name merge into one row (accepted; there is no id left to tell
+     * them apart). Off by default: stock advice built on this list is about
+     * items that can still be made, and the default query is unchanged.
+     */
+    public function bestSellers(int $limit = 5, bool $includeDeleted = false)
     {
         $branchScope = $this->branchScope;
         return OrderItem::query()
@@ -139,7 +149,12 @@ class AnalyticsService
                 DB::raw('SUM(quantity) as total_qty'),
                 DB::raw('SUM(subtotal) as total_revenue')
             )
-            ->whereNotNull('menu_item_id')
+            ->when(
+                $includeDeleted,
+                fn ($q) => $q->addSelect(DB::raw('CASE WHEN menu_item_id IS NULL THEN item_name END as deleted_item_name'))
+                    ->groupBy('deleted_item_name'),
+                fn ($q) => $q->whereNotNull('menu_item_id')
+            )
             ->whereHas('order', function ($q) use ($branchScope) {
                 $q->where('status', 'completed')
                     ->whereDate('completed_at', '>=', now()->subDays(30));

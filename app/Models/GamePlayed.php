@@ -17,7 +17,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * @property int|null $user_id         NULL for a guest spin.
  * @property int      $order_id        The waiting window this spin was spent on.
  * @property int      $spin_number     1..SPINS_PER_ORDER within that window.
- * @property int      $points_awarded  From AuthController::GAME_POINT_AWARDS.
+ * @property int      $points_awarded  The server-picked segment's points (AuthController::WHEEL_SEGMENTS).
  */
 class GamePlayed extends Model
 {

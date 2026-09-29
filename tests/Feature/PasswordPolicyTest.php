@@ -35,6 +35,21 @@ class PasswordPolicyTest extends TestCase
 
     private const STRONG = 'Staff123!';
 
+    /** In range (8-20), mixed case, digit — but no symbol. */
+    private const MISSING_SYMBOL = 'Staff1234';
+
+    /** Exactly 21 characters: one past the ceiling, otherwise fully compliant. */
+    private static function tooLong(): string
+    {
+        return str_repeat('Aa1!', 5) . 'A';
+    }
+
+    /** Exactly 20 characters: the ceiling itself, which must still be accepted. */
+    private static function atMaxLength(): string
+    {
+        return str_repeat('Aa1!', 5);
+    }
+
     // ───────────────────────── customer registration ─────────────────────────
 
     public function test_customer_registration_rejects_a_weak_password(): void
@@ -77,6 +92,58 @@ class PasswordPolicyTest extends TestCase
         );
     }
 
+    public function test_customer_registration_rejects_a_password_over_the_length_ceiling(): void
+    {
+        $tooLong = self::tooLong();
+        $email = 'toolong-reg@invalid.local';
+
+        $this->post(route('customer.register.post'), [
+            'name' => 'Too Long Person',
+            'email' => $email,
+            'password' => $tooLong,
+            'password_confirmation' => $tooLong,
+            'contact_number' => '09171234567',
+            'terms' => 'on',
+        ])->assertSessionHasErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => $email]);
+    }
+
+    public function test_customer_registration_rejects_a_password_missing_a_symbol(): void
+    {
+        $email = 'nosymbol-reg@invalid.local';
+
+        $this->post(route('customer.register.post'), [
+            'name' => 'No Symbol Person',
+            'email' => $email,
+            'password' => self::MISSING_SYMBOL,
+            'password_confirmation' => self::MISSING_SYMBOL,
+            'contact_number' => '09171234567',
+            'terms' => 'on',
+        ])->assertSessionHasErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => $email]);
+    }
+
+    public function test_customer_registration_accepts_a_password_at_the_length_ceiling(): void
+    {
+        $atMax = self::atMaxLength();
+        $email = 'atmax-reg@invalid.local';
+
+        $this->post(route('customer.register.post'), [
+            'name' => 'At Max Length Person',
+            'email' => $email,
+            'password' => $atMax,
+            'password_confirmation' => $atMax,
+            'contact_number' => '09171234567',
+            'terms' => 'on',
+        ])->assertSessionHasNoErrors();
+
+        $user = User::where('email', $email)->first();
+        $this->assertNotNull($user);
+        $this->assertTrue(Hash::check($atMax, $user->password));
+    }
+
     // ─────────────────────── customer account settings ───────────────────────
 
     public function test_customer_account_settings_rejects_a_weak_password(): void
@@ -112,6 +179,8 @@ class PasswordPolicyTest extends TestCase
                 'name' => $customer->name,
                 'email' => $customer->email,
                 'password' => self::STRONG,
+                // Required since hardening pass F5 — see CustomerAccountReauthTest.
+                'current_password' => 'OldPass123!',
             ])
             ->assertSessionHasNoErrors();
 
@@ -136,6 +205,45 @@ class PasswordPolicyTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertSame('Renamed Person', $customer->fresh()->name);
+        $this->assertTrue(Hash::check(self::STRONG, $customer->fresh()->password));
+    }
+
+    public function test_customer_account_settings_rejects_a_password_over_the_length_ceiling(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'password' => self::STRONG,
+        ]);
+        $tooLong = self::tooLong();
+
+        $this->actingAs($customer, 'customer')
+            ->put(route('customer.account.update'), [
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'password' => $tooLong,
+                'current_password' => self::STRONG,
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check(self::STRONG, $customer->fresh()->password));
+    }
+
+    public function test_customer_account_settings_rejects_a_password_missing_a_symbol(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'password' => self::STRONG,
+        ]);
+
+        $this->actingAs($customer, 'customer')
+            ->put(route('customer.account.update'), [
+                'name' => $customer->name,
+                'email' => $customer->email,
+                'password' => self::MISSING_SYMBOL,
+                'current_password' => self::STRONG,
+            ])
+            ->assertSessionHasErrors('password');
+
         $this->assertTrue(Hash::check(self::STRONG, $customer->fresh()->password));
     }
 
@@ -183,6 +291,45 @@ class PasswordPolicyTest extends TestCase
         $this->assertTrue(Hash::check(self::STRONG, $staff->password));
     }
 
+    public function test_admin_creating_staff_rejects_a_password_over_the_length_ceiling(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
+        $branchId = DB::table('branches')->value('id');
+        $tooLong = self::tooLong();
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.users.store'), [
+                'name' => 'Too Long Staff',
+                'email' => 'toolong-staff@invalid.local',
+                'branch_id' => $branchId,
+                'role' => 'staff',
+                'password' => $tooLong,
+                'password_confirmation' => $tooLong,
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => 'toolong-staff@invalid.local']);
+    }
+
+    public function test_admin_creating_staff_rejects_a_password_missing_a_symbol(): void
+    {
+        $admin = User::factory()->create(['role' => 'admin', 'is_active' => true]);
+        $branchId = DB::table('branches')->value('id');
+
+        $this->actingAs($admin, 'admin')
+            ->post(route('admin.users.store'), [
+                'name' => 'No Symbol Staff',
+                'email' => 'nosymbol-staff@invalid.local',
+                'branch_id' => $branchId,
+                'role' => 'staff',
+                'password' => self::MISSING_SYMBOL,
+                'password_confirmation' => self::MISSING_SYMBOL,
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertDatabaseMissing('users', ['email' => 'nosymbol-staff@invalid.local']);
+    }
+
     // ───────────────────── admin changing their own password ─────────────────
 
     public function test_admin_changing_own_password_rejects_a_weak_one(): void
@@ -221,6 +368,45 @@ class PasswordPolicyTest extends TestCase
             ->assertSessionHasNoErrors();
 
         $this->assertTrue(Hash::check(self::STRONG, $admin->fresh()->password));
+    }
+
+    public function test_admin_changing_own_password_rejects_a_password_over_the_length_ceiling(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'is_active' => true,
+            'password' => 'CurrentPass1!',
+        ]);
+        $tooLong = self::tooLong();
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.account.password.update'), [
+                'current_password' => 'CurrentPass1!',
+                'password' => $tooLong,
+                'password_confirmation' => $tooLong,
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('CurrentPass1!', $admin->fresh()->password));
+    }
+
+    public function test_admin_changing_own_password_rejects_a_password_missing_a_symbol(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'is_active' => true,
+            'password' => 'CurrentPass1!',
+        ]);
+
+        $this->actingAs($admin, 'admin')
+            ->put(route('admin.account.password.update'), [
+                'current_password' => 'CurrentPass1!',
+                'password' => self::MISSING_SYMBOL,
+                'password_confirmation' => self::MISSING_SYMBOL,
+            ])
+            ->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('CurrentPass1!', $admin->fresh()->password));
     }
 
     // ───────────────────────── the password RESET flow ───────────────────────
@@ -270,6 +456,43 @@ class PasswordPolicyTest extends TestCase
         );
     }
 
+    public function test_admin_reset_flow_rejects_a_password_over_the_length_ceiling(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'is_active' => true,
+            'password' => 'CurrentPass1!',
+        ]);
+        $tooLong = self::tooLong();
+
+        $this->primeResetState('admin_password_reset', $admin->email);
+
+        $this->post(route('admin.new-password.post'), [
+            'password' => $tooLong,
+            'password_confirmation' => $tooLong,
+        ])->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('CurrentPass1!', $admin->fresh()->password));
+    }
+
+    public function test_admin_reset_flow_rejects_a_password_missing_a_symbol(): void
+    {
+        $admin = User::factory()->create([
+            'role' => 'admin',
+            'is_active' => true,
+            'password' => 'CurrentPass1!',
+        ]);
+
+        $this->primeResetState('admin_password_reset', $admin->email);
+
+        $this->post(route('admin.new-password.post'), [
+            'password' => self::MISSING_SYMBOL,
+            'password_confirmation' => self::MISSING_SYMBOL,
+        ])->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('CurrentPass1!', $admin->fresh()->password));
+    }
+
     public function test_customer_reset_flow_rejects_a_weak_password(): void
     {
         $customer = User::factory()->create([
@@ -285,6 +508,61 @@ class PasswordPolicyTest extends TestCase
         ])->assertSessionHasErrors('password');
 
         $this->assertTrue(Hash::check('CurrentPass1!', $customer->fresh()->password));
+    }
+
+    public function test_customer_reset_flow_rejects_a_password_over_the_length_ceiling(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'password' => 'CurrentPass1!',
+        ]);
+        $tooLong = self::tooLong();
+
+        $this->primeResetState('customer_password_reset', $customer->email);
+
+        $this->post(route('customer.new-password.post'), [
+            'password' => $tooLong,
+            'password_confirmation' => $tooLong,
+        ])->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('CurrentPass1!', $customer->fresh()->password));
+    }
+
+    public function test_customer_reset_flow_rejects_a_password_missing_a_symbol(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'password' => 'CurrentPass1!',
+        ]);
+
+        $this->primeResetState('customer_password_reset', $customer->email);
+
+        $this->post(route('customer.new-password.post'), [
+            'password' => self::MISSING_SYMBOL,
+            'password_confirmation' => self::MISSING_SYMBOL,
+        ])->assertSessionHasErrors('password');
+
+        $this->assertTrue(Hash::check('CurrentPass1!', $customer->fresh()->password));
+    }
+
+    public function test_customer_reset_flow_accepts_a_compliant_password(): void
+    {
+        $customer = User::factory()->create([
+            'role' => 'customer',
+            'password' => 'CurrentPass1!',
+        ]);
+
+        $this->primeResetState('customer_password_reset', $customer->email);
+
+        $this->post(route('customer.new-password.post'), [
+            'password' => self::STRONG,
+            'password_confirmation' => self::STRONG,
+        ])->assertSessionHasNoErrors();
+
+        $this->assertTrue(
+            Hash::check(self::STRONG, $customer->fresh()->password),
+            'the compliant password should have been set'
+        );
     }
 
     // ──────────────────────── the message must be specific ───────────────────

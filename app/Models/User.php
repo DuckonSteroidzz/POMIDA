@@ -2,16 +2,21 @@
 
 namespace App\Models;
 
+use App\Mail\VerifyEmailMail;
+use Illuminate\Auth\MustVerifyEmail as MustVerifyEmailTrait;
 use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\URL;
 
-class User extends Authenticatable
+class User extends Authenticatable implements MustVerifyEmail
 {
-    use HasFactory, Notifiable;
+    use HasFactory, Notifiable, MustVerifyEmailTrait;
 
     /**
      * THE ROLE VOCABULARY — one definition, used everywhere.
@@ -132,6 +137,14 @@ class User extends Authenticatable
         'is_active',
         'verification_code',
         'verified_at',
+        // Laravel's real MustVerifyEmail column — separate from the legacy
+        // verified_at/verification_code pair above, which nothing reads. Only
+        // ever set to now() from server-side code (never from $request), so
+        // this is not a mass-assignment gap: AdminController::storeUser(),
+        // AdminBootstrap::create() and AdminBootstrapSeeder all pre-verify
+        // portal accounts this way, and User::create() would otherwise
+        // silently drop the column exactly like Order::created_at does.
+        'email_verified_at',
         'points',
         'pwd_card_number',
         'pwd_name',
@@ -302,5 +315,36 @@ class User extends Authenticatable
         }
 
         return (int) $target->branch_id === $myBranch;
+    }
+
+    /**
+     * Overrides the MustVerifyEmailTrait default (which notifies via the
+     * stock Illuminate\Auth\Notifications\VerifyEmail, generic English copy,
+     * no brand). Sends the same branded Mailable style as PasswordResetCode,
+     * to a hand-built route name since this app has no Auth::routes() and no
+     * `verification.verify` route — see customer.email-verification.verify
+     * in routes/web.php and HandlesEmailVerification.
+     *
+     * Never lets a mail failure surface to the caller: registration must
+     * still succeed even if Gmail SMTP is down or misconfigured. Same
+     * try/catch-and-log shape as HandlesPasswordReset::deliverResetCode().
+     */
+    public function sendEmailVerificationNotification(): void
+    {
+        try {
+            $url = URL::temporarySignedRoute(
+                'customer.email-verification.verify',
+                now()->addMinutes(60),
+                ['id' => $this->getKey(), 'hash' => sha1($this->getEmailForVerification())]
+            );
+
+            Mail::to($this->email)->send(new VerifyEmailMail($this, $url));
+        } catch (\Throwable $e) {
+            Log::error('Verification email could not be sent', [
+                'user_id' => $this->id,
+                'email' => $this->email,
+                'error' => $e->getMessage(),
+            ]);
+        }
     }
 }

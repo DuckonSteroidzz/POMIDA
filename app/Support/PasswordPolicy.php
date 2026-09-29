@@ -18,14 +18,19 @@ use Illuminate\Validation\Rules\Password;
  * means the policy can only ever be changed in one place, and no future flow
  * can quietly ship a weaker one.
  *
- * The policy: at least 8 characters, with upper case, lower case, a number and
- * a symbol. Laravel's own Password rule is used rather than a hand-written
- * regex so the failure messages name the specific missing requirement
- * ("must contain at least one symbol") instead of a useless "invalid password".
+ * The policy: 8-20 characters, with upper case, lower case, a number and a
+ * symbol. The 20-character ceiling and the symbol requirement were added by
+ * the team's later password-policy pass; the length floor and the other
+ * complexity rules are unchanged from the 2026-08-31 review. Laravel's own
+ * Password rule is used rather than a hand-written regex so the failure
+ * messages name the specific missing requirement ("must contain at least one
+ * symbol") instead of a useless "invalid password".
  */
 final class PasswordPolicy
 {
     public const MIN_LENGTH = 8;
+
+    public const MAX_LENGTH = 20;
 
     /**
      * The rule object itself.
@@ -33,6 +38,7 @@ final class PasswordPolicy
     public static function rule(): Password
     {
         return Password::min(self::MIN_LENGTH)
+            ->max(self::MAX_LENGTH)
             ->mixedCase()
             ->numbers()
             ->symbols();
@@ -79,7 +85,7 @@ final class PasswordPolicy
      */
     public static function describe(): string
     {
-        return 'Password must be at least ' . self::MIN_LENGTH
+        return 'Password must be ' . self::MIN_LENGTH . '-' . self::MAX_LENGTH
             . ' characters and include an uppercase letter, a lowercase letter, '
             . 'a number and a special character.';
     }

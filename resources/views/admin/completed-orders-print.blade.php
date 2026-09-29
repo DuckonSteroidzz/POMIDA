@@ -135,7 +135,7 @@
                     </td>
                     <td>
                         @foreach($order->items as $item)
-                            {{ $item->quantity }}x {{ $item->item_name }}@if(!$loop->last), @endif
+                            {{ $item->quantity }}x {{ $item->displayName() }}@if(!$loop->last), @endif
                         @endforeach
                     </td>
                     <td class="co-ta-right co-num">₱{{ number_format($order->subtotal, 2) }}</td>

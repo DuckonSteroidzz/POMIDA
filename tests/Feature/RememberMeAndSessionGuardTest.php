@@ -39,6 +39,17 @@ use Tests\TestCase;
  * cannot be executed here; what CAN be pinned server-side is that the meta tag
  * and the guard script are actually present on the pages that need them, which
  * is the part that silently regresses when a new page is added.
+ *
+ * REVERSED, SEPT 2026: "REMEMBER ME" IS RETIRED
+ * ---------------------------------------------
+ * Report 1 above was fixed by making "Remember me" work. The team's later
+ * testing asked for the opposite, for every role: after the browser is fully
+ * closed and reopened, the user must sign in again. A remember cookie (400
+ * days) defeats that by design, so neither login issues one any more, even
+ * when a `remember` field is posted, and neither form offers the box. The
+ * remember-me assertions below were inverted rather than deleted, so a
+ * remember cookie coming back is still caught. The single-session rule and
+ * the browser-close config are covered in SingleSessionPerAccountTest.
  */
 class RememberMeAndSessionGuardTest extends TestCase
 {
@@ -95,7 +106,12 @@ class RememberMeAndSessionGuardTest extends TestCase
 
     // ══════════ remember me ══════════
 
-    public function test_admin_login_with_remember_issues_a_persistent_cookie(): void
+    /**
+     * An old cached login form, or a hand-made POST, can still send
+     * remember=1. It must be ignored: the login works, and no cookie that
+     * outlives the browser is issued.
+     */
+    public function test_admin_login_ignores_a_posted_remember_and_issues_no_persistent_cookie(): void
     {
         $admin = $this->makeAdmin();
 
@@ -105,13 +121,8 @@ class RememberMeAndSessionGuardTest extends TestCase
             'remember' => '1',
         ]);
 
-        $response->assertCookie($this->recallerName('admin'));
-
-        // A recaller is only usable if the token was persisted alongside it.
-        $this->assertNotEmpty(
-            $admin->fresh()->remember_token,
-            'the recaller cookie was set but no remember_token was stored, so it can never authenticate anyone'
-        );
+        $response->assertCookieMissing($this->recallerName('admin'));
+        $this->assertTrue(Auth::guard('admin')->check(), 'CONTROL: the login itself must have worked');
     }
 
     public function test_admin_login_without_remember_issues_no_persistent_cookie(): void
@@ -143,7 +154,7 @@ class RememberMeAndSessionGuardTest extends TestCase
         ])->assertCookieMissing($this->recallerName('admin'));
     }
 
-    public function test_customer_login_with_remember_issues_a_persistent_cookie(): void
+    public function test_customer_login_ignores_a_posted_remember_and_issues_no_persistent_cookie(): void
     {
         $customer = $this->makeCustomer();
 
@@ -151,9 +162,9 @@ class RememberMeAndSessionGuardTest extends TestCase
             'email'    => $customer->email,
             'password' => self::CUSTOMER_PW,
             'remember' => '1',
-        ])->assertCookie($this->recallerName('customer'));
+        ])->assertCookieMissing($this->recallerName('customer'));
 
-        $this->assertNotEmpty($customer->fresh()->remember_token);
+        $this->assertTrue(Auth::guard('customer')->check(), 'CONTROL: the login itself must have worked');
     }
 
     public function test_customer_login_without_remember_issues_no_persistent_cookie(): void
@@ -167,17 +178,19 @@ class RememberMeAndSessionGuardTest extends TestCase
     }
 
     /**
-     * The checkbox has to survive a failed login, or a user who mistypes their
-     * password silently loses the choice they made.
+     * No box that promises something the server no longer does. The customer
+     * box was labelled "Save Password" but really set the 400-day remember
+     * cookie. Checked on the RENDERED pages, not the source files.
      */
-    public function test_both_login_forms_post_a_remember_value_and_keep_it_on_re_render(): void
+    public function test_neither_login_form_offers_remember_me_any_more(): void
     {
-        foreach (['admin', 'customer'] as $side) {
-            $form = file_get_contents(resource_path("views/{$side}/login.blade.php"));
+        foreach (['/admin/login', '/customer/login'] as $url) {
+            $html = $this->get($url)->assertOk()->getContent();
 
-            $this->assertStringContainsString('name="remember"', $form, "{$side} login lost its remember field");
-            $this->assertStringContainsString('value="1"', $form, "{$side} login's remember box posts no explicit value");
-            $this->assertStringContainsString("old('remember')", $form, "{$side} login forgets the box on a failed attempt");
+            $this->assertStringNotContainsString('name="remember"', $html, "{$url} still posts a remember field");
+            $this->assertStringNotContainsString('Remember me', $html, "{$url} still offers Remember me");
+            $this->assertStringNotContainsString('Save Password', $html, "{$url} still offers Save Password");
+            $this->assertStringContainsString('Forgot Password?', $html, "CONTROL: {$url} did not render its form");
         }
     }
 

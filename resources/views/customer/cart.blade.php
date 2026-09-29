@@ -487,13 +487,27 @@
                 </div>
                 @endif
 
+                {{-- Menu Item Sizes (Phase 2): a line whose size cannot be
+                     ordered as chosen. Each line below carries its own reason. --}}
+                @if(!empty($cartHasSizeIssue))
+                <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+                    <i class="bi bi-x-circle"></i>
+                    An item in your cart cannot be ordered in the size you chose.
+                    Please remove it before placing your order.
+                </div>
+                @endif
+
                 @if(isset($cart) && count($cart) > 0)
                 @foreach($cart as $itemId => $item)
                 @php
                     $lineItemId = (int) ($item['menu_item_id'] ?? $itemId);
-                    $lineOutOfStock = in_array($lineItemId, $outOfStockItemIds ?? [], true);
+                    // A sized line is flagged by its own cart key (Phase 2) —
+                    // Regular and Large share a menu_item_id.
+                    $lineOutOfStock = in_array($lineItemId, $outOfStockItemIds ?? [], true)
+                        || in_array((string) $itemId, $outOfStockCartKeys ?? [], true);
                     $lineNoRecipe = in_array($lineItemId, $noRecipeItemIds ?? [], true);
-                    $lineBlocked = $lineOutOfStock || $lineNoRecipe;
+                    $lineSizeIssue = ($sizeIssueByCartKey ?? [])[(string) $itemId] ?? null;
+                    $lineBlocked = $lineOutOfStock || $lineNoRecipe || $lineSizeIssue !== null;
                 @endphp
                 <article class="card-surface p-3.5 sm:p-4">
                     <div class="flex items-start gap-3.5 sm:gap-4">
@@ -509,7 +523,11 @@
                             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-start gap-3">
                                 <h2 class="min-w-0 font-display text-base font-bold leading-snug text-peach-deep sm:text-lg">
                                     {{ $item['name'] }}
-                                    @if($lineNoRecipe)
+                                    @if($lineSizeIssue !== null)
+                                    <span class="mt-1 block text-[0.68rem] font-black uppercase tracking-wide text-peach-red">
+                                        <i class="bi bi-x-circle"></i> {{ $lineSizeIssue }}
+                                    </span>
+                                    @elseif($lineNoRecipe)
                                     <span class="mt-1 block text-[0.68rem] font-black uppercase tracking-wide text-peach-red">
                                         <i class="bi bi-x-circle"></i> Unavailable — no recipe set — remove to check out
                                     </span>
@@ -715,101 +733,204 @@
                         <input type="hidden" name="discount_type" id="discountType" value="">
 
                         <div id="discountCardFields" class="mt-3 hidden space-y-3">
+                            {{--
+                                One row per PWD / Senior Citizen in the group
+                                (September 2026): ID number + full name, each
+                                with its own clear (X), the row with its own
+                                trash can, and "+ Add another ID" below. Rows
+                                are built from the <template> by
+                                addDiscountIdRow(), and each posts as
+                                discount_beneficiaries[n][id_number|full_name].
+
+                                The rows are a RECORD for the receipt and
+                                staff, never a multiplier: the discount is
+                                applied ONCE per order however many are listed
+                                (see currentCardDiscount() and
+                                OrderController::placeOrder()). A removed row
+                                is taken out of the DOM, so nothing of it is
+                                ever submitted.
+                            --}}
                             <div>
-                                <label class="mb-1 block text-xs font-bold text-peach-deep/65">
-                                    Beneficiary Name *
-                                </label>
-                                <input
-                                    type="text"
-                                    name="discount_beneficiary_name"
-                                    id="discountBeneficiaryName"
-                                    maxlength="255"
-                                    autocomplete="off"
-                                    class="w-full rounded-xl border border-peach-soft bg-white px-4 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                >
+                                <div class="mb-1.5 flex items-baseline justify-between gap-2">
+                                    <span class="text-xs font-bold text-peach-deep/65" id="discountIdsHeading">
+                                        IDs in your group
+                                    </span>
+                                    <span class="text-[0.68rem] text-peach-deep/45" id="discountIdCount"></span>
+                                </div>
+
+                                <div id="discountIdRows" class="space-y-2.5" role="group" aria-labelledby="discountIdsHeading"></div>
+
+                                <template id="discountIdRowTemplate">
+                                    <div class="flex items-end gap-2" data-discount-id-row>
+                                        <div class="grid min-w-0 flex-1 grid-cols-2 gap-2">
+                                            <label class="block min-w-0">
+                                                <span class="mb-1 block text-[0.68rem] font-bold text-peach-deep/55">ID Number</span>
+                                                <span class="relative block">
+                                                    <input
+                                                        type="text"
+                                                        data-field="id_number"
+                                                        maxlength="100"
+                                                        autocomplete="off"
+                                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white py-2.5 pl-3 pr-8 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                                    >
+                                                    <button type="button" data-clear-field
+                                                        class="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-peach-deep/40 transition hover:bg-peach-soft hover:text-peach-deep"
+                                                        aria-label="Clear ID number">
+                                                        <i class="bi bi-x-lg text-[0.62rem]" aria-hidden="true"></i>
+                                                    </button>
+                                                </span>
+                                            </label>
+                                            <label class="block min-w-0">
+                                                <span class="mb-1 block text-[0.68rem] font-bold text-peach-deep/55">Full name</span>
+                                                <span class="relative block">
+                                                    <input
+                                                        type="text"
+                                                        data-field="full_name"
+                                                        maxlength="100"
+                                                        autocomplete="off"
+                                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white py-2.5 pl-3 pr-8 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                                    >
+                                                    <button type="button" data-clear-field
+                                                        class="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-peach-deep/40 transition hover:bg-peach-soft hover:text-peach-deep"
+                                                        aria-label="Clear full name">
+                                                        <i class="bi bi-x-lg text-[0.62rem]" aria-hidden="true"></i>
+                                                    </button>
+                                                </span>
+                                            </label>
+                                        </div>
+                                        <button type="button" data-remove-row
+                                            class="grid h-[42px] w-10 shrink-0 place-items-center rounded-xl border border-peach-soft bg-white text-peach-deep/55 transition hover:bg-red-50 hover:text-red-600"
+                                            aria-label="Remove this ID">
+                                            <i class="bi bi-trash3" aria-hidden="true"></i>
+                                        </button>
+                                    </div>
+                                </template>
+
+                                {{-- The id must NOT be "addDiscountIdRow": an
+                                     inline onclick resolves names through the
+                                     enclosing form first, which exposes its
+                                     controls by id, so the call would reach
+                                     this button instead of the function. --}}
+                                <button type="button" id="discountIdAddButton" onclick="addDiscountIdRow(true)"
+                                    class="mt-2 inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-xs font-black uppercase tracking-[0.12em] text-peach-deep/40 transition hover:text-peach-red">
+                                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                    <span id="addDiscountIdRowLabel">Add another ID</span>
+                                </button>
+
+                                <p class="mt-1 text-[0.68rem] text-peach-deep/50">
+                                    One person per row. The discount is applied once per order, however many IDs you list.
+                                    Please have the ID(s) with you — staff will check them.
+                                </p>
                             </div>
 
-                            <div>
-                                <label class="mb-1 block text-xs font-bold text-peach-deep/65">
-                                    Discount Card / ID Number *
-                                </label>
-                                <input
-                                    type="text"
-                                    name="discount_beneficiary_id"
-                                    id="discountBeneficiaryId"
-                                    maxlength="100"
-                                    autocomplete="off"
-                                    class="w-full rounded-xl border border-peach-soft bg-white px-4 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                >
-                            </div>
-
-                            <div>
-                                <label class="mb-1 block text-xs font-bold text-peach-deep/65">
-                                    Expiration Date *
+                            <div id="discountExpirationBlock" class="hidden">
+                                {{--
+                                    September 2026: this whole block (label,
+                                    dropdowns, help text) is shown ONLY for PWD
+                                    now — selectDiscountType() toggles the
+                                    `hidden` class here, never just the label
+                                    text. A Senior Citizen ID has no expiration
+                                    under Philippine law (RA 9994, as amended by
+                                    RA 10645), and manual testing on a phone
+                                    showed that a visible-but-"not required"
+                                    field still confused people into filling it
+                                    in. Removing it from view for that type,
+                                    rather than relabelling it, is the fix.
+                                --}}
+                                <label class="mb-1 block text-xs font-bold text-peach-deep/65" id="discountExpirationLabel">
+                                    PWD ID Expiration Date *
                                 </label>
                                 {{--
-                                    Day/Month/Year dropdowns instead of a native
-                                    calendar picker — a calendar grid is a real
-                                    barrier for the elderly/PWD customers this
-                                    field is for. The three selects only build
-                                    the hidden discount_beneficiary_expiration
-                                    input (Y-m-d); the backend's expected field
-                                    name and format are unchanged.
+                                    Three plain <select> dropdowns, not the
+                                    typed M/D/Y text field this replaced back —
+                                    typing raised the chance of a format mistake
+                                    (dashes, year-first, 2-digit years), and a
+                                    dropdown cannot be typo'd.
+
+                                    This is a pure front-end swap: the three
+                                    selects only ever write a combined
+                                    "M/D/Y" string into the hidden
+                                    #discountBeneficiaryExpiration input below,
+                                    which keeps the same `name` attribute the
+                                    server already expects. Every existing
+                                    consumer of that value —
+                                    DiscountCard::normalizeTypedExpiration(),
+                                    checkdate(), OrderController::placeOrder(),
+                                    and this page's own
+                                    discountCardExpirationError() — is
+                                    completely unchanged.
+
+                                    Day is a static 1-31 list rather than being
+                                    narrowed to the selected month/year (no Feb
+                                    30 filtering here) — the server's
+                                    checkdate() already rejects an impossible
+                                    combination with the same red-border error
+                                    this page has always shown, so a dynamic
+                                    list would only be a convenience, not a
+                                    correctness requirement.
+
+                                    Year range: current year − 1 through
+                                    current year + 15 — wide enough to cover a
+                                    PWD ID renewed years ago that is still
+                                    valid, and the several-years-out validity a
+                                    freshly issued or renewed PWD ID commonly
+                                    carries in the Philippines.
                                 --}}
-                                <div class="grid grid-cols-3 gap-1.5">
+                                <div class="grid grid-cols-3 gap-2">
+                                    <select
+                                        id="discountExpirationMonth"
+                                        aria-label="Expiration month"
+                                        class="w-full rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                    >
+                                        <option value="">Month</option>
+                                        @foreach ([
+                                            1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr',
+                                            5 => 'May', 6 => 'Jun', 7 => 'Jul', 8 => 'Aug',
+                                            9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dec',
+                                        ] as $monthNumber => $monthName)
+                                            <option value="{{ $monthNumber }}">{{ $monthName }}</option>
+                                        @endforeach
+                                    </select>
+
                                     <select
                                         id="discountExpirationDay"
                                         aria-label="Expiration day"
-                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                        class="w-full rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
                                     >
                                         <option value="">Day</option>
                                         @for ($day = 1; $day <= 31; $day++)
                                             <option value="{{ $day }}">{{ $day }}</option>
                                         @endfor
                                     </select>
-                                    <select
-                                        id="discountExpirationMonth"
-                                        aria-label="Expiration month"
-                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                    >
-                                        <option value="">Month</option>
-                                        @foreach ([
-                                            1 => 'January', 2 => 'February', 3 => 'March', 4 => 'April',
-                                            5 => 'May', 6 => 'June', 7 => 'July', 8 => 'August',
-                                            9 => 'September', 10 => 'October', 11 => 'November', 12 => 'December',
-                                        ] as $monthNum => $monthName)
-                                            <option value="{{ $monthNum }}">{{ $monthName }}</option>
-                                        @endforeach
-                                    </select>
+
                                     <select
                                         id="discountExpirationYear"
                                         aria-label="Expiration year"
-                                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
+                                        class="w-full rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
                                     >
                                         <option value="">Year</option>
-                                        @for ($year = now()->year; $year <= now()->year + 20; $year++)
+                                        @for ($year = now()->year - 1; $year <= now()->year + 15; $year++)
                                             <option value="{{ $year }}">{{ $year }}</option>
                                         @endfor
                                     </select>
                                 </div>
-                                <input type="hidden" name="discount_beneficiary_expiration" id="discountBeneficiaryExpiration" value="">
-                            </div>
-
-                            <div>
-                                <label class="mb-1 block text-xs font-bold text-peach-deep/65">
-                                    ID / Discount Card Picture *
-                                </label>
                                 <input
-                                    type="file"
-                                    name="discount_beneficiary_image"
-                                    id="discountBeneficiaryImage"
-                                    accept="image/jpeg,image/png,image/jpg,image/webp"
-                                    class="block w-full rounded-xl border border-peach-soft bg-white px-3 py-2 text-xs text-peach-deep"
+                                    type="hidden"
+                                    name="discount_beneficiary_expiration"
+                                    id="discountBeneficiaryExpiration"
+                                    value=""
                                 >
-                                <p class="mt-1 text-[0.68rem] text-peach-deep/50">
-                                    JPG, PNG, or WEBP. Maximum 5 MB.
+                                {{-- One date per order, as before: the discount
+                                     is applied once, so one valid PWD ID is
+                                     what it needs. --}}
+                                <p class="mt-1 text-[0.68rem] text-peach-deep/50" id="discountExpirationHelp">
+                                    Select the expiration date on a PWD ID listed above.
                                 </p>
                             </div>
+
+                            {{-- No ID photo (September 2026): checkout records
+                                 each ID's number and full name only, and staff
+                                 check the physical ID in person. --}}
 
                             <div id="discountCardMsg" class="hidden rounded-xl px-3 py-2 text-xs font-semibold"></div>
                         </div>
@@ -916,11 +1037,14 @@
                     <button
                         type="button"
                         onclick="openOrderConfirmation()"
-                        @disabled(!empty($cartHasOutOfStockItem) || !empty($cartHasUnavailableItem) || !empty($cartHasNoRecipeItem))
+                        @disabled(!empty($cartHasOutOfStockItem) || !empty($cartHasUnavailableItem) || !empty($cartHasNoRecipeItem) || !empty($cartHasSizeIssue))
                         class="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-peach-red px-6 py-3 text-sm font-bold text-white transition hover:bg-peach-deep disabled:cursor-not-allowed disabled:bg-peach-deep/30 disabled:hover:bg-peach-deep/30"
                     >
                         <i class="bi bi-check-circle"></i>
                         Place Order
+                        {{-- The running total, repainted by
+                             refreshDiscountSummary() alongside #finalTotal. --}}
+                        <span class="font-black" id="placeOrderTotal">· ₱{{ number_format($total, 2) }}</span>
                     </button>
                     </div>
                 </form>
@@ -1386,7 +1510,8 @@
         };
 
         /**
-         * The browser-side twin of DiscountCard::expirationErrorFor().
+         * The browser-side twin of DiscountCard::expirationErrorFor() AND
+         * DiscountCard::normalizeTypedExpiration() combined.
          *
          * Returns the reason the entered expiration date makes the card
          * unusable, or null when it is fine. Everything on this page that
@@ -1394,8 +1519,26 @@
          * and blocking the confirm modal — asks THIS function, which is why
          * the page can no longer print "already expired" next to a live
          * -20% discount the way it did before.
+         *
+         * Accepts ONLY M/D/Y or MM/DD/YYYY, same policy as the server:
+         * dash-separated, year-first, or 2-digit-year input is refused as
+         * invalid rather than reinterpreted, so this preview never accepts
+         * something the server would then refuse.
+         *
+         * Mirrors DiscountCard::requiresExpiration() first: a Senior Citizen
+         * ID has no expiration under Philippine law, so whatever this field
+         * holds — blank, or a value left over from switching from PWD — never
+         * blocks the preview or the confirm modal for that type. PWD is
+         * checked exactly as before.
          */
         function discountCardExpirationError() {
+            var discountTypeField = document.getElementById('discountType');
+            var discountType = discountTypeField ? discountTypeField.value.trim() : '';
+
+            if (discountType === 'senior') {
+                return null;
+            }
+
             var field = document.getElementById('discountBeneficiaryExpiration');
             var value = field ? field.value.trim() : '';
 
@@ -1403,15 +1546,15 @@
                 return DISCOUNT_CARD_MESSAGES.missing;
             }
 
-            var parts = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+            var parts = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
 
             if (!parts) {
                 return DISCOUNT_CARD_MESSAGES.invalid;
             }
 
-            var year = parseInt(parts[1], 10);
-            var month = parseInt(parts[2], 10);
-            var day = parseInt(parts[3], 10);
+            var month = parseInt(parts[1], 10);
+            var day = parseInt(parts[2], 10);
+            var year = parseInt(parts[3], 10);
             var entered = new Date(year, month - 1, day);
 
             // new Date() rolls Feb 30 over into Mar 2 instead of rejecting it,
@@ -1432,36 +1575,6 @@
             today.setHours(0, 0, 0, 0);
 
             return entered < today ? DISCOUNT_CARD_MESSAGES.expired : null;
-        }
-
-        /**
-         * Builds the hidden discount_beneficiary_expiration value (Y-m-d) from
-         * the Day/Month/Year selects, then replays the change so every existing
-         * listener on the hidden field (preview refresh, confirm-modal guard)
-         * keeps working unmodified.
-         */
-        function syncDiscountExpirationHidden() {
-            var dayField = document.getElementById('discountExpirationDay');
-            var monthField = document.getElementById('discountExpirationMonth');
-            var yearField = document.getElementById('discountExpirationYear');
-            var hidden = document.getElementById('discountBeneficiaryExpiration');
-
-            if (!dayField || !monthField || !yearField || !hidden) return;
-
-            var day = dayField.value;
-            var month = monthField.value;
-            var year = yearField.value;
-
-            hidden.value = (day && month && year)
-                ? (year + '-' + pad2(month) + '-' + pad2(day))
-                : '';
-
-            hidden.dispatchEvent(new Event('change'));
-        }
-
-        function pad2(value) {
-            value = String(value);
-            return value.length < 2 ? '0' + value : value;
         }
 
         window.addEventListener('load', function() {
@@ -1640,6 +1753,206 @@
                 });
         }
 
+        /*
+        |----------------------------------------------------------------------
+        | PWD / SENIOR CITIZEN ID ROWS (September 2026)
+        |----------------------------------------------------------------------
+        |
+        | One row per eligible person in the group: ID number + full name.
+        | The rows are a RECORD for the receipt and staff — the discount is
+        | still ONE min(subtotal * rate, subtotal), applied once however many
+        | rows there are (currentCardDiscount()). Zero complete rows means no
+        | discount, which is the rule OrderController::placeOrder() enforces.
+        |
+        | A removed row is taken out of the DOM, so nothing of it can ever be
+        | submitted, and the preview is re-decided from the rows that remain.
+        |
+        | The patterns and messages are the server's own
+        | (App\Support\DiscountBeneficiaries), so this pre-check can only
+        | refuse what checkout would refuse — it just says so before a round
+        | trip that would cost the customer everything they typed.
+        */
+        var DISCOUNT_ID_RULES = {
+            maxRows: @json(\App\Support\DiscountBeneficiaries::MAX_ROWS),
+            idPattern: new RegExp(@json(\App\Support\DiscountBeneficiaries::jsPattern('id'))),
+            namePattern: new RegExp(@json(\App\Support\DiscountBeneficiaries::jsPattern('name'))),
+            messages: {
+                incomplete: @json(\App\Support\DiscountBeneficiaries::ERROR_INCOMPLETE_ROW),
+                tooMany: @json(\App\Support\DiscountBeneficiaries::ERROR_TOO_MANY),
+                idFormat: @json(\App\Support\DiscountBeneficiaries::messages()['discount_beneficiaries.*.id_number.regex']),
+                nameFormat: @json(\App\Support\DiscountBeneficiaries::messages()['discount_beneficiaries.*.full_name.regex']),
+                none: 'Please add at least one PWD/Senior Citizen ID — its ID number and full name.'
+            }
+        };
+
+        // Only ever increases, so a removed row's index is never reused.
+        var discountIdRowSeq = 0;
+
+        function discountIdRows() {
+            var holder = document.getElementById('discountIdRows');
+
+            return holder
+                ? Array.prototype.slice.call(holder.querySelectorAll('[data-discount-id-row]'))
+                : [];
+        }
+
+        // Cleaned the way DiscountBeneficiaries::fromRequest() cleans them.
+        function discountIdRowValues(row) {
+            var idField = row.querySelector('[data-field="id_number"]');
+            var nameField = row.querySelector('[data-field="full_name"]');
+
+            return {
+                idNumber: idField ? idField.value.replace(/\s+/g, ' ').trim() : '',
+                fullName: nameField ? nameField.value.replace(/\s+/g, ' ').trim() : ''
+            };
+        }
+
+        /** Rows with BOTH fields filled in — the ones checkout would record. */
+        function completeDiscountIdRowCount() {
+            return discountIdRows().filter(function (row) {
+                var values = discountIdRowValues(row);
+
+                return values.idNumber !== '' && values.fullName !== '';
+            }).length;
+        }
+
+        /**
+         * Why the listed IDs cannot be submitted, or null when they can.
+         * Same rules, same order, same wording as the server: a blank row is
+         * skipped, a half-filled row, a bad format or the same ID twice is
+         * refused, and at least one complete row is required.
+         */
+        function discountIdRowsError() {
+            var rows = discountIdRows();
+            var seen = {};
+            var complete = 0;
+
+            for (var i = 0; i < rows.length; i++) {
+                var values = discountIdRowValues(rows[i]);
+
+                if (values.idNumber === '' && values.fullName === '') {
+                    continue;
+                }
+
+                if (values.idNumber === '' || values.fullName === '') {
+                    return DISCOUNT_ID_RULES.messages.incomplete;
+                }
+
+                if (values.idNumber.length > 100 || !DISCOUNT_ID_RULES.idPattern.test(values.idNumber)) {
+                    return DISCOUNT_ID_RULES.messages.idFormat;
+                }
+
+                if (values.fullName.length > 100 || !DISCOUNT_ID_RULES.namePattern.test(values.fullName)) {
+                    return DISCOUNT_ID_RULES.messages.nameFormat;
+                }
+
+                var key = values.idNumber.toUpperCase();
+
+                if (seen[key]) {
+                    return 'The ID number "' + values.idNumber + '" is listed more than once. '
+                        + 'Each person\'s ID only needs to be listed once.';
+                }
+
+                seen[key] = true;
+                complete++;
+            }
+
+            if (complete === 0) {
+                return DISCOUNT_ID_RULES.messages.none;
+            }
+
+            return complete > DISCOUNT_ID_RULES.maxRows ? DISCOUNT_ID_RULES.messages.tooMany : null;
+        }
+
+        function refreshDiscountIdRowsUi() {
+            var rowCount = discountIdRows().length;
+            var addButton = document.getElementById('discountIdAddButton');
+            var addLabel = document.getElementById('addDiscountIdRowLabel');
+            var countLabel = document.getElementById('discountIdCount');
+
+            if (addButton) {
+                addButton.classList.toggle('hidden', rowCount >= DISCOUNT_ID_RULES.maxRows);
+            }
+
+            if (addLabel) {
+                addLabel.textContent = rowCount === 0 ? 'Add an ID' : 'Add another ID';
+            }
+
+            if (countLabel) {
+                var complete = completeDiscountIdRowCount();
+
+                countLabel.textContent = complete === 0
+                    ? ''
+                    : (complete === 1 ? '1 ID listed' : complete + ' IDs listed');
+            }
+        }
+
+        function onDiscountIdRowsChanged() {
+            refreshDiscountIdRowsUi();
+
+            var discountType = document.getElementById('discountType');
+
+            if (discountType && discountType.value.trim() !== '') {
+                applyDiscountCardPreview();
+            }
+        }
+
+        function addDiscountIdRow(focusFirstField) {
+            var holder = document.getElementById('discountIdRows');
+            var template = document.getElementById('discountIdRowTemplate');
+
+            if (!holder || !template || discountIdRows().length >= DISCOUNT_ID_RULES.maxRows) {
+                return null;
+            }
+
+            var index = discountIdRowSeq++;
+            var fragment = template.content.cloneNode(true);
+            var row = fragment.querySelector('[data-discount-id-row]');
+
+            row.querySelectorAll('input[data-field]').forEach(function (input) {
+                input.name = 'discount_beneficiaries[' + index + '][' + input.getAttribute('data-field') + ']';
+                input.addEventListener('input', onDiscountIdRowsChanged);
+            });
+
+            // Each field's own small X: clears that one field, nothing else.
+            row.querySelectorAll('[data-clear-field]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    var input = button.parentNode.querySelector('input');
+
+                    if (input) {
+                        input.value = '';
+                        input.focus();
+                    }
+
+                    onDiscountIdRowsChanged();
+                });
+            });
+
+            // The row's trash can: the whole row leaves the form.
+            row.querySelector('[data-remove-row]').addEventListener('click', function () {
+                row.remove();
+                onDiscountIdRowsChanged();
+            });
+
+            holder.appendChild(fragment);
+            onDiscountIdRowsChanged();
+
+            if (focusFirstField) {
+                var first = row.querySelector('input[data-field]');
+                if (first) first.focus();
+            }
+
+            return row;
+        }
+
+        function removeAllDiscountIdRows() {
+            discountIdRows().forEach(function (row) {
+                row.remove();
+            });
+
+            refreshDiscountIdRowsUi();
+        }
+
         function selectDiscountType(type) {
             /*
              * THE CLICK BUG, fixed 2026-09-02.
@@ -1681,6 +1994,35 @@
 
             discountType.value = type;
             fields.classList.remove('hidden');
+
+            // Start with one empty ID row to fill in.
+            if (discountIdRows().length === 0) {
+                addDiscountIdRow(false);
+            }
+
+            /*
+             * A Senior Citizen ID has no expiration under Philippine law (RA
+             * 9994, as amended by RA 10645) — only PWD (which DOES expire and
+             * is renewed) needs one. This mirrors
+             * DiscountCard::requiresExpiration() on the server, but as of
+             * September 2026 the block is HIDDEN outright for Senior Citizen
+             * rather than merely relabelled — manual testing on a phone
+             * showed the visible-but-optional field still got filled in by
+             * mistake. A stale value left in the hidden combined field from
+             * switching types must still never block checkout either way —
+             * see discountCardExpirationError() below and the server-side
+             * accept-and-ignore behaviour it mirrors — so hiding the block
+             * here is purely cosmetic, not a second source of truth.
+             */
+            var expirationBlock = document.getElementById('discountExpirationBlock');
+
+            if (expirationBlock) {
+                if (type === 'senior') {
+                    expirationBlock.classList.add('hidden');
+                } else {
+                    expirationBlock.classList.remove('hidden');
+                }
+            }
 
             // Show the PWD/Senior discount straight away, the same way an
             // applied voucher does. Without this the cart showed the full
@@ -1754,6 +2096,13 @@
                 return null;
             }
 
+            // Zero complete ID rows = no discount, as the server decides it.
+            // One row or ten, the figure below is the SAME single discount:
+            // the row count never enters it.
+            if (completeDiscountIdRowCount() === 0) {
+                return null;
+            }
+
             return Math.round(
                 Math.min(currentSubtotal * PWD_SENIOR_DISCOUNT_RATE, currentSubtotal) * 100
             ) / 100;
@@ -1819,6 +2168,10 @@
             if (display) display.textContent = '-₱' + applied.toFixed(2);
             if (totalEl) totalEl.textContent = '₱' + finalTotal.toFixed(2);
 
+            // The same figure on the Place Order button.
+            var buttonTotal = document.getElementById('placeOrderTotal');
+            if (buttonTotal) buttonTotal.textContent = '· ₱' + finalTotal.toFixed(2);
+
             // Say which one is being used, and why, when there is a choice.
             if (haveCard && haveVoucher) {
                 var cardWon = !(voucherDiscount > cardDiscount);
@@ -1828,7 +2181,7 @@
                         Math.round(PWD_SENIOR_DISCOUNT_RATE * 100) + '% PWD/Senior discount applied (−₱'
                         + cardDiscount.toFixed(2) + ') — it is bigger than your voucher (−₱'
                         + voucherDiscount.toFixed(2) + '), so your voucher is saved for next time. '
-                        + 'Staff will verify your ID before the order is prepared.',
+                        + 'Staff will check the ID(s) before your order is prepared.',
                         true
                     );
                 } else {
@@ -1867,6 +2220,19 @@
                 return;
             }
 
+            // No complete ID row yet: nothing to preview (currentCardDiscount()
+            // returns null), and "not filled in yet" is not an error.
+            if (completeDiscountIdRowCount() === 0) {
+                clearDiscountPreview();
+                showDiscountCardMessage(
+                    'Enter an ID number and full name to apply the '
+                    + Math.round(PWD_SENIOR_DISCOUNT_RATE * 100) + '% discount.',
+                    'neutral'
+                );
+
+                return;
+            }
+
             /*
              * The summary is now painted by refreshDiscountSummary(), which
              * also weighs this card against any applied voucher and keeps only
@@ -1878,10 +2244,13 @@
             // already explained which one won and why — do not overwrite that
             // with the card-only wording.
             if (appliedVoucherDiscount === null) {
+                var listed = completeDiscountIdRowCount();
+
                 showDiscountCardMessage(
                     Math.round(PWD_SENIOR_DISCOUNT_RATE * 100)
-                    + '% discount applied (−₱' + applied.toFixed(2)
-                    + '). Staff will verify your ID before the order is prepared.',
+                    + '% discount applied (−₱' + applied.toFixed(2) + ')'
+                    + (listed > 1 ? ' — once for the whole order, with ' + listed + ' IDs listed' : '')
+                    + '. Staff will check the ID(s) before your order is prepared.',
                     true
                 );
             }
@@ -1923,10 +2292,47 @@
                     }
                 });
             });
+        });
 
-            ['discountExpirationDay', 'discountExpirationMonth', 'discountExpirationYear'].forEach(function (id) {
-                var field = document.getElementById(id);
-                if (field) field.addEventListener('change', syncDiscountExpirationHidden);
+        /*
+         * Month/Day/Year dropdowns -> the single hidden
+         * #discountBeneficiaryExpiration input, in the exact "M/D/Y" shape
+         * DiscountCard::normalizeTypedExpiration() already parses (no
+         * padding needed — its regex accepts 1-2 digit month/day).
+         *
+         * Any dropdown left unselected collapses the combined value back to
+         * '', which discountCardExpirationError() and the server both
+         * already treat as "missing" for PWD — the same outcome a blank
+         * typed field produced before this change.
+         *
+         * .value assignment alone does not fire 'change'/'input', so this
+         * dispatches one on the hidden field itself, which is what the
+         * listener registered just above actually reacts to — keeping that
+         * listener, discountCardExpirationError(), and the confirm-modal
+         * gate at openOrderConfirmation() all completely unchanged.
+         */
+        document.addEventListener('DOMContentLoaded', function () {
+            var monthField = document.getElementById('discountExpirationMonth');
+            var dayField = document.getElementById('discountExpirationDay');
+            var yearField = document.getElementById('discountExpirationYear');
+            var hiddenField = document.getElementById('discountBeneficiaryExpiration');
+
+            if (!monthField || !dayField || !yearField || !hiddenField) return;
+
+            function syncExpirationFromDropdowns() {
+                var month = monthField.value;
+                var day = dayField.value;
+                var year = yearField.value;
+
+                hiddenField.value = (month && day && year)
+                    ? (month + '/' + day + '/' + year)
+                    : '';
+
+                hiddenField.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+
+            [monthField, dayField, yearField].forEach(function (field) {
+                field.addEventListener('change', syncExpirationFromDropdowns);
             });
         });
 
@@ -1953,16 +2359,23 @@
 
             if (type) type.value = '';
 
-            document.getElementById('discountBeneficiaryName').value = '';
-            document.getElementById('discountBeneficiaryId').value = '';
+            // Every ID row leaves the form, so reopening starts clean and a
+            // deselected discount can never submit a stale row.
+            removeAllDiscountIdRows();
             document.getElementById('discountBeneficiaryExpiration').value = '';
-            ['discountExpirationDay', 'discountExpirationMonth', 'discountExpirationYear'].forEach(function (id) {
-                var field = document.getElementById(id);
-                if (field) field.value = '';
-            });
 
-            var image = document.getElementById('discountBeneficiaryImage');
-            if (image) image.value = '';
+            // Reset the Month/Day/Year dropdowns and re-hide the block
+            // selectDiscountType() shows only for PWD, so reopening the form
+            // for either type starts clean.
+            var expirationMonth = document.getElementById('discountExpirationMonth');
+            var expirationDay = document.getElementById('discountExpirationDay');
+            var expirationYear = document.getElementById('discountExpirationYear');
+            if (expirationMonth) expirationMonth.value = '';
+            if (expirationDay) expirationDay.value = '';
+            if (expirationYear) expirationYear.value = '';
+
+            var expirationBlock = document.getElementById('discountExpirationBlock');
+            if (expirationBlock) expirationBlock.classList.add('hidden');
 
             document.getElementById('pwdDiscountBtn').classList.remove('bg-peach-red', 'text-white', 'bg-peach-soft', 'text-peach-deep', 'discount-selected');
             document.getElementById('seniorDiscountBtn').classList.remove('bg-peach-red', 'text-white', 'bg-peach-soft', 'text-peach-deep', 'discount-selected');
@@ -2055,17 +2468,12 @@ if (!paymentMethod || !paymentMethod.value) {
     var discountType = document.getElementById('discountType');
 
     if (discountType && discountType.value.trim() !== '') {
-        var name = document.getElementById('discountBeneficiaryName').value.trim();
-        var idNumber = document.getElementById('discountBeneficiaryId').value.trim();
-        var image = document.getElementById('discountBeneficiaryImage');
+        // Every listed ID row, checked by the server's own rules — at least
+        // one complete row, no half-filled row, no ID listed twice.
+        var idRowsError = discountIdRowsError();
 
-        if (!name) {
-            showDiscountCardMessage('Please enter the beneficiary name.', false);
-            return;
-        }
-
-        if (!idNumber) {
-            showDiscountCardMessage('Please enter the discount card ID number.', false);
+        if (idRowsError) {
+            showDiscountCardMessage(idRowsError, false);
             return;
         }
 
@@ -2076,14 +2484,6 @@ if (!paymentMethod || !paymentMethod.value) {
         if (expirationError) {
             clearDiscountPreview();
             showDiscountCardMessage(expirationError, false);
-            return;
-        }
-
-        if (!image || !image.files || image.files.length === 0) {
-            showDiscountCardMessage(
-                'Please upload a clear picture of the discount card or ID.',
-                false
-            );
             return;
         }
     }

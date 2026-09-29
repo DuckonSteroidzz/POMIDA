@@ -10,6 +10,7 @@ use App\Models\Voucher;
 use App\Services\PointsRewards;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
+use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
@@ -36,6 +37,7 @@ use Tests\TestCase;
 class PointsRewardThresholdTest extends TestCase
 {
     use DatabaseTransactions;
+    use ForcesSpinOutcome;
 
     /**
      * Highest notification id that existed BEFORE this test started.
@@ -111,9 +113,12 @@ class PointsRewardThresholdTest extends TestCase
         ]);
     }
 
+    /** One spin whose SERVER outcome is $points (the request names no prize since F3). */
     private function spin(int $points = 8)
     {
-        return $this->postJson('/customer/add-points', ['points' => $points]);
+        $this->forceSpinOutcome($points);
+
+        return $this->postJson('/customer/add-points');
     }
 
     /**
