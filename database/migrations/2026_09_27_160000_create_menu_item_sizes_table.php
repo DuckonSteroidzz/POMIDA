@@ -13,13 +13,10 @@ use Illuminate\Support\Facades\Schema;
  * it has exactly two rows here: Regular and Large. There is no third size and
  * no custom name, and the database says so rather than trusting the form:
  *
- *   name          utf8mb4_nopad_bin — exact bytes, no trailing-space padding.
- *                 Probed on this MariaDB (10.4) with a TEMPORARY table before
- *                 writing this: under the default utf8mb4_unicode_ci a CHECK
- *                 of name IN ('Regular','Large') ALSO accepted 'regular',
- *                 'LARGE' and 'Regular ' (case-insensitive, PAD SPACE), and
- *                 plain utf8mb4_bin still accepted 'Regular '. nopad_bin
- *                 accepts exactly the two spellings and nothing else.
+ *   name          utf8mb4_bin - case-sensitive binary comparison.
+ *                 The CHECK constraint below restricts the value to exactly
+ *                 'Regular' or 'Large' together with its required display
+ *                 order.
  *   CHECK         (name, display_order) is one of exactly two pairs:
  *                 ('Regular', 1) or ('Large', 2). Pins both the allowed names
  *                 AND their order, so the ordering can never be edited into an
@@ -52,7 +49,7 @@ return new class extends Migration
         Schema::create('menu_item_sizes', function (Blueprint $table) {
             $table->id();
             $table->unsignedBigInteger('menu_item_id');
-            $table->string('name', 20)->collation('utf8mb4_nopad_bin');
+            $table->string('name', 20)->collation('utf8mb4_bin');
             $table->decimal('price', 10, 2);
             $table->integer('display_order');
             $table->boolean('is_active')->default(true);
