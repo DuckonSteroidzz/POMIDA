@@ -646,6 +646,12 @@ Route::prefix('admin')
             Route::get('/completed-orders/print', [AdminController::class, 'printCompletedOrders'])
                 ->name('completed-orders.print');
 
+            // "Export CSV" (Batch 2, 2026-09-29) — same group, same rule as
+            // Print Filtered: whoever can see Order History can export it, and
+            // only the branch scope they already see (completedOrdersQuery()).
+            Route::get('/completed-orders/export', [AdminController::class, 'exportCompletedOrders'])
+                ->name('completed-orders.export');
+
 
             // ══════════ SUMMARY — the matrix's one LIMITED report ══════════
             //

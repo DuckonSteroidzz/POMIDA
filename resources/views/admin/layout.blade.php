@@ -989,7 +989,10 @@
                 'admin.summary',
                 'admin.qr-generator',
                 'admin.ads',
-                'admin.analytics'
+                'admin.analytics',
+                // Batch 2 (2026-09-29): the branch only changes the Items
+                // counts there — categories themselves are global.
+                'admin.add-category'
             );
 
             // This is the internal admin picker, not a customer-facing one —

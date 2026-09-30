@@ -18,6 +18,11 @@
         <button type="button" onclick="printFiltered()" class="co-btn co-btn-solid">
             <i class="bi bi-printer-fill"></i> Print Filtered
         </button>
+        {{-- Same filters as the list (and Print Filtered), same branch scope;
+             see AdminController::exportCompletedOrders(). --}}
+        <a href="{{ route('admin.completed-orders.export', request()->only(['date_from', 'date_to', 'type', 'status'])) }}" class="co-btn co-btn-ghost">
+            <i class="bi bi-download"></i> Export CSV
+        </a>
     </div>
 </div>
 

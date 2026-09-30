@@ -112,7 +112,7 @@
     {{-- ================= HEADER ================= --}}
     <header class="sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-5xl px-4 sm:px-6">
-            <div class="flex items-center justify-between gap-3 py-3 sm:py-4">
+            <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
 
                 <a
                     href="{{ route('customer.orders') }}"
@@ -133,18 +133,25 @@
                     </span>
                 </a>
 
-                {{-- Notifications. The customer sits on this page waiting for
-                     staff to verify a GCash payment, which is exactly when an
-                     order status change matters most. --}}
-                @include('customer.partials.notification-bell')
+                {{-- Header actions in ONE wrapper, same rule as every other
+                     customer header (see the CALLER REQUIREMENT comment in
+                     notification-bell.blade.php) — otherwise the 2-column grid
+                     wraps the bell onto the second column alone, landing it
+                     between the logo and the Orders button instead of beside it. --}}
+                <div class="flex items-center justify-end gap-3">
+                    {{-- Notifications. The customer sits on this page waiting for
+                         staff to verify a GCash payment, which is exactly when an
+                         order status change matters most. --}}
+                    @include('customer.partials.notification-bell')
 
-                <a
-                    href="{{ route('customer.orders') }}"
-                    class="inline-flex shrink-0 items-center gap-2 rounded-full border border-peach-soft bg-white px-3 py-2 text-sm font-bold text-peach-deep no-underline transition hover:border-peach hover:text-peach-red sm:px-4"
-                >
-                    <i class="bi bi-arrow-left"></i>
-                    <span class="hidden sm:inline">Orders</span>
-                </a>
+                    <a
+                        href="{{ route('customer.orders') }}"
+                        class="inline-flex shrink-0 items-center gap-2 rounded-full border border-peach-soft bg-white px-3 py-2 text-sm font-bold text-peach-deep no-underline transition hover:border-peach hover:text-peach-red sm:px-4"
+                    >
+                        <i class="bi bi-arrow-left"></i>
+                        <span class="hidden sm:inline">Orders</span>
+                    </a>
+                </div>
 
             </div>
         </div>
@@ -195,6 +202,22 @@
 
                 </div>
 
+            </div>
+
+        @endif
+
+
+        {{-- PWD/Senior IDs were entered at checkout but Apply was never
+             pressed, so this order is at the regular price (Batch 2,
+             2026-09-29). Not the success box above: that one reads
+             "Payment Submitted", and nothing has been paid yet. --}}
+        @if(session('discount_notice'))
+
+            <div class="rise rise-2 mx-auto mb-5 max-w-2xl rounded-2xl border border-red-200 bg-red-50 p-4 text-red-700">
+                <div class="flex items-start gap-2 text-sm">
+                    <i class="bi bi-info-circle-fill mt-0.5"></i>
+                    <span>{{ session('discount_notice') }}</span>
+                </div>
             </div>
 
         @endif

@@ -235,7 +235,9 @@ class PricingTamperResistanceTest extends TestCase
                 // smuggling guard and refuses a row with any other key.
                 'discount_beneficiary_name'       => 'A Person',
                 'discount_beneficiary_id'         => 'PWD-1',
-                'discount_beneficiary_expiration' => now()->addYear()->format('m/d/Y'),
+                // The cart's Apply intent (Batch 2, 2026-09-29); it never
+                // changes the amount, and there is no expiration field any more.
+                'discount_applied'                => '1',
                 'discount_beneficiaries' => [
                     ['id_number' => 'PWD-2', 'full_name' => 'B Person'],
                     ['id_number' => 'PWD-3', 'full_name' => 'C Person'],

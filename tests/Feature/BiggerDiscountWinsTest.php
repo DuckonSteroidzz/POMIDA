@@ -104,11 +104,11 @@ class BiggerDiscountWinsTest extends TestCase
     {
         return [
             'discount_type'                   => 'pwd',
+            // The cart's Apply intent (Batch 2, 2026-09-29); there is no
+            // expiration field any more.
+            'discount_applied'                => '1',
             'discount_beneficiary_name'       => 'Juan Dela Cruz',
             'discount_beneficiary_id'         => 'PWD-123',
-            // The cart's expiration field is customer-typed M/D/Y text, not
-            // Y-m-d (see DiscountCard::normalizeTypedExpiration()).
-            'discount_beneficiary_expiration' => now()->addYear()->format('n/j/Y'),
             'discount_beneficiary_image'      => $this->idImage(),
         ];
     }

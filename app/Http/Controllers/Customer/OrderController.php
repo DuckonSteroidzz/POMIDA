@@ -105,18 +105,19 @@ class OrderController extends Controller
             'voucher_code_confirmed' => 'nullable|string|max:100',
             'discount_card_id'       => 'nullable|integer|exists:discount_cards,id',
             'discount_type'          => 'nullable|in:pwd,senior',
-            // Deliberately just a bounded string here, not Laravel's own
-            // 'date' rule: the cart's expiration field is now free-typed
-            // text ("1/5/2027" or "01/05/2027"), and Laravel's 'date' rule
-            // uses PHP's own date_parse()/checkdate(), which reads a
-            // dash-separated date as day-month-year — accepting shapes this
-            // field's format policy must refuse (see
-            // DiscountCard::normalizeTypedExpiration()). Shape, realness,
-            // and "is it still in the future" are ALL that method's and
-            // DiscountCard::expirationErrorFor()'s call below, so the cart
-            // preview and checkout cannot end up with two different rules
-            // (or two different messages) for the same card.
-            'discount_beneficiary_expiration' => 'nullable|string|max:20',
+
+            /*
+             * The cart's "Apply" intent for the PWD/Senior section (Batch 2,
+             * 2026-09-29). It can only ever TAKE a discount away: without it
+             * no PWD/Senior discount is given at all, and with it the amount
+             * is still the server's own Order::pwdSeniorDiscountFor(). See
+             * the PWD/Senior block below.
+             *
+             * There is no expiration field any more (same change): no rule,
+             * and a value a stale page still posts under
+             * discount_beneficiary_expiration is never read.
+             */
+            'discount_applied'       => 'nullable|boolean',
 
             /*
              * No 'discount_beneficiary_image' rule any more (September 2026):
@@ -127,8 +128,12 @@ class OrderController extends Controller
              * The ID rows — the original single-row fields plus the
              * repeatable discount_beneficiaries[n] list — share one set of
              * rules with the counter; see App\Support\DiscountBeneficiaries.
+             * They are validated only when the customer pressed Apply: rows
+             * that were never applied are never read or stored (see THE
+             * APPLY STEP below), so a half-typed one must not refuse an
+             * order that is going through at the regular price anyway.
              */
-        ], \App\Support\DiscountBeneficiaries::rules()), \App\Support\DiscountBeneficiaries::messages());
+        ], $request->boolean('discount_applied') ? \App\Support\DiscountBeneficiaries::rules() : []), \App\Support\DiscountBeneficiaries::messages());
 
         // Branch logic — from session only (set from QR or branch selector)
         $branchId = session('branch_id') ?? $request->input('branch_id');
@@ -510,7 +515,6 @@ class OrderController extends Controller
         $discountBeneficiaryName = null;
         $discountBeneficiaryCardNumber = null;
         $discountIdImage = null;
-        $discountBeneficiaryExpiration = null;
 
         /*
          * Every PWD/Senior ID listed on this order (ID number + full name),
@@ -562,7 +566,21 @@ class OrderController extends Controller
             ])->withInput();
         }
 
-        if ($request->filled('discount_card_id')) {
+        /*
+         * THE APPLY STEP (Batch 2, 2026-09-29).
+         *
+         * The cart only asks for a PWD/Senior discount once the customer has
+         * pressed Apply with every listed ID complete, and says so with
+         * discount_applied=1. No flag means no PWD/Senior discount — the ID
+         * rows are not even read, so nothing is recorded for staff to verify —
+         * and the customer is told why on the next page. The flag can only
+         * take a discount away: it never reaches the pricing below, which is
+         * still Order::pwdSeniorDiscountFor($total), once per order.
+         */
+        $pwdSeniorApplied = $request->boolean('discount_applied');
+        $pwdSeniorNotApplied = ($hasSavedCard || $hasTransactionDiscount) && ! $pwdSeniorApplied;
+
+        if ($pwdSeniorApplied && $hasSavedCard) {
             if (!Auth::guard('customer')->check()) {
                 return back()->withErrors([
                     'discount_card_id' => 'A saved discount card can only be used by a logged-in customer.'
@@ -589,42 +607,26 @@ class OrderController extends Controller
                 ])->withInput();
             }
 
-            // Computed before the required-fields check below so that check
-            // can tell whether a missing expiration actually matters for
-            // this card's type — a Senior Citizen ID has none under
-            // Philippine law (see DiscountCard::requiresExpiration()).
             $discountType = strtolower((string) $selectedDiscountCard->type) === 'senior'
                 ? 'senior'
                 : 'pwd';
-            $expirationRequired = DiscountCard::requiresExpiration($discountType);
 
             $cardName = trim((string) ($selectedDiscountCard->full_name ?? $selectedDiscountCard->name ?? ''));
             $cardNumber = trim((string) ($selectedDiscountCard->id_number ?? $selectedDiscountCard->card_number ?? ''));
             $cardImage = trim((string) ($selectedDiscountCard->id_image ?? ''));
-            $cardExpiration = $selectedDiscountCard->expiration_date;
 
-            if (!$cardName || !$cardNumber || !$cardImage || ($expirationRequired && !$cardExpiration)) {
+            // No expiration check (Batch 2, 2026-09-29): the requirement was
+            // removed for PWD and Senior alike. A card's stored
+            // expiration_date is left as it is and simply not consulted.
+            if (!$cardName || !$cardNumber || !$cardImage) {
                 return back()->withErrors([
                     'discount_card_id' => 'The selected discount card is missing required information. Please update the card before using it.'
-                ])->withInput();
-            }
-
-            // Same rule, same wording, same answer as the cart preview and the
-            // transaction-card branch below — see DiscountCard::expirationErrorFor().
-            // Passing $discountType is what lets a Senior Citizen card through
-            // with no expiration at all; a PWD card is checked exactly as before.
-            $cardExpirationError = DiscountCard::expirationErrorFor($cardExpiration, $discountType);
-
-            if ($cardExpirationError !== null) {
-                return back()->withErrors([
-                    'discount_card_id' => $cardExpirationError
                 ])->withInput();
             }
 
             $discountCardId = $selectedDiscountCard->id;
             $discountBeneficiaryName = $cardName;
             $discountBeneficiaryCardNumber = $cardNumber;
-            $discountBeneficiaryExpiration = $cardExpiration ? $cardExpiration->toDateString() : null;
             $discountIdImage = $cardImage;
             $discountBeneficiaries = [['id_number' => $cardNumber, 'full_name' => $cardName]];
             $discountAmount = \App\Models\Order::pwdSeniorDiscountFor($total);
@@ -632,9 +634,8 @@ class OrderController extends Controller
 
             // Staff must approve this transaction-specific use.
             $discountStatus = 'pending';
-        } elseif ($request->filled('discount_type')) {
+        } elseif ($pwdSeniorApplied && $hasTransactionDiscount) {
             $discountType = strtolower((string) $request->input('discount_type'));
-            $discountBeneficiaryExpiration = $request->input('discount_beneficiary_expiration');
 
             if (!in_array($discountType, ['pwd', 'senior'], true)) {
                 return back()->withErrors([
@@ -671,69 +672,14 @@ class OrderController extends Controller
             $discountBeneficiaryCardNumber = $discountBeneficiaries[0]['id_number'];
 
             /*
-             * A Senior Citizen ID has no expiration under Philippine law (RA
-             * 9994, as amended by RA 10645) — only PWD (which DOES expire and
-             * is renewed) needs one. See DiscountCard::requiresExpiration(),
-             * the single place this decision is made.
-             *
-             * This stays a once-per-order eligibility check, exactly as
-             * before: the discount is applied once, so one valid, unexpired
-             * PWD ID is what it needs.
+             * NO EXPIRATION DATE (Batch 2, 2026-09-29). Checkout used to ask
+             * for one PWD expiry per order, which could not describe a group
+             * whose IDs each expire on their own day. The requirement was
+             * removed for PWD and Senior alike; staff still check every
+             * physical ID before approving (below, unchanged). Anything still
+             * posted as discount_beneficiary_expiration is never read, and
+             * orders placed before this change keep their stored date.
              */
-            $expirationRequired = DiscountCard::requiresExpiration($discountType);
-
-            if ($expirationRequired && !$discountBeneficiaryExpiration) {
-                return back()->withErrors([
-                    'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_MISSING
-                ])->withInput();
-            }
-
-            if ($expirationRequired) {
-                /*
-                 * The cart's expiration field is customer-typed text
-                 * ("1/5/2027" or "01/05/2027"), not the Y-m-d the rest of the
-                 * app stores and compares — convert it here, once, before it
-                 * reaches expirationErrorFor() or the orders row. A string
-                 * that is not one of the two accepted shapes, or that does
-                 * not name a real calendar date (13/45/2027, 2/30/2027, 2/29
-                 * in a non-leap year), comes back null and is refused with
-                 * the same shared message expirationErrorFor() already uses
-                 * for a malformed date.
-                 */
-                $discountBeneficiaryExpiration = DiscountCard::normalizeTypedExpiration(
-                    $discountBeneficiaryExpiration
-                );
-
-                if ($discountBeneficiaryExpiration === null) {
-                    return back()->withErrors([
-                        'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID
-                    ])->withInput();
-                }
-            } else {
-                /*
-                 * Senior Citizen: accept-and-ignore whatever this field
-                 * carries — blank, a value left over from switching from PWD,
-                 * or garbage typed by mistake. Never validated, never stored;
-                 * eligibility for this type must never depend on it.
-                 */
-                $discountBeneficiaryExpiration = null;
-            }
-
-            /*
-             * The expiry rule that the cart page also previews with. This is
-             * the check that must refuse the reported "expiration 01/01/1940"
-             * card; the validation rule above no longer duplicates it, so
-             * there is exactly one place that decides, and exactly one
-             * message. Passing $discountType is what makes this a no-op for
-             * Senior Citizen — PWD is checked exactly as before.
-             */
-            $expirationError = DiscountCard::expirationErrorFor($discountBeneficiaryExpiration, $discountType);
-
-            if ($expirationError !== null) {
-                return back()->withErrors([
-                    'discount_beneficiary_expiration' => $expirationError
-                ])->withInput();
-            }
 
             /*
              * NO ID PHOTO IS STORED (September 2026).
@@ -864,7 +810,6 @@ class OrderController extends Controller
                     $discountCardId = null;
                     $discountBeneficiaryName = null;
                     $discountBeneficiaryCardNumber = null;
-                    $discountBeneficiaryExpiration = null;
                     $discountIdImage = null;
 
                     // No listed ID is recorded against a discount that was
@@ -911,7 +856,6 @@ class OrderController extends Controller
                 $discountCardId,
                 $discountBeneficiaryName,
                 $discountBeneficiaryCardNumber,
-                $discountBeneficiaryExpiration,
                 $discountIdImage,
                 $discountBeneficiaries,
                 $voucherId,
@@ -951,7 +895,6 @@ class OrderController extends Controller
                     'voucher_id' => $voucherId,
                     'discount_beneficiary_name' => $discountBeneficiaryName,
                     'discount_beneficiary_card_number' => $discountBeneficiaryCardNumber,
-                    'discount_beneficiary_expiration' => $discountBeneficiaryExpiration,
                     'discount_id_image' => $discountIdImage,
                     'discount_status' => $discountStatus,
                     'tax_amount' => 0,
@@ -1074,17 +1017,28 @@ if (
         ]);
 }
 
+// PWD/Senior IDs entered but never applied (see THE APPLY STEP above): the
+// order went through at the regular price, and the customer is told so on
+// whichever page comes next rather than finding out from the total.
+$notAppliedNote = $pwdSeniorNotApplied
+    ? ' Your PWD/Senior Citizen discount was not applied because Apply was not pressed, so this order is at the regular price.'
+    : '';
+
 // GCash orders go to the GCash payment page.
 // The order total already contains the approved voucher discount
 // or the currently calculated PWD/Senior discount.
 if (($validated['payment_method'] ?? 'cash') === 'gcash') {
-    return redirect()
+    $gcashRedirect = redirect()
         ->route('customer.gcash-payment', $order->id);
+
+    return $notAppliedNote === ''
+        ? $gcashRedirect
+        : $gcashRedirect->with('discount_notice', ltrim($notAppliedNote));
 }
 
 // Cash orders continue using the normal order flow.
 return redirect()->route('customer.orders')
-    ->with('success', 'Order placed! 🎉 Order #' . $order->order_number);
+    ->with('success', 'Order placed! 🎉 Order #' . $order->order_number . $notAppliedNote);
         } catch (StockUnavailableException $e) {
             // Lost the race for the last of something, or stock moved while the
             // customer was on the confirm screen. Nothing was written — the

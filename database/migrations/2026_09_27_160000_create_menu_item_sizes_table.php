@@ -17,9 +17,6 @@ use Illuminate\Support\Facades\Schema;
  *                 The CHECK constraint below restricts the value to exactly
  *                 'Regular' or 'Large' together with its required display
  *                 order.
- *   CHECK         (name, display_order) is one of exactly two pairs:
- *                 ('Regular', 1) or ('Large', 2). Pins both the allowed names
- *                 AND their order, so the ordering can never be edited into an
  *                 arbitrary ranking.
  *   UNIQUE        (menu_item_id, name) — at most one Regular and one Large per
  *                 item. With the CHECK above that means at most two rows per

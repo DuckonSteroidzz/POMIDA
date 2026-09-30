@@ -126,6 +126,12 @@
         <div>
             <h1 class="pchy-title">Categories &amp; Subcategories</h1>
             <p class="pchy-sub">Organise the Peachy Cakes &amp; Deli Cafe menu structure.</p>
+            {{-- Branch view (Batch 2, 2026-09-29): categories are shared by every
+                 branch, so the lists never change — only the Items counts follow
+                 the "Viewing:" branch above. See showAddCategory(). --}}
+            @isset($countsBranchName)
+            <p class="pchy-sub" id="categoryCountsScope">Categories are shared by every branch. Item counts are for <strong>{{ $countsBranchName }}</strong>.</p>
+            @endisset
         </div>
         <div class="pchy-chips">
             <span class="pchy-chip">{{ isset($categories) ? count($categories) : 0 }} Categories</span>
@@ -237,7 +243,8 @@
                                 <div class="pchy-thumb-ph"><i class="bi bi-image"></i></div>
                                 @endif
                             </td>
-                            <td data-l="Items"><span class="pchy-badge">{{ $cat->menuItems->count() }} items</span></td>
+                            @php $catItemCount = $cat->menu_items_count ?? $cat->menuItems->count(); @endphp
+                            <td data-l="Items"><span class="pchy-badge" @if($catItemCount === 0) style="opacity:0.5;" @endif>{{ $catItemCount }} items</span></td>
                             <td data-l="Edit" class="pchy-col-action">
                                 <button type="button"
                                         class="pchy-edit"
@@ -315,7 +322,7 @@
                         <tr>
                             <td data-l="Subcategory" class="pchy-name">{{ $sub->name }}</td>
                             <td data-l="Category"><span class="pchy-badge alt">{{ $sub->category->name ?? 'N/A' }}</span></td>
-                            <td data-l="Items"><span class="pchy-badge">{{ $sub->menu_items_count }}</span></td>
+                            <td data-l="Items"><span class="pchy-badge" @if((int) $sub->menu_items_count === 0) style="opacity:0.5;" @endif>{{ $sub->menu_items_count }}</span></td>
                             <td data-l="Edit" class="pchy-col-action">
                                 <button type="button"
                                         class="pchy-edit"

@@ -1013,9 +1013,45 @@ class AdminController extends Controller
 
     // ══════════ Menu Items (CRUD WORKING) ══════════
 
-    public function showMenuItems()
+    public function showMenuItems(Request $request)
     {
         $selectedBranch = $this->getSelectedBranch();
+
+        $categories = Category::orderBy('name')->get();
+
+        $subcategories = \App\Models\Subcategory::orderBy('name')->get();
+
+        /*
+         * Main/Sub Category filter (Batch 2, 2026-09-29). It used to be pure
+         * JS that hid rows whose WHOLE TEXT contained the category name
+         * (so "Chicken" also kept a "Chicken Pizza" filed under Pizza), was
+         * undone the moment the search box was typed in while the dropdown
+         * still showed the choice, and vanished on every reload. It is now
+         * ?category=<id>&subcategory=<id>, applied here by id on top of the
+         * unchanged branch scope, so the dropdowns render their selection
+         * and the search box only ever narrows the filtered rows further.
+         *
+         * Only a real category/subcategory id is honoured; anything else is
+         * ignored rather than refused. A subcategory implies its category, and
+         * one that does not belong to the chosen category is dropped.
+         */
+        $idParam = function (string $key) use ($request): ?int {
+            $value = $request->query($key);
+
+            // is_string first: ?category[]=1 arrives as an array.
+            return is_string($value) && ctype_digit($value) ? (int) $value : null;
+        };
+
+        $filterCategory = $categories->firstWhere('id', $idParam('category'));
+        $filterSubcategory = $subcategories->firstWhere('id', $idParam('subcategory'));
+
+        if ($filterSubcategory && ! $filterCategory) {
+            $filterCategory = $categories->firstWhere('id', $filterSubcategory->category_id);
+        }
+
+        if ($filterSubcategory && (int) $filterSubcategory->category_id !== (int) $filterCategory?->id) {
+            $filterSubcategory = null;
+        }
 
         $menuItems = \App\Models\MenuItem::with([
             'category',
@@ -1040,6 +1076,8 @@ class AdminController extends Controller
             ->when($selectedBranch !== 'all', function ($q) use ($selectedBranch) {
                 $q->where('branch_id', $selectedBranch);
             })
+            ->when($filterCategory, fn ($q) => $q->where('category_id', $filterCategory->id))
+            ->when($filterSubcategory, fn ($q) => $q->where('subcategory_id', $filterSubcategory->id))
             // Branch-grouped table (admin/menu-items.blade.php): non-null
             // branches first in id order, the shared "All Branches" items
             // last, display_order/name unchanged as the tiebreak WITHIN each
@@ -1059,10 +1097,6 @@ class AdminController extends Controller
         $allBranches = \App\Models\Branch::orderBy('id')->get();
         $branches = $allBranches->where('is_active', true)->values();
         $branchNames = $allBranches->pluck('name', 'id');
-
-        $categories = Category::orderBy('name')->get();
-
-        $subcategories = \App\Models\Subcategory::orderBy('name')->get();
 
         $inventoryItems = \App\Models\Inventory::where('is_active', true)
             ->when(
@@ -1094,7 +1128,9 @@ class AdminController extends Controller
             'selectedBranch',
             'archivedCount',
             'costing',
-            'sizeCosting'
+            'sizeCosting',
+            'filterCategory',
+            'filterSubcategory'
         ));
     }
 
@@ -2031,21 +2067,42 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
     public function showAddCategory()
     {
-        $categories = Category::with('menuItems')
+        /*
+         * Branch view (Batch 2, 2026-09-29). Categories and subcategories are
+         * GLOBAL — neither table has a branch column — so every one is always
+         * listed, and who may create/rename/delete them is unchanged. What the
+         * "Viewing:" branch changes is only the Items counts: exactly the menu
+         * items the Menu Items page lists for that branch (showMenuItems()'s
+         * own where('branch_id', …), so shared NULL-branch items count only
+         * under All Branches, as they are listed only there). A branch-locked
+         * Supervisor always sees their own branch's counts.
+         */
+        $selectedBranch = $this->getSelectedBranch();
+
+        $inScope = fn ($q) => $q->when(
+            $selectedBranch !== 'all',
+            fn ($q) => $q->where('branch_id', $selectedBranch)
+        );
+
+        $categories = Category::withCount(['menuItems' => $inScope])
             ->orderBy('display_order')
             ->orderBy('name')
             ->get();
 
         $subcategories = \App\Models\Subcategory::with('category')
-            ->withCount('menuItems')
+            ->withCount(['menuItems' => $inScope])
             ->orderBy('name')
             ->get();
 
         $archivedCount = $this->archivedCatalogueCount();
 
+        $countsBranchName = $selectedBranch === 'all'
+            ? 'All Branches'
+            : (\App\Models\Branch::find($selectedBranch)?->name ?? 'Unknown Branch');
+
         return view(
             'admin.add-category',
-            compact('categories', 'subcategories', 'archivedCount')
+            compact('categories', 'subcategories', 'archivedCount', 'countsBranchName')
         );
     }
 
@@ -4046,6 +4103,116 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             : null;
 
         return view('admin.completed-orders-print', compact('orders', 'orderRatings', 'selectedBranchName'));
+    }
+
+    /**
+     * "Export CSV" on Order History (Batch 2, 2026-09-29) — the same shape as
+     * the Inventory and Sales exports (fputcsv, UTF-8 BOM, a short header
+     * block).
+     *
+     * WHICH ROWS: completedOrdersQuery(), the one query the list and "Print
+     * Filtered" already share, unpaginated like the print — so the file is
+     * exactly the filtered set on screen (date range, type, status), and its
+     * branch comes from getSelectedBranch(): a branch-locked role always gets
+     * their own branch, the owner gets whatever branch view is selected. No
+     * request parameter can widen it.
+     *
+     * WHAT IS NOT IN IT: no PWD/Senior ID numbers or names (privacy) — the
+     * Discount column is the amount only — and no customer details.
+     *
+     * Every text cell goes through App\Support\Csv::cell(); numbers do not.
+     */
+    public function exportCompletedOrders(Request $request)
+    {
+        $orders = $this->completedOrdersQuery($request)->with('branch')->get();
+
+        // Add-on names as they were sold (the order line's snapshot), in one
+        // query for the whole file rather than one per line.
+        $optionNames = \Illuminate\Support\Facades\DB::table('order_item_options')
+            ->whereIn('order_item_id', $orders->flatMap->items->pluck('id'))
+            ->orderBy('id')
+            ->get(['order_item_id', 'option_name'])
+            ->groupBy('order_item_id');
+
+        $selectedBranch = $this->getSelectedBranch();
+        $branchName = $selectedBranch === 'all'
+            ? 'All Branches'
+            : (\App\Models\Branch::find($selectedBranch)?->name ?? 'Unknown Branch');
+
+        $filters = array_filter([
+            $request->filled('date_from') ? 'From ' . $request->date_from : null,
+            $request->filled('date_to') ? 'To ' . $request->date_to : null,
+            $request->filled('type') ? 'Type ' . $request->type : null,
+            $request->filled('status') ? 'Status ' . $request->status : null,
+        ]);
+
+        $filename = 'completed-orders_' . now()->format('Y-m-d_Hi') . '.csv';
+
+        $headers = [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+            'Content-Disposition' => "attachment; filename=\"$filename\"",
+        ];
+
+        $callback = function () use ($orders, $optionNames, $branchName, $filters) {
+            $cell = fn ($value) => \App\Support\Csv::cell((string) $value);
+            $file = fopen('php://output', 'w');
+
+            // Excel reads a CSV as the system codepage unless it finds a BOM.
+            fwrite($file, "\xEF\xBB\xBF");
+
+            fputcsv($file, ['Peachy Cakes & Deli Cafe — Completed Orders']);
+            fputcsv($file, ['Branch', $cell($branchName)]);
+            fputcsv($file, ['Filters', $cell($filters ? implode(', ', $filters) : 'None (all completed and cancelled orders)')]);
+            fputcsv($file, ['Generated', now()->format('M d, Y g:i A')]);
+            fputcsv($file, ['Generated by', $cell(optional(auth('admin')->user())->name ?? 'Unknown user')]);
+            fputcsv($file, []);
+
+            fputcsv($file, [
+                'Order #', 'Date/Time', 'Branch', 'Type', 'Table', 'Items',
+                'Subtotal', 'Discount', 'Total', 'Payment Method', 'Payment Status', 'Status',
+            ]);
+
+            foreach ($orders as $order) {
+                $type = match ($order->type) {
+                    'dine_in' => $order->is_takeout ? 'Dine-in (Take Out)' : 'Dine-in',
+                    'pick_up' => 'Pickup',
+                    'walk_in' => 'Walk-in',
+                    default   => (string) $order->type,
+                };
+
+                $method = strtolower((string) ($order->payment_method ?? 'cash'));
+                $paymentStatus = strtolower((string) ($order->payment_status ?? ''));
+
+                $items = $order->items->map(function ($item) use ($optionNames) {
+                    $options = ($optionNames[$item->id] ?? collect())
+                        ->map(fn ($o) => '+ ' . $o->option_name)
+                        ->implode(', ');
+
+                    return $item->quantity . 'x ' . $item->displayName() . ($options !== '' ? ' [' . $options . ']' : '');
+                })->implode('; ');
+
+                fputcsv($file, [
+                    $cell($order->order_number),
+                    ($order->completed_at ?? $order->created_at)?->format('Y-m-d H:i') ?? '',
+                    $cell($order->branch?->name ?? ''),
+                    $cell($type),
+                    // Only the typed table label is guarded; our own '-'
+                    // placeholder would otherwise become "'-".
+                    $order->table_number !== null && $order->table_number !== '' ? $cell($order->table_number) : '-',
+                    $cell($items),
+                    number_format((float) $order->subtotal, 2, '.', ''),
+                    number_format((float) $order->discount_amount, 2, '.', ''),
+                    number_format((float) $order->total, 2, '.', ''),
+                    $cell(match ($method) { 'gcash' => 'GCash', 'cash' => 'Cash', default => ucfirst($method) }),
+                    $cell($paymentStatus === '' ? 'Unpaid' : ucfirst(str_replace('_', ' ', $paymentStatus))),
+                    $cell(ucfirst((string) $order->status)),
+                ]);
+            }
+
+            fclose($file);
+        };
+
+        return response()->stream($callback, 200, $headers);
     }
 
     public function completeOrder(int $id)
@@ -6174,7 +6341,7 @@ public function markOrderRefunded(int $id)
             'description' => 'nullable|string|max:500',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'link' => 'nullable|url|max:500',
-            'placement' => 'required|in:game,menu,cart,orders',
+            'placement' => 'required|in:' . implode(',', \App\Models\Ad::PLACEMENTS),
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date',
             'branch_id' => 'nullable|exists:branches,id',
@@ -6228,7 +6395,7 @@ public function markOrderRefunded(int $id)
             'description' => 'nullable|string|max:500',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             'link' => 'nullable|url|max:500',
-            'placement' => 'required|in:game,menu,cart,orders',
+            'placement' => 'required|in:' . implode(',', \App\Models\Ad::PLACEMENTS),
             'starts_at' => 'nullable|date',
             'ends_at' => 'nullable|date',
             'branch_id' => 'nullable|exists:branches,id',

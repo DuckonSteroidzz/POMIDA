@@ -31,8 +31,15 @@ use Tests\TestCase;
  *    Picking PWD applied -20% instantly, and entering an expiry of 01/01/1940
  *    printed "This discount card has already expired." while leaving the
  *    discount on screen. The server always refused such an order, so nothing
- *    was ever mis-charged by this one; the rule now lives in
- *    DiscountCard::expirationErrorFor() and the cart page previews with it.
+ *    was ever mis-charged by this one; the rule then lived in
+ *    DiscountCard::expirationErrorFor() and the cart page previewed with it.
+ *
+ *    SUPERSEDED Batch 2 (2026-09-29): the expiration date was removed from
+ *    checkout entirely, for PWD and Senior alike, on request. The end-to-end
+ *    tests of section 2-4 that pinned the refusal now pin that no posted
+ *    expiration value affects checkout; the cart previews only once the IDs
+ *    are Applied. DiscountCard's own date helpers are unchanged and still
+ *    tested here as pure functions.
  */
 class CartTotalsMatchCheckoutTest extends TestCase
 {
@@ -126,33 +133,35 @@ class CartTotalsMatchCheckoutTest extends TestCase
             ], $extra));
     }
 
-    private function pwdFields(string $expiration): array
+    /**
+     * A PWD submission as the cart sends it since Batch 2 (2026-09-29): the
+     * Apply intent, and no expiration. $staleExpiration is what an
+     * out-of-date page might still post under the old field name — checkout
+     * never reads it, which the tests below that pass one prove.
+     */
+    private function pwdFields(?string $staleExpiration = null): array
     {
-        return [
+        return array_filter([
             'discount_type' => 'pwd',
+            'discount_applied' => '1',
             'discount_beneficiary_name' => 'Juan Dela Cruz',
             'discount_beneficiary_id' => 'PWD-123',
-            'discount_beneficiary_expiration' => $expiration,
+            'discount_beneficiary_expiration' => $staleExpiration,
             'discount_beneficiary_image' => $this->idImage(),
-        ];
+        ], fn ($value) => $value !== null);
     }
 
-    /**
-     * A Senior Citizen submission. $expiration defaults to '' (blank) — the
-     * normal case, since a Senior Citizen ID has no expiration under
-     * Philippine law (RA 9994, as amended by RA 10645). Pass a non-empty
-     * string to prove a stray/garbage value in the field still never blocks
-     * checkout for this type (DiscountCard::requiresExpiration()).
-     */
-    private function seniorFields(string $expiration = ''): array
+    /** The Senior Citizen twin of pwdFields(). */
+    private function seniorFields(?string $staleExpiration = null): array
     {
-        return [
+        return array_filter([
             'discount_type' => 'senior',
+            'discount_applied' => '1',
             'discount_beneficiary_name' => 'Maria Santos',
             'discount_beneficiary_id' => 'SC-456',
-            'discount_beneficiary_expiration' => $expiration,
+            'discount_beneficiary_expiration' => $staleExpiration,
             'discount_beneficiary_image' => $this->idImage(),
-        ];
+        ], fn ($value) => $value !== null);
     }
 
     // ── 1. The reported wrong total ──────────────────────────────────────────
@@ -208,7 +217,7 @@ class CartTotalsMatchCheckoutTest extends TestCase
         $cart = $this->cart($item, 2, (float) $item->price);
         $shown = $this->cartPageSubtotal($cart, $customer);
 
-        $this->placeOrder($cart, $customer, $this->pwdFields(now()->addYear()->format('n/j/Y')));
+        $this->placeOrder($cart, $customer, $this->pwdFields());
 
         $order = Order::orderByDesc('id')->first();
 
@@ -229,9 +238,7 @@ class CartTotalsMatchCheckoutTest extends TestCase
         $this->placeOrder(
             $this->cart($item, 3, (float) $item->price),
             $customer,
-            // The leading-zero MM/DD/YYYY variant, for coverage of both
-            // accepted shapes across this file.
-            $this->pwdFields(now()->addYear()->format('m/d/Y'))
+            $this->pwdFields()
         );
 
         $order = Order::orderByDesc('id')->first();
@@ -245,58 +252,30 @@ class CartTotalsMatchCheckoutTest extends TestCase
     // ── 2. The expired discount card ─────────────────────────────────────────
 
     /**
-     * The money question: does an expired card ever save a non-zero discount?
-     * It must not, and it does not — the order is refused outright.
+     * CHANGED Batch 2 (2026-09-29). Replaces three tests that pinned the
+     * refusal of an expired PWD card (never saves a discount / keeps the
+     * cart / shared message): the expiry requirement was removed on request,
+     * so the same 1940 date a stale page might post is now simply ignored —
+     * the order is placed with the one ordinary discount and no date stored.
      */
-    public function test_an_expired_card_never_saves_a_discount(): void
+    public function test_an_expired_looking_date_no_longer_refuses_a_pwd_order(): void
     {
         $item = $this->item();
         $customer = $this->customer();
-
         $before = Order::max('id');
 
         $res = $this->placeOrder(
             $this->cart($item, 2, (float) $item->price),
             $customer,
-            // A real, typed calendar date, just decades in the past.
             $this->pwdFields('1/1/1940')
         );
 
-        $res->assertSessionHasErrors('discount_beneficiary_expiration');
-        $this->assertSame($before, Order::max('id'), 'no order may be created from an expired card');
+        $res->assertSessionDoesntHaveErrors();
+        $order = Order::where('id', '>', (int) $before)->orderByDesc('id')->first();
 
-        $this->assertSame(
-            0,
-            Order::where('id', '>', (int) $before)->where('discount_amount', '>', 0)->count(),
-            'an expired card must never produce a discounted order'
-        );
-    }
-
-    /** The customer keeps their cart when the card is refused. */
-    public function test_an_expired_card_does_not_cost_the_customer_their_cart(): void
-    {
-        $item = $this->item();
-        $cart = $this->cart($item, 2, (float) $item->price);
-
-        $this->placeOrder($cart, $this->customer(), $this->pwdFields('1/1/1940'));
-
-        $this->assertSame($cart, session('cart'));
-    }
-
-    /** The refusal wording is the shared one, so the page and the server match. */
-    public function test_the_expiry_message_is_the_shared_one(): void
-    {
-        $item = $this->item();
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $this->customer(),
-            $this->pwdFields('1/1/1940')
-        );
-
-        $res->assertSessionHasErrors([
-            'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRED,
-        ]);
+        $this->assertNotNull($order);
+        $this->assertSame(Order::pwdSeniorDiscountFor((float) $order->subtotal), (float) $order->discount_amount);
+        $this->assertNull($order->discount_beneficiary_expiration);
     }
 
     /** The shared rule itself, which the cart page's JavaScript mirrors. */
@@ -340,39 +319,50 @@ class CartTotalsMatchCheckoutTest extends TestCase
     // than guessed at.
 
     /**
-     * End-to-end: a real, still-valid date typed as M/D/Y is accepted and an
-     * order is placed; an impossible one typed the same way is refused
-     * before any order is created, with the shared, human-readable message —
-     * not a framework default — because normalizeTypedExpiration() is what
-     * refuses it, before expirationErrorFor() is ever reached.
+     * CHANGED Batch 2 (2026-09-29). Replaces four end-to-end tests that pinned
+     * how checkout accepted or refused a typed expiration (valid M/D/Y
+     * accepted, MM/DD/YYYY stored, impossible date refused, ambiguous shapes
+     * refused). Checkout no longer reads the field at all: every one of those
+     * shapes — valid, impossible, ambiguous, garbage, blank — now places the
+     * same order with the same one discount and stores no date. The pure
+     * parser tests around this one are unchanged.
+     *
+     * @dataProvider stalePostedExpirations
      */
-    public function test_a_typed_mdy_expiration_date_is_accepted_when_real_and_refused_when_not(): void
+    public function test_no_posted_expiration_shape_affects_checkout_any_more(?string $stale): void
     {
         $item = $this->item();
-
         $before = Order::max('id');
 
-        $accepted = $this->placeOrder(
+        $res = $this->placeOrder(
             $this->cart($item, 1, (float) $item->price),
             $this->customer(),
-            $this->pwdFields(now()->addYear()->format('n/j/Y'))
+            $this->pwdFields($stale)
         );
 
-        $accepted->assertSessionDoesntHaveErrors('discount_beneficiary_expiration');
-        $this->assertGreaterThan($before, Order::max('id'), 'a real, unexpired typed date must place the order');
-        $afterAccepted = Order::max('id');
+        $res->assertSessionDoesntHaveErrors();
+        $order = Order::where('id', '>', (int) $before)->orderByDesc('id')->first();
 
-        $refused = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $this->customer(),
-            // February the 30th never exists on any calendar.
-            $this->pwdFields('2/30/' . now()->addYear()->format('Y'))
-        );
+        $this->assertNotNull($order, 'expiration "' . $stale . '" must not refuse the order');
+        $this->assertSame('pwd', $order->discount_type);
+        $this->assertSame(Order::pwdSeniorDiscountFor((float) $order->subtotal), (float) $order->discount_amount);
+        $this->assertNull($order->discount_beneficiary_expiration, 'nothing is stored for a new order');
+    }
 
-        $refused->assertSessionHasErrors([
-            'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID,
-        ]);
-        $this->assertSame($afterAccepted, Order::max('id'), 'an impossible calendar date must not place an order');
+    public static function stalePostedExpirations(): array
+    {
+        return [
+            'none posted'           => [null],
+            'blank'                 => [''],
+            'valid M/D/Y'           => ['5/12/' . (date('Y') + 2)],
+            'valid MM/DD/YYYY'      => ['05/12/' . (date('Y') + 2)],
+            'impossible Feb 30'     => ['2/30/' . (date('Y') + 1)],
+            'impossible 13/45'      => ['13/45/2027'],
+            'dash-separated'        => ['1-5-2027'],
+            'year first'            => ['2027/1/5'],
+            'two-digit year'        => ['5/1/27'],
+            'garbage'               => ['not a date at all'],
+        ];
     }
 
     /** A valid MM/DD/YYYY (leading-zero) value normalizes to the same Y-m-d as its M/D/Y equivalent. */
@@ -384,25 +374,6 @@ class CartTotalsMatchCheckoutTest extends TestCase
         );
         $this->assertSame('2027-01-05', DiscountCard::normalizeTypedExpiration('01/05/2027'));
         $this->assertSame('2027-01-05', DiscountCard::normalizeTypedExpiration('1/5/2027'));
-    }
-
-    /** End-to-end: the MM/DD/YYYY variant places the same order an M/D/Y submission would. */
-    public function test_a_typed_mmddyyyy_expiration_date_is_accepted_end_to_end(): void
-    {
-        $item = $this->item();
-        $before = Order::max('id');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $this->customer(),
-            $this->pwdFields(now()->addYear()->format('m/d/Y'))
-        );
-
-        $res->assertSessionDoesntHaveErrors('discount_beneficiary_expiration');
-        $order = Order::where('id', '>', $before)->orderByDesc('id')->first();
-
-        $this->assertNotNull($order, 'a valid MM/DD/YYYY submission must place an order');
-        $this->assertSame(now()->addYear()->toDateString(), $order->discount_beneficiary_expiration->toDateString());
     }
 
     /**
@@ -429,29 +400,6 @@ class CartTotalsMatchCheckoutTest extends TestCase
     }
 
     /**
-     * End-to-end: an impossible date never places an order, and is refused
-     * with the shared message rather than silently becoming a different,
-     * valid-looking date (the exact prior bug class this mirrors: Carbon
-     * rolling 2/30/2027 forward into March).
-     */
-    public function test_an_impossible_typed_date_never_places_an_order(): void
-    {
-        $item = $this->item();
-        $before = Order::max('id');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $this->customer(),
-            $this->pwdFields('13/45/2027')
-        );
-
-        $res->assertSessionHasErrors([
-            'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID,
-        ]);
-        $this->assertSame($before, Order::max('id'), 'an impossible date must not place an order under any date');
-    }
-
-    /**
      * Ambiguous or otherwise disallowed shapes are refused outright, per the
      * documented policy — never reinterpreted as some other date:
      *
@@ -469,27 +417,6 @@ class CartTotalsMatchCheckoutTest extends TestCase
         $this->assertNull(DiscountCard::normalizeTypedExpiration('1-5-2027'));
         $this->assertNull(DiscountCard::normalizeTypedExpiration('2027/1/5'));
         $this->assertNull(DiscountCard::normalizeTypedExpiration('5/1/27'));
-    }
-
-    /** End-to-end: the same three disallowed shapes are refused by the endpoint. */
-    public function test_ambiguous_formats_are_refused_end_to_end(): void
-    {
-        $item = $this->item();
-        $before = Order::max('id');
-
-        foreach (['1-5-2027', '2027/1/5', '5/1/27'] as $disallowed) {
-            $res = $this->placeOrder(
-                $this->cart($item, 1, (float) $item->price),
-                $this->customer(),
-                $this->pwdFields($disallowed)
-            );
-
-            $res->assertSessionHasErrors([
-                'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID,
-            ]);
-        }
-
-        $this->assertSame($before, Order::max('id'), 'none of the disallowed shapes may place an order');
     }
 
     /**
@@ -515,15 +442,11 @@ class CartTotalsMatchCheckoutTest extends TestCase
     }
 
     /**
-     * September 2026: the cart page renders PWD's expiration date as three
-     * Month/Day/Year <select> dropdowns — not the typed M/D/Y text field (nor
-     * a native calendar picker) this replaced. The dropdowns write into a
-     * hidden input carrying the same name and the same "M/D/Y" shape
-     * DiscountCard::normalizeTypedExpiration() already parses, so the server
-     * side of this is unchanged; see the round-trip and end-to-end tests
-     * elsewhere in this file for proof that submitted values still work.
+     * CHANGED Batch 2 (2026-09-29). Was "renders month/day/year dropdowns, not
+     * a typed field": the expiration date is gone from the cart entirely —
+     * no dropdowns, no hidden field, no label — for PWD and Senior alike.
      */
-    public function test_the_cart_page_renders_month_day_year_dropdowns_not_a_typed_field(): void
+    public function test_the_cart_page_renders_no_expiration_field_at_all(): void
     {
         $item = $this->item();
 
@@ -532,31 +455,22 @@ class CartTotalsMatchCheckoutTest extends TestCase
             ->get('/customer/cart')
             ->getContent();
 
-        // The hidden field the server still reads, carrying the same name.
-        $this->assertStringContainsString(
-            'name="discount_beneficiary_expiration"',
-            $html
-        );
-        $this->assertStringContainsString('id="discountBeneficiaryExpiration"', $html);
-        $this->assertStringContainsString('type="hidden"', $html);
-
-        // The three dropdowns that feed it.
-        $this->assertStringContainsString('id="discountExpirationMonth"', $html);
-        $this->assertStringContainsString('id="discountExpirationDay"', $html);
-        $this->assertStringContainsString('id="discountExpirationYear"', $html);
-        $this->assertStringContainsString('>Jan<', $html);
-        $this->assertStringContainsString('>Dec<', $html);
-
-        // Typing is gone: no free-text placeholder or format hint left behind.
+        $this->assertStringNotContainsString('name="discount_beneficiary_expiration"', $html);
+        $this->assertStringNotContainsString('id="discountBeneficiaryExpiration"', $html);
+        $this->assertStringNotContainsString('id="discountExpirationMonth"', $html);
+        $this->assertStringNotContainsString('id="discountExpirationDay"', $html);
+        $this->assertStringNotContainsString('id="discountExpirationYear"', $html);
+        $this->assertStringNotContainsString('id="discountExpirationBlock"', $html);
+        $this->assertStringNotContainsString('Expiration Date', $html);
         $this->assertStringNotContainsString('placeholder="M/D/Y"', $html);
-        $this->assertStringNotContainsString('Format: M/D/Y or MM/DD/YYYY', $html);
-        $this->assertStringNotContainsString('type="date"', $html, 'no native calendar picker either');
+        $this->assertStringNotContainsString('type="date"', $html);
     }
 
     /**
      * The cart page must not be able to preview a discount the server would
-     * refuse: it renders the SAME rate and the SAME messages the server uses,
-     * and gates the preview on the same expiry check.
+     * not give: it renders the SAME rate the server uses, and — CHANGED Batch
+     * 2 (2026-09-29), was "gates the preview on the same expiry check" — gates
+     * the preview on the same Apply intent checkout requires.
      */
     public function test_the_cart_page_previews_with_the_servers_own_rule(): void
     {
@@ -573,15 +487,17 @@ class CartTotalsMatchCheckoutTest extends TestCase
             'the preview rate must come from Order::PWD_SENIOR_DISCOUNT_RATE'
         );
 
-        $this->assertStringContainsString(json_encode(DiscountCard::ERROR_EXPIRED), $html);
-        $this->assertStringContainsString('function discountCardExpirationError()', $html);
+        // No expiry rule is left to gate on.
+        $this->assertStringNotContainsString('discountCardExpirationError', $html);
+        $this->assertStringNotContainsString(json_encode(DiscountCard::ERROR_EXPIRED), $html);
 
-        // The preview is gated on that function — without this the page could
-        // print "expired" and keep showing the discount, which is the bug.
-        $this->assertStringContainsString(
-            'var expirationError = discountCardExpirationError();',
+        // currentCardDiscount() gives nothing until the IDs are Applied — the
+        // same condition as the hidden discount_applied the server requires.
+        $this->assertMatchesRegularExpression(
+            '/function currentCardDiscount\(\) \{.*?if \(!discountIdsApplied\) \{\s+return null;/s',
             $html
         );
+        $this->assertStringContainsString('name="discount_applied" id="discountApplied"', $html);
     }
 
     /** A repriced cart says so, rather than silently changing the number. */
@@ -603,10 +519,9 @@ class CartTotalsMatchCheckoutTest extends TestCase
     // ── 4. Senior Citizen: expiration is optional (September 2026) ──────────
     //
     // Philippine Senior Citizen IDs (RA 9994, as amended by RA 10645) do not
-    // expire. PWD IDs DO expire and are renewed (RA 10754 and its
-    // implementing rules), so PWD keeps requiring a valid expiration exactly
-    // as before — only Senior Citizen is exempted, via
-    // DiscountCard::requiresExpiration().
+    // expire. Until Batch 2 (2026-09-29) PWD still required one; since then
+    // neither type does. The three Senior tests below are unchanged apart
+    // from the helper now posting the Apply intent.
 
     /** The headline case: a blank expiration must not block a Senior Citizen order. */
     public function test_a_senior_citizen_checkout_with_a_blank_expiration_succeeds(): void
@@ -682,134 +597,24 @@ class CartTotalsMatchCheckoutTest extends TestCase
         $this->assertNull($order->discount_beneficiary_expiration);
     }
 
-    /**
-     * THE CRITICAL REGRESSION TEST: PWD must still require a valid
-     * expiration exactly as before. A blank field is refused.
+    /*
+     * CHANGED Batch 2 (2026-09-29): five PWD tests stood here —
+     *   test_a_pwd_checkout_with_a_blank_expiration_is_still_rejected
+     *   test_a_pwd_checkout_with_an_invalid_expiration_is_still_rejected
+     *   test_a_pwd_checkout_with_a_valid_expiration_still_succeeds
+     *   test_a_pwd_checkout_with_a_dropdown_selected_expiration_succeeds
+     *   test_a_pwd_checkout_with_a_dropdown_selected_impossible_date_is_still_rejected
+     * — pinning that PWD required a valid expiration. That requirement was
+     * removed on request, so they are replaced by the data-provided
+     * test_no_posted_expiration_shape_affects_checkout_any_more() in section
+     * 3, which runs every one of those inputs (blank, garbage, valid,
+     * dropdown-shaped, Feb 30) and asserts the order is placed with the one
+     * ordinary discount and no stored date.
      */
-    public function test_a_pwd_checkout_with_a_blank_expiration_is_still_rejected(): void
-    {
-        $item = $this->item();
-        $customer = $this->customer();
-        $before = Order::max('id');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $customer,
-            $this->pwdFields('')
-        );
-
-        $res->assertSessionHasErrors();
-        $this->assertSame($before, Order::max('id'), 'PWD must still require an expiration date');
-    }
-
-    /** THE CRITICAL REGRESSION TEST, invalid half: garbage still refuses a PWD order. */
-    public function test_a_pwd_checkout_with_an_invalid_expiration_is_still_rejected(): void
-    {
-        $item = $this->item();
-        $customer = $this->customer();
-        $before = Order::max('id');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $customer,
-            $this->pwdFields('not a date at all')
-        );
-
-        $res->assertSessionHasErrors([
-            'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID,
-        ]);
-        $this->assertSame($before, Order::max('id'), 'PWD must still refuse an unparseable expiration');
-    }
-
-    /** THE CRITICAL REGRESSION TEST, positive half: a valid PWD expiration still succeeds exactly as before. */
-    public function test_a_pwd_checkout_with_a_valid_expiration_still_succeeds(): void
-    {
-        $item = $this->item();
-        $customer = $this->customer();
-        $before = Order::max('id');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $customer,
-            $this->pwdFields(now()->addYear()->format('n/j/Y'))
-        );
-
-        $res->assertSessionDoesntHaveErrors();
-        $order = Order::where('id', '>', $before)->orderByDesc('id')->first();
-
-        $this->assertNotNull($order, 'a valid, unexpired PWD expiration must still place the order');
-        $this->assertSame('pwd', $order->discount_type);
-        $this->assertSame(now()->addYear()->toDateString(), $order->discount_beneficiary_expiration->toDateString());
-    }
-
-    /**
-     * September 2026: PWD's expiration date is now entered via three
-     * Month/Day/Year <select> dropdowns on the cart page (see
-     * test_the_cart_page_renders_month_day_year_dropdowns_not_a_typed_field()),
-     * but the three selects only ever combine into the exact "M/D/Y" string
-     * this HTTP layer already expects — a selection of "May" / "12" / next
-     * year is submitted over the wire exactly as "5/12/<year>", identical to
-     * what the old typed field would have sent. This proves that combined
-     * value places the order correctly end to end, the same way the existing
-     * typed-input test above does.
-     */
-    public function test_a_pwd_checkout_with_a_dropdown_selected_expiration_succeeds(): void
-    {
-        $item = $this->item();
-        $customer = $this->customer();
-        $before = Order::max('id');
-
-        $month = 5;
-        $day = 12;
-        $year = (int) now()->addYears(2)->format('Y');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $customer,
-            $this->pwdFields($month . '/' . $day . '/' . $year)
-        );
-
-        $res->assertSessionDoesntHaveErrors();
-        $order = Order::where('id', '>', $before)->orderByDesc('id')->first();
-
-        $this->assertNotNull($order, 'a valid Month/Day/Year selection must still place the order');
-        $this->assertSame('pwd', $order->discount_type);
-        $this->assertSame(
-            sprintf('%04d-%02d-%02d', $year, $month, $day),
-            $order->discount_beneficiary_expiration->toDateString()
-        );
-    }
-
-    /**
-     * September 2026: with the static 1-31 Day dropdown (no per-month/year
-     * filtering — see the comment above #discountExpirationBlock in
-     * cart.blade.php for why), a combination like Feb 30 is a value the
-     * dropdowns CAN produce, so the server's checkdate() guard remains the
-     * only thing stopping it. Same shared error as the pre-existing typed
-     * -field impossible-date coverage above.
-     */
-    public function test_a_pwd_checkout_with_a_dropdown_selected_impossible_date_is_still_rejected(): void
-    {
-        $item = $this->item();
-        $customer = $this->customer();
-        $before = Order::max('id');
-
-        $res = $this->placeOrder(
-            $this->cart($item, 1, (float) $item->price),
-            $customer,
-            $this->pwdFields('2/30/' . (now()->year + 1))
-        );
-
-        $res->assertSessionHasErrors([
-            'discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_INVALID,
-        ]);
-        $this->assertSame($before, Order::max('id'), 'Feb 30 from the dropdowns must still be refused');
-    }
 
     /**
      * This task must not touch discount MATH: the 20% figure for Senior
-     * Citizen (now with no expiration supplied) must be byte-identical to the
-     * same figure for PWD (with a valid expiration supplied), for the same
+     * Citizen must be byte-identical to the same figure for PWD, for the same
      * subtotal — both go through the same Order::pwdSeniorDiscountFor().
      */
     public function test_the_discount_amount_is_identical_for_senior_and_pwd_on_the_same_subtotal(): void
@@ -819,14 +624,14 @@ class CartTotalsMatchCheckoutTest extends TestCase
         $qty = 2;
 
         $seniorBefore = Order::max('id');
-        $this->placeOrder($this->cart($item, $qty, (float) $item->price), $customer, $this->seniorFields(''));
+        $this->placeOrder($this->cart($item, $qty, (float) $item->price), $customer, $this->seniorFields());
         $seniorOrder = Order::where('id', '>', $seniorBefore)->orderByDesc('id')->first();
 
         $pwdBefore = Order::max('id');
         $this->placeOrder(
             $this->cart($item, $qty, (float) $item->price),
             $customer,
-            $this->pwdFields(now()->addYear()->format('n/j/Y'))
+            $this->pwdFields()
         );
         $pwdOrder = Order::where('id', '>', $pwdBefore)->orderByDesc('id')->first();
 
@@ -876,56 +681,5 @@ class CartTotalsMatchCheckoutTest extends TestCase
         $this->assertSame(DiscountCard::ERROR_EXPIRATION_MISSING, DiscountCard::expirationErrorFor(null));
         $this->assertSame(DiscountCard::ERROR_EXPIRED, DiscountCard::expirationErrorFor('1940-01-01', 'pwd'));
         $this->assertNull(DiscountCard::expirationErrorFor(now()->addYear()->toDateString(), 'pwd'));
-    }
-
-    /**
-     * September 2026: the expiration block (label, dropdowns, help text) is
-     * shipped hidden and selectDiscountType() hides it again for Senior
-     * Citizen rather than merely relabelling it — manual testing on a phone
-     * showed a visible-but-"not required" field still got filled in by
-     * mistake. The block's wrapper carries the `hidden` class server-rendered
-     * (matching the page's default "no type selected" state), and the JS
-     * that shows/hides it toggles the wrapper, never the field's required-ness.
-     * The JS preview/confirm gate must still mirror the server's exemption —
-     * a stale value left over from switching types must remain harmless,
-     * never blocking, exactly as before.
-     */
-    public function test_the_cart_page_hides_expiration_entirely_for_senior_citizen(): void
-    {
-        $item = $this->item();
-
-        $html = $this->actingAs($this->customer(), 'customer')
-            ->withSession(['cart' => $this->cart($item, 1, (float) $item->price), 'branch_id' => 1, 'order_type' => 'pick_up'])
-            ->get('/customer/cart')
-            ->getContent();
-
-        $this->assertStringContainsString('id="discountExpirationBlock"', $html);
-        $this->assertStringContainsString('id="discountExpirationLabel"', $html);
-        $this->assertStringContainsString('id="discountExpirationHelp"', $html);
-
-        // Shipped hidden by default — the page loads with no discount type
-        // selected, so nothing PWD-only should be visible yet.
-        $this->assertMatchesRegularExpression(
-            '/id="discountExpirationBlock"\s+class="hidden"/',
-            $html
-        );
-
-        // selectDiscountType() toggles that wrapper's hidden class based on
-        // type — it must not just swap label/help text and leave the field
-        // visible-but-optional the way the September 2026 first pass did.
-        $this->assertStringContainsString("if (type === 'senior')", $html);
-        $this->assertStringContainsString(
-            "expirationBlock.classList.add('hidden')",
-            $html
-        );
-        $this->assertStringContainsString(
-            "expirationBlock.classList.remove('hidden')",
-            $html
-        );
-
-        // The JS twin still exempts Senior Citizen before ever looking at the
-        // field's value — hiding the block is cosmetic, not a second source
-        // of truth for whether the date is required.
-        $this->assertStringContainsString("if (discountType === 'senior')", $html);
     }
 }

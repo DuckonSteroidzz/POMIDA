@@ -1303,18 +1303,17 @@
                             $modalDiscountBeneficiaries = $order->discountBeneficiaryList();
 
                             /*
-                             * The saved card's date when there is one, else
-                             * the date typed at checkout. This used to read
-                             * ONLY $discountCard — and no order has one (the
-                             * saved-card path is unused) — so staff always saw
-                             * "Not provided" even for a PWD order whose
-                             * expiration checkout had just validated.
+                             * Checkout no longer asks for an expiration date
+                             * (Batch 2, 2026-09-29), so a new order has none
+                             * and the modal's row stays hidden. An order placed
+                             * before that change still shows the date it was
+                             * checked against — the stored value stays readable.
+                             * Read from the order only: a saved card's own date
+                             * was never part of what this order was checked on.
                              */
-                            $modalExpirationSource = $discountCard?->expiration_date
-                                ?? $order->discount_beneficiary_expiration;
-                            $modalDiscountExpiry = $modalExpirationSource
-                                ? \Carbon\Carbon::parse($modalExpirationSource)->format('M d, Y')
-                                : 'Not provided';
+                            $modalDiscountExpiry = $order->discount_beneficiary_expiration
+                                ? \Carbon\Carbon::parse($order->discount_beneficiary_expiration)->format('M d, Y')
+                                : '';
                             /*
                              * Security review 2026-08-31 (Pass 4, item #10):
                              * this used to build a direct asset() URL into the
@@ -1636,8 +1635,11 @@
                 <span class="label" id="pcDiscountIdsLabel">IDs listed</span>
                 <ol class="value" id="pcDiscountIdList" style="margin:0;padding-left:1.1rem;text-align:left;"></ol>
             </div>
-            <div class="pc-discount-detail">
-                <span class="label">PWD ID Expiration</span>
+            {{-- Only for an order placed before expiry dates were dropped
+                 (Batch 2, 2026-09-29); openDiscountModal() un-hides it when
+                 the order carries one. --}}
+            <div class="pc-discount-detail" id="pcDiscountExpirationRow" style="display:none;">
+                <span class="label">PWD ID Expiration (older order)</span>
                 <span class="value" id="pcDiscountExpiration">-</span>
             </div>
             <div style="font-size:0.75rem;color:#8B1A1A;opacity:0.75;margin-top:0.35rem;">
@@ -2959,8 +2961,10 @@ function openDiscountModal(button) {
     document.getElementById('pcDiscountIdsLabel').textContent =
         beneficiaries.length > 1 ? 'IDs listed (' + beneficiaries.length + ')' : 'ID listed';
 
-    document.getElementById('pcDiscountExpiration').textContent =
-        button.dataset.expiration || 'Not provided';
+    document.getElementById('pcDiscountExpiration').textContent = button.dataset.expiration || '';
+    // Inline display, not [hidden]: .pc-discount-detail sets display:flex,
+    // which would override the attribute.
+    document.getElementById('pcDiscountExpirationRow').style.display = button.dataset.expiration ? '' : 'none';
 
     const status = (button.dataset.status || 'approved').toLowerCase();
     const statusBox = document.getElementById('pcDiscountStatus');

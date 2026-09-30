@@ -711,6 +711,7 @@
 
 @include('customer.partials.welcome-popup')
 @include('customer.partials.idle-timeout')
+@include('customer.partials.menu-ad-popup')
 
 {{-- ================= ORDER STATUS NOTIFICATION ================= --}}
 <div id="orderStatusNotice"

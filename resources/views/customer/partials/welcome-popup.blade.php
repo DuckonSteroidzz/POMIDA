@@ -13,7 +13,18 @@
 @if(!empty($welcomeCustomer))
 @php
     $isReturning = ($welcomeCustomer['type'] ?? 'new') === 'returning';
-    $storeName = \App\Support\StoreContact::forBranch(session('branch_id'))['business_name'];
+
+    // StoreContact::forBranch(null) falls back to the main branch (it exists
+    // to give the Store Information/contact screens SOME address to show).
+    // That fallback is wrong here: a Pick-Up customer who has not chosen a
+    // branch yet is not "at" the main branch, so this popup must not name
+    // one. Only resolve a name when a branch is actually known — Pick-Up
+    // after a branch pick, or Dine-In, which always sets branch_id from the
+    // scanned QR before this popup fires.
+    $selectedBranchId = session('branch_id');
+    $storeName = $selectedBranchId
+        ? \App\Support\StoreContact::forBranch($selectedBranchId)['business_name']
+        : null;
 @endphp
 <div id="welcomePopup" role="dialog" aria-modal="true" aria-labelledby="welcomePopupTitle"
      style="position:fixed;inset:0;z-index:10001;background:rgba(59,35,32,0.55);display:flex;align-items:center;justify-content:center;padding:1rem;">
@@ -28,8 +39,10 @@
         <h3 id="welcomePopupTitle" style="margin:0 0 8px;color:#3b2320;font-family:'Fraunces',Georgia,serif;font-size:19px;line-height:1.25;font-weight:700;">
             @if($isReturning)
                 Welcome back, {{ $welcomeCustomer['name'] }}!
-            @else
+            @elseif($storeName)
                 Welcome to {{ $storeName }}!
+            @else
+                Welcome!
             @endif
         </h3>
         <p style="max-width:260px;margin:0 auto;color:#8A6A61;font-size:12px;line-height:1.55;">

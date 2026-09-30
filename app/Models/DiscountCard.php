@@ -75,6 +75,13 @@ class DiscountCard extends Model
     | Everything now calls this method, and the cart page renders its messages
     | from the constants below, so the preview and the charge cannot disagree.
     |
+    | BATCH 2 (2026-09-29): checkout no longer asks for or checks an
+    | expiration date at all, for PWD or Senior Citizen — not on the cart, not
+    | in OrderController::placeOrder() (typed or saved-card path). Nothing in
+    | the ordering flow calls the helpers below any more. They are left as
+    | they were, pure and self-tested, because orders and cards placed before
+    | that change still carry a stored date that these describe.
+    |
     */
 
     public const ERROR_EXPIRATION_MISSING = 'Please enter the discount card expiration date.';

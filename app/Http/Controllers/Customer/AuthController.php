@@ -2312,12 +2312,11 @@ private function switchBranch($branchId): void
             ))
             ->get();
 
+        // liveNow() is the shared active + starts_at + ends_at rule (the Menu
+        // popup uses it too). This query used to skip starts_at, so an ad
+        // scheduled for next week already played in the carousel.
         $gameAds = $this->scopeToCustomerBranch(\App\Models\Ad::where('placement', 'game')
-            ->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('ends_at')
-                    ->orWhere('ends_at', '>=', now());
-            }))
+            ->liveNow())
             ->get();
 
         // Rendered into the page so the counter is already correct on first

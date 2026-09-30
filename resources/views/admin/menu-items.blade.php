@@ -64,22 +64,29 @@
             <i class="bi bi-search"></i>
             <input type="text" class="search-input" style="width: 100%;" aria-label="Search menu items" id="searchInput" onkeyup="searchTable()" autocomplete="off">
         </div>
-        <select class="form-control-custom" style="width: 160px; margin-bottom: 0;" id="categoryFilter" onchange="filterTable()">
-            <option value="">Main Category:</option>
-            @if(isset($categories))
-            @foreach($categories as $category)
-            <option value="{{ $category->name }}">{{ $category->name }}</option>
-            @endforeach
-            @endif
-        </select>
-        <select class="form-control-custom" style="width: 160px; margin-bottom: 0;" id="subCategoryFilter" onchange="filterTable()">
-            <option value="">Sub Category:</option>
-            @if(isset($subcategories))
-            @foreach($subcategories as $sub)
-            <option value="{{ $sub->name }}">{{ $sub->name }}</option>
-            @endforeach
-            @endif
-        </select>
+        {{-- Main/Sub Category filter (Batch 2, 2026-09-29): a plain GET form,
+             applied by showMenuItems() by id on top of the branch scope, so
+             the choice survives a reload and shows as selected. Changing the
+             Main Category drops the Sub Category, and the Sub list only
+             offers the chosen category's own subcategories. --}}
+        <form method="GET" action="{{ route('admin.menu-items') }}" id="menuFilterForm" style="display:contents;">
+            <select class="form-control-custom" style="width: 160px; margin-bottom: 0;" id="categoryFilter" name="category" aria-label="Filter by main category"
+                onchange="document.getElementById('subCategoryFilter').value = ''; this.form.submit();">
+                <option value="">Main Category:</option>
+                @foreach($categories as $category)
+                <option value="{{ $category->id }}" {{ (int) $filterCategory?->id === (int) $category->id ? 'selected' : '' }}>{{ $category->name }}</option>
+                @endforeach
+            </select>
+            <select class="form-control-custom" style="width: 160px; margin-bottom: 0;" id="subCategoryFilter" name="subcategory" aria-label="Filter by sub category"
+                onchange="this.form.submit();">
+                <option value="">Sub Category:</option>
+                @foreach($subcategories as $sub)
+                    @if(! $filterCategory || (int) $sub->category_id === (int) $filterCategory->id)
+                    <option value="{{ $sub->id }}" {{ (int) $filterSubcategory?->id === (int) $sub->id ? 'selected' : '' }}>{{ $sub->name }}</option>
+                    @endif
+                @endforeach
+            </select>
+        </form>
         @if($canManageMenu)
         @if(isset($selectedBranch) && $selectedBranch === 'all')
         <div style="background:#fff3cd;border:1px solid #ffc107;border-radius:8px;padding:0.5rem 0.85rem;font-size:0.78rem;color:#856404;">
@@ -108,6 +115,19 @@
             <i class="bi bi-archive"></i> Archived ({{ $archivedCount ?? 0 }})
         </a>
     </div>
+
+    {{-- What the list is narrowed to, and one click back to everything. --}}
+    @if($filterCategory)
+    <div id="menuFilterIndicator" style="display:flex;align-items:center;flex-wrap:wrap;gap:0.5rem;margin-top:0.75rem;font-size:0.82rem;color:#5a2920;">
+        <i class="bi bi-funnel"></i>
+        <span>Filtering: <strong>{{ $filterCategory->name }}</strong>@if($filterSubcategory) &gt; <strong>{{ $filterSubcategory->name }}</strong>@endif</span>
+        <span style="color:#8a6a61;">({{ $menuItems->count() }} {{ $menuItems->count() === 1 ? 'item' : 'items' }})</span>
+        <a href="{{ route('admin.menu-items') }}"
+            style="display:inline-flex;align-items:center;gap:0.3rem;padding:0.25rem 0.7rem;border-radius:999px;border:1px solid #F6B49B;background:#fffaf6;color:#C0392B;font-weight:700;text-decoration:none;">
+            <i class="bi bi-x-lg"></i> Clear filter
+        </a>
+    </div>
+    @endif
 </div>
 
 {{-- Table --}}
@@ -511,6 +531,14 @@
                     <i class="bi bi-list-ul"></i> Recipe Ingredients
                 </p>
 
+                {{-- Sized item: each size has its own recipe below, so this base
+                     editor is hidden rather than left editable — existing rows
+                     are NOT deleted, only the block is hidden (applyRecipeLock()),
+                     same show/hide mechanism showRecipeBlock() already uses. --}}
+                <p class="size-hint" id="recipeSizedNote" style="display:none;">
+                    This item uses per-size recipes below.
+                </p>
+
                 {{-- ── ADD MODE ── --}}
                 @php
                     $addDraftRows = [];
@@ -875,6 +903,7 @@
         document.getElementById('itemForm').action = `{{ route('admin.new-menu-item.post') }}`;
         document.getElementById('formMethod').value = 'POST';
         showRecipeBlock('add');
+        applyRecipeLock('add', false);
         applyPriceLock(false);
         showSizeBlock('add');
     }
@@ -907,6 +936,7 @@
             document.getElementById('imageLabel').innerText = 'Item Image (Optional)';
         }
         showRecipeBlock(id);
+        applyRecipeLock(id, btn.dataset.hasSizes === '1');
         showSizeBlock(id);
         document.getElementById('itemModal').style.display = 'flex';
     }
@@ -938,6 +968,19 @@
         document.querySelectorAll('.recipe-block').forEach(function (b) { b.style.display = 'none'; });
         var block = document.getElementById('recipe-' + id);
         if (block) block.style.display = 'block';
+    }
+
+    // A sized item's own per-size recipes (below) are what's actually used, so
+    // the base editor showRecipeBlock() just displayed is hidden again here and
+    // replaced with a note. Existing base recipe rows are untouched in the
+    // DOM/database — only the editor is hidden, exactly like applyPriceLock()
+    // hides nothing but locks the Price box instead; this block has no single
+    // input to lock, so it is hidden rather than disabled.
+    function applyRecipeLock(id, isSized) {
+        var note = document.getElementById('recipeSizedNote');
+        var block = document.getElementById('recipe-' + id);
+        if (note) note.style.display = isSized ? 'block' : 'none';
+        if (block && isSized) block.style.display = 'none';
     }
 
     // ══════════ SIZES (Menu Item Sizes, Phase 1) ══════════
@@ -1032,7 +1075,7 @@
     }
 
     // Search
-    // Shared by searchTable()/filterTable(): applies `matchFn` to every ITEM
+    // Used by searchTable(): applies `matchFn` to every ITEM
     // row (never a .menu-branch-group-row header itself — its own text is
     // just a branch name, which would fail almost any search/category
     // match), then shows a branch section header only while at least one of
@@ -1053,21 +1096,12 @@
         });
     }
 
+    // Only ever narrows the rows the server already filtered by Main/Sub
+    // Category (showMenuItems()), so typing here can no longer bring back
+    // items from another category while the dropdown still names one.
     function searchTable() {
         const input = document.getElementById('searchInput').value.toLowerCase();
         applyMenuRowVisibility(row => row.innerText.toLowerCase().includes(input));
-    }
-
-    // Filter
-    function filterTable() {
-        const cat = document.getElementById('categoryFilter').value.toLowerCase();
-        const sub = document.getElementById('subCategoryFilter').value.toLowerCase();
-        applyMenuRowVisibility(row => {
-            const text = row.innerText.toLowerCase();
-            const catMatch = cat === '' || text.includes(cat);
-            const subMatch = sub === '' || text.includes(sub);
-            return catMatch && subMatch;
-        });
     }
 
     // Auto-show modal if errors (sticky form). A failed CREATE (the only path

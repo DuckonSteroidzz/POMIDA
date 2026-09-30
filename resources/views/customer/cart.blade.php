@@ -811,120 +811,32 @@
                                      enclosing form first, which exposes its
                                      controls by id, so the call would reach
                                      this button instead of the function. --}}
-                                <button type="button" id="discountIdAddButton" onclick="addDiscountIdRow(true)"
-                                    class="mt-2 inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-xs font-black uppercase tracking-[0.12em] text-peach-deep/40 transition hover:text-peach-red">
-                                    <i class="bi bi-plus-lg" aria-hidden="true"></i>
-                                    <span id="addDiscountIdRowLabel">Add another ID</span>
-                                </button>
+                                {{-- Apply (Batch 2, 2026-09-29): the rows can be
+                                     typed freely, and the discount is only
+                                     previewed — and only asked for at checkout,
+                                     via the hidden discount_applied below — once
+                                     this is pressed with every row complete.
+                                     Any later edit withdraws it until Apply is
+                                     pressed again. Same look as the voucher's
+                                     Apply. The id is not the function's name:
+                                     see the note on the button above. --}}
+                                <div class="mt-2 flex items-center justify-between gap-2">
+                                    <button type="button" id="discountIdAddButton" onclick="addDiscountIdRow(true)"
+                                        class="inline-flex items-center gap-1.5 rounded-lg px-1 py-1 text-xs font-black uppercase tracking-[0.12em] text-peach-deep/40 transition hover:text-peach-red">
+                                        <i class="bi bi-plus-lg" aria-hidden="true"></i>
+                                        <span id="addDiscountIdRowLabel">Add another ID</span>
+                                    </button>
+
+                                    <button type="button" id="discountApplyButton" onclick="applyDiscountIds()"
+                                        class="ml-auto shrink-0 rounded-full border border-peach-soft bg-white px-4 py-2.5 text-sm font-bold text-peach-red transition hover:bg-peach-soft">Apply</button>
+                                </div>
+
+                                <input type="hidden" name="discount_applied" id="discountApplied" value="">
 
                                 <p class="mt-1 text-[0.68rem] text-peach-deep/50">
-                                    One person per row. The discount is applied once per order, however many IDs you list.
+                                    One person per row. Press Apply when every row is filled in.
+                                    The discount is applied once per order, however many IDs you list.
                                     Please have the ID(s) with you — staff will check them.
-                                </p>
-                            </div>
-
-                            <div id="discountExpirationBlock" class="hidden">
-                                {{--
-                                    September 2026: this whole block (label,
-                                    dropdowns, help text) is shown ONLY for PWD
-                                    now — selectDiscountType() toggles the
-                                    `hidden` class here, never just the label
-                                    text. A Senior Citizen ID has no expiration
-                                    under Philippine law (RA 9994, as amended by
-                                    RA 10645), and manual testing on a phone
-                                    showed that a visible-but-"not required"
-                                    field still confused people into filling it
-                                    in. Removing it from view for that type,
-                                    rather than relabelling it, is the fix.
-                                --}}
-                                <label class="mb-1 block text-xs font-bold text-peach-deep/65" id="discountExpirationLabel">
-                                    PWD ID Expiration Date *
-                                </label>
-                                {{--
-                                    Three plain <select> dropdowns, not the
-                                    typed M/D/Y text field this replaced back —
-                                    typing raised the chance of a format mistake
-                                    (dashes, year-first, 2-digit years), and a
-                                    dropdown cannot be typo'd.
-
-                                    This is a pure front-end swap: the three
-                                    selects only ever write a combined
-                                    "M/D/Y" string into the hidden
-                                    #discountBeneficiaryExpiration input below,
-                                    which keeps the same `name` attribute the
-                                    server already expects. Every existing
-                                    consumer of that value —
-                                    DiscountCard::normalizeTypedExpiration(),
-                                    checkdate(), OrderController::placeOrder(),
-                                    and this page's own
-                                    discountCardExpirationError() — is
-                                    completely unchanged.
-
-                                    Day is a static 1-31 list rather than being
-                                    narrowed to the selected month/year (no Feb
-                                    30 filtering here) — the server's
-                                    checkdate() already rejects an impossible
-                                    combination with the same red-border error
-                                    this page has always shown, so a dynamic
-                                    list would only be a convenience, not a
-                                    correctness requirement.
-
-                                    Year range: current year − 1 through
-                                    current year + 15 — wide enough to cover a
-                                    PWD ID renewed years ago that is still
-                                    valid, and the several-years-out validity a
-                                    freshly issued or renewed PWD ID commonly
-                                    carries in the Philippines.
-                                --}}
-                                <div class="grid grid-cols-3 gap-2">
-                                    <select
-                                        id="discountExpirationMonth"
-                                        aria-label="Expiration month"
-                                        class="w-full rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                    >
-                                        <option value="">Month</option>
-                                        @foreach ([
-                                            1 => 'Jan', 2 => 'Feb', 3 => 'Mar', 4 => 'Apr',
-                                            5 => 'May', 6 => 'Jun', 7 => 'Jul', 8 => 'Aug',
-                                            9 => 'Sep', 10 => 'Oct', 11 => 'Nov', 12 => 'Dec',
-                                        ] as $monthNumber => $monthName)
-                                            <option value="{{ $monthNumber }}">{{ $monthName }}</option>
-                                        @endforeach
-                                    </select>
-
-                                    <select
-                                        id="discountExpirationDay"
-                                        aria-label="Expiration day"
-                                        class="w-full rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                    >
-                                        <option value="">Day</option>
-                                        @for ($day = 1; $day <= 31; $day++)
-                                            <option value="{{ $day }}">{{ $day }}</option>
-                                        @endfor
-                                    </select>
-
-                                    <select
-                                        id="discountExpirationYear"
-                                        aria-label="Expiration year"
-                                        class="w-full rounded-xl border border-peach-soft bg-white px-2 py-2.5 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
-                                    >
-                                        <option value="">Year</option>
-                                        @for ($year = now()->year - 1; $year <= now()->year + 15; $year++)
-                                            <option value="{{ $year }}">{{ $year }}</option>
-                                        @endfor
-                                    </select>
-                                </div>
-                                <input
-                                    type="hidden"
-                                    name="discount_beneficiary_expiration"
-                                    id="discountBeneficiaryExpiration"
-                                    value=""
-                                >
-                                {{-- One date per order, as before: the discount
-                                     is applied once, so one valid PWD ID is
-                                     what it needs. --}}
-                                <p class="mt-1 text-[0.68rem] text-peach-deep/50" id="discountExpirationHelp">
-                                    Select the expiration date on a PWD ID listed above.
                                 </p>
                             </div>
 
@@ -1150,6 +1062,12 @@
                         <span id="reviewTotal">₱{{ number_format($total, 2) }}</span>
                     </div>
                 </div>
+
+                {{-- Shown by openOrderConfirmation() when PWD/Senior IDs were
+                     typed but Apply was never pressed: the order will be
+                     placed at the regular price, and the customer is told
+                     before confirming, not after (Batch 2, 2026-09-29). --}}
+                <div id="reviewDiscountNotApplied" class="mt-3 hidden rounded-xl bg-red-50 px-3 py-2 text-xs font-semibold text-red-700"></div>
             </div>
 
             {{-- The forced 5-second countdown was removed 2026-09-01: it added a
@@ -1497,84 +1415,69 @@
         var appliedVoucherDiscount = null;
 
         /*
-         * The discount rate and the expiry messages are rendered from the
-         * server's own constants, so this preview cannot drift away from what
+         * The discount rate is rendered from the server's own constant, so
+         * this preview cannot drift away from what
          * OrderController::placeOrder() will actually do.
          */
         var PWD_SENIOR_DISCOUNT_RATE = @json(\App\Models\Order::PWD_SENIOR_DISCOUNT_RATE);
 
-        var DISCOUNT_CARD_MESSAGES = {
-            missing: @json(\App\Models\DiscountCard::ERROR_EXPIRATION_MISSING),
-            invalid: @json(\App\Models\DiscountCard::ERROR_EXPIRATION_INVALID),
-            expired: @json(\App\Models\DiscountCard::ERROR_EXPIRED)
-        };
+        /*
+         * Whether the PWD/Senior IDs as they stand right now were Applied
+         * (Batch 2, 2026-09-29). Set only by applyDiscountIds() when every
+         * listed row passes the server's own rules; cleared by ANY edit —
+         * typing, clearing a field, adding or removing a row, switching or
+         * deselecting the type — so a changed list always needs Apply again.
+         * Mirrored into the hidden discount_applied field, which is the only
+         * thing that makes checkout consider the discount at all. The name is
+         * not the hidden input's id (discountApplied) on purpose.
+         *
+         * There is no expiration date any more: it was removed for PWD and
+         * Senior alike, so nothing on this page asks for or checks one.
+         */
+        var discountIdsApplied = false;
+
+        function setDiscountApplied(applied) {
+            discountIdsApplied = applied === true;
+
+            var field = document.getElementById('discountApplied');
+            if (field) field.value = discountIdsApplied ? '1' : '';
+
+            var button = document.getElementById('discountApplyButton');
+            if (button) button.textContent = discountIdsApplied ? 'Applied' : 'Apply';
+        }
+
+        /*
+         * The Apply button. Checks every listed row with the server's own
+         * rules (discountIdRowsError()); only a clean list is applied.
+         */
+        function applyDiscountIds() {
+            var discountType = document.getElementById('discountType');
+
+            if (!discountType || discountType.value.trim() === '') return;
+
+            var idRowsError = discountIdRowsError();
+
+            if (idRowsError) {
+                setDiscountApplied(false);
+                refreshDiscountSummary();
+                showDiscountCardMessage(idRowsError, false);
+                return;
+            }
+
+            setDiscountApplied(true);
+            applyDiscountCardPreview();
+        }
 
         /**
-         * The browser-side twin of DiscountCard::expirationErrorFor() AND
-         * DiscountCard::normalizeTypedExpiration() combined.
-         *
-         * Returns the reason the entered expiration date makes the card
-         * unusable, or null when it is fine. Everything on this page that
-         * cares about the expiry — showing the discount, hiding the discount,
-         * and blocking the confirm modal — asks THIS function, which is why
-         * the page can no longer print "already expired" next to a live
-         * -20% discount the way it did before.
-         *
-         * Accepts ONLY M/D/Y or MM/DD/YYYY, same policy as the server:
-         * dash-separated, year-first, or 2-digit-year input is refused as
-         * invalid rather than reinterpreted, so this preview never accepts
-         * something the server would then refuse.
-         *
-         * Mirrors DiscountCard::requiresExpiration() first: a Senior Citizen
-         * ID has no expiration under Philippine law, so whatever this field
-         * holds — blank, or a value left over from switching from PWD — never
-         * blocks the preview or the confirm modal for that type. PWD is
-         * checked exactly as before.
+         * True when some ID row has anything typed in it — the case the
+         * confirm modal warns about when Apply was never pressed.
          */
-        function discountCardExpirationError() {
-            var discountTypeField = document.getElementById('discountType');
-            var discountType = discountTypeField ? discountTypeField.value.trim() : '';
+        function discountIdRowsHaveInput() {
+            return discountIdRows().some(function (row) {
+                var values = discountIdRowValues(row);
 
-            if (discountType === 'senior') {
-                return null;
-            }
-
-            var field = document.getElementById('discountBeneficiaryExpiration');
-            var value = field ? field.value.trim() : '';
-
-            if (!value) {
-                return DISCOUNT_CARD_MESSAGES.missing;
-            }
-
-            var parts = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-
-            if (!parts) {
-                return DISCOUNT_CARD_MESSAGES.invalid;
-            }
-
-            var month = parseInt(parts[1], 10);
-            var day = parseInt(parts[2], 10);
-            var year = parseInt(parts[3], 10);
-            var entered = new Date(year, month - 1, day);
-
-            // new Date() rolls Feb 30 over into Mar 2 instead of rejecting it,
-            // so a mismatch here is the only way to catch a day/month
-            // combination that isn't a real calendar date.
-            if (
-                isNaN(entered.getTime())
-                || entered.getFullYear() !== year
-                || entered.getMonth() !== month - 1
-                || entered.getDate() !== day
-            ) {
-                return DISCOUNT_CARD_MESSAGES.invalid;
-            }
-
-            entered.setHours(0, 0, 0, 0);
-
-            var today = new Date();
-            today.setHours(0, 0, 0, 0);
-
-            return entered < today ? DISCOUNT_CARD_MESSAGES.expired : null;
+                return values.idNumber !== '' || values.fullName !== '';
+            });
         }
 
         window.addEventListener('load', function() {
@@ -1888,6 +1791,7 @@
         }
 
         function onDiscountIdRowsChanged() {
+            setDiscountApplied(false);
             refreshDiscountIdRowsUi();
 
             var discountType = document.getElementById('discountType');
@@ -1995,38 +1899,16 @@
             discountType.value = type;
             fields.classList.remove('hidden');
 
+            // A different type is a different request: Apply again.
+            setDiscountApplied(false);
+
             // Start with one empty ID row to fill in.
             if (discountIdRows().length === 0) {
                 addDiscountIdRow(false);
             }
 
-            /*
-             * A Senior Citizen ID has no expiration under Philippine law (RA
-             * 9994, as amended by RA 10645) — only PWD (which DOES expire and
-             * is renewed) needs one. This mirrors
-             * DiscountCard::requiresExpiration() on the server, but as of
-             * September 2026 the block is HIDDEN outright for Senior Citizen
-             * rather than merely relabelled — manual testing on a phone
-             * showed the visible-but-optional field still got filled in by
-             * mistake. A stale value left in the hidden combined field from
-             * switching types must still never block checkout either way —
-             * see discountCardExpirationError() below and the server-side
-             * accept-and-ignore behaviour it mirrors — so hiding the block
-             * here is purely cosmetic, not a second source of truth.
-             */
-            var expirationBlock = document.getElementById('discountExpirationBlock');
-
-            if (expirationBlock) {
-                if (type === 'senior') {
-                    expirationBlock.classList.add('hidden');
-                } else {
-                    expirationBlock.classList.remove('hidden');
-                }
-            }
-
-            // Show the PWD/Senior discount straight away, the same way an
-            // applied voucher does. Without this the cart showed the full
-            // undiscounted total while checkout actually charged 20% less.
+            // Nothing is discounted until Apply is pressed; this paints the
+            // "press Apply" hint and keeps any voucher's own figure.
             applyDiscountCardPreview();
 
             pwdBtn.classList.remove(
@@ -2066,24 +1948,16 @@
          * rounded to centavos, with the total derived from that ROUNDED
          * discount so the figures shown here match the saved order exactly.
          *
-         * A discount is only previewed for a card the server would actually
-         * honour. The reported bug was the opposite: picking PWD applied -20%
-         * immediately, and typing an expiration of 01/01/1940 printed "This
-         * discount card has already expired." while LEAVING the -₱80.00 on
-         * screen — two bits of JS with two different ideas of validity. The
-         * server always refused that order, so no money was mis-charged, but
-         * the customer was shown a discount they could never have.
+         * A discount is only previewed once the IDs have been Applied — the
+         * same condition checkout uses (discount_applied), so the preview can
+         * never advertise a discount the server would not give.
          *
          * This is display only — the server recomputes the discount itself and
          * still stores discount_status = 'pending' until staff verify the ID.
          */
         /**
          * The PWD/Senior discount this cart would get right now, or null when
-         * no usable card is selected.
-         *
-         * Only a card the SERVER would honour counts — same expiry rule, via
-         * discountCardExpirationError() — so the preview can never advertise a
-         * discount checkout would refuse.
+         * no discount type is selected or the IDs have not been Applied.
          */
         function currentCardDiscount() {
             var discountType = document.getElementById('discountType');
@@ -2092,7 +1966,7 @@
                 return null;
             }
 
-            if (discountCardExpirationError() !== null) {
+            if (!discountIdsApplied) {
                 return null;
             }
 
@@ -2198,37 +2072,27 @@
         }
 
         function applyDiscountCardPreview() {
-            var expirationError = discountCardExpirationError();
-
-            if (expirationError) {
-                // Nothing to preview: show why, and make sure no stale
-                // discount is left behind on the summary.
+            // Not Applied (yet, or since the last edit): nothing to preview —
+            // currentCardDiscount() returns null — and "press Apply" is a
+            // hint, not an error.
+            if (!discountIdsApplied) {
                 clearDiscountPreview();
-
-                // A blank field is simply "not filled in yet", not an error to
-                // scold the customer with the moment they pick PWD.
-                if (expirationError !== DISCOUNT_CARD_MESSAGES.missing) {
-                    showDiscountCardMessage(expirationError, false);
-                } else {
-                    showDiscountCardMessage(
-                        'Enter the card details, including a valid expiration date, to apply the '
-                        + Math.round(PWD_SENIOR_DISCOUNT_RATE * 100) + '% discount.',
-                        'neutral'
-                    );
-                }
+                showDiscountCardMessage(
+                    (completeDiscountIdRowCount() === 0
+                        ? 'Enter an ID number and full name, then press Apply to use the '
+                        : 'Press Apply to use the ')
+                    + Math.round(PWD_SENIOR_DISCOUNT_RATE * 100) + '% discount.',
+                    'neutral'
+                );
 
                 return;
             }
 
-            // No complete ID row yet: nothing to preview (currentCardDiscount()
-            // returns null), and "not filled in yet" is not an error.
+            // Applied rows are complete by construction (applyDiscountIds()
+            // refuses otherwise), so this is only a safety net.
             if (completeDiscountIdRowCount() === 0) {
+                setDiscountApplied(false);
                 clearDiscountPreview();
-                showDiscountCardMessage(
-                    'Enter an ID number and full name to apply the '
-                    + Math.round(PWD_SENIOR_DISCOUNT_RATE * 100) + '% discount.',
-                    'neutral'
-                );
 
                 return;
             }
@@ -2258,12 +2122,12 @@
 
         /**
          * Drop the discount from the summary WITHOUT clearing the card fields
-         * the customer is still filling in. Used whenever the entered card
-         * stops being one the server would honour.
+         * the customer is still filling in. Used whenever the entered IDs
+         * stop being Applied.
          */
         function clearDiscountPreview() {
             /*
-             * The card has stopped being usable (blank or expired date). The
+             * The card has stopped being usable (not Applied, or deselected). The
              * two are no longer mutually exclusive, so this can no longer just
              * blank the row: an applied voucher may still be entitled to it.
              * refreshDiscountSummary() re-decides from whatever is left —
@@ -2273,68 +2137,6 @@
              */
             refreshDiscountSummary();
         }
-
-        /*
-         * Re-run the preview whenever the expiration date changes, so entering
-         * an expired date removes the discount there and then rather than only
-         * at the moment the customer tries to place the order.
-         */
-        document.addEventListener('DOMContentLoaded', function () {
-            var expirationField = document.getElementById('discountBeneficiaryExpiration');
-            var discountTypeField = document.getElementById('discountType');
-
-            if (!expirationField) return;
-
-            ['change', 'input'].forEach(function (event) {
-                expirationField.addEventListener(event, function () {
-                    if (discountTypeField && discountTypeField.value.trim() !== '') {
-                        applyDiscountCardPreview();
-                    }
-                });
-            });
-        });
-
-        /*
-         * Month/Day/Year dropdowns -> the single hidden
-         * #discountBeneficiaryExpiration input, in the exact "M/D/Y" shape
-         * DiscountCard::normalizeTypedExpiration() already parses (no
-         * padding needed — its regex accepts 1-2 digit month/day).
-         *
-         * Any dropdown left unselected collapses the combined value back to
-         * '', which discountCardExpirationError() and the server both
-         * already treat as "missing" for PWD — the same outcome a blank
-         * typed field produced before this change.
-         *
-         * .value assignment alone does not fire 'change'/'input', so this
-         * dispatches one on the hidden field itself, which is what the
-         * listener registered just above actually reacts to — keeping that
-         * listener, discountCardExpirationError(), and the confirm-modal
-         * gate at openOrderConfirmation() all completely unchanged.
-         */
-        document.addEventListener('DOMContentLoaded', function () {
-            var monthField = document.getElementById('discountExpirationMonth');
-            var dayField = document.getElementById('discountExpirationDay');
-            var yearField = document.getElementById('discountExpirationYear');
-            var hiddenField = document.getElementById('discountBeneficiaryExpiration');
-
-            if (!monthField || !dayField || !yearField || !hiddenField) return;
-
-            function syncExpirationFromDropdowns() {
-                var month = monthField.value;
-                var day = dayField.value;
-                var year = yearField.value;
-
-                hiddenField.value = (month && day && year)
-                    ? (month + '/' + day + '/' + year)
-                    : '';
-
-                hiddenField.dispatchEvent(new Event('change', { bubbles: true }));
-            }
-
-            [monthField, dayField, yearField].forEach(function (field) {
-                field.addEventListener('change', syncExpirationFromDropdowns);
-            });
-        });
 
         function toggleDiscountCardFields() {
             var fields = document.getElementById('discountCardFields');
@@ -2362,20 +2164,9 @@
             // Every ID row leaves the form, so reopening starts clean and a
             // deselected discount can never submit a stale row.
             removeAllDiscountIdRows();
-            document.getElementById('discountBeneficiaryExpiration').value = '';
 
-            // Reset the Month/Day/Year dropdowns and re-hide the block
-            // selectDiscountType() shows only for PWD, so reopening the form
-            // for either type starts clean.
-            var expirationMonth = document.getElementById('discountExpirationMonth');
-            var expirationDay = document.getElementById('discountExpirationDay');
-            var expirationYear = document.getElementById('discountExpirationYear');
-            if (expirationMonth) expirationMonth.value = '';
-            if (expirationDay) expirationDay.value = '';
-            if (expirationYear) expirationYear.value = '';
-
-            var expirationBlock = document.getElementById('discountExpirationBlock');
-            if (expirationBlock) expirationBlock.classList.add('hidden');
+            // A deselected discount is never Applied.
+            setDiscountApplied(false);
 
             document.getElementById('pwdDiscountBtn').classList.remove('bg-peach-red', 'text-white', 'bg-peach-soft', 'text-peach-deep', 'discount-selected');
             document.getElementById('seniorDiscountBtn').classList.remove('bg-peach-red', 'text-white', 'bg-peach-soft', 'text-peach-deep', 'discount-selected');
@@ -2415,7 +2206,7 @@
             // The card is deselected by this point, so refreshDiscountSummary()
             // (via clearDiscountPreview) hands the summary back to an applied
             // voucher if there is one, or to the plain subtotal if there is
-            // not. The expiry path uses the same call, so the two can never
+            // not. The not-Applied path uses the same call, so the two can never
             // disagree about what "no card discount" looks like.
             clearDiscountPreview();
         }
@@ -2466,26 +2257,37 @@ if (!paymentMethod || !paymentMethod.value) {
     return;
 }
     var discountType = document.getElementById('discountType');
+    var discountSelected = !!discountType && discountType.value.trim() !== '';
 
-    if (discountType && discountType.value.trim() !== '') {
+    if (discountSelected && discountIdsApplied) {
         // Every listed ID row, checked by the server's own rules — at least
-        // one complete row, no half-filled row, no ID listed twice.
+        // one complete row, no half-filled row, no ID listed twice. Applied
+        // rows cannot have changed since Apply (any edit withdraws it), so
+        // this is a safety net rather than a second gate.
         var idRowsError = discountIdRowsError();
 
         if (idRowsError) {
+            setDiscountApplied(false);
+            clearDiscountPreview();
             showDiscountCardMessage(idRowsError, false);
             return;
         }
+    }
 
-        // Same rule the preview uses, so the modal can never be blocked for a
-        // card the summary is still showing a discount for.
-        var expirationError = discountCardExpirationError();
+    /*
+     * PWD/Senior selected but never Applied: the server gives no discount
+     * without discount_applied, so the order goes through at the regular
+     * price. Say so here, before the customer confirms, not after.
+     */
+    var notApplied = document.getElementById('reviewDiscountNotApplied');
 
-        if (expirationError) {
-            clearDiscountPreview();
-            showDiscountCardMessage(expirationError, false);
-            return;
-        }
+    if (notApplied) {
+        var warnNotApplied = discountSelected && !discountIdsApplied;
+
+        notApplied.textContent = !warnNotApplied ? '' : (discountIdRowsHaveInput()
+            ? 'Your PWD/Senior IDs were not applied (Apply was not pressed), so this order will be placed at the regular price. Tap Cancel, then Apply, to use the discount.'
+            : 'No PWD/Senior ID was applied, so this order will be placed at the regular price.');
+        notApplied.classList.toggle('hidden', !warnNotApplied);
     }
 
     var overlay = document.getElementById('orderConfirmOverlay');

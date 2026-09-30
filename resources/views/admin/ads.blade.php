@@ -81,9 +81,8 @@
                 <select name="placement" class="form-control-custom" required>
                     <option value="game">Game Page</option>
                     <option value="menu">Menu Page</option>
-                    <option value="cart">Cart Page</option>
-                    <option value="orders">Orders Page</option>
                 </select>
+                <small style="font-size:0.7rem;color:#aaa;">Menu Page shows as a popup, once per visit</small>
             </div>
             <div>
                 <label class="form-label-custom">Start Date</label>
@@ -154,9 +153,16 @@
                     <td style="padding:0.6rem;font-weight:600;color:#F4845F;">{{ $ad->title }}</td>
                     <td style="padding:0.6rem;color:#666;font-size:0.75rem;">{{ $ad->description ?? '—' }}</td>
                     <td style="padding:0.6rem;text-align:center;">
+                        @if($ad->hasRemovedPlacement())
+                        <span style="background:#9CA3AF;color:white;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.7rem;font-weight:600;">
+                            {{ ucfirst($ad->placement) }}
+                        </span>
+                        <div style="margin-top:0.2rem;font-size:0.68rem;font-weight:600;color:#C0392B;">No longer used — never shown</div>
+                        @else
                         <span style="background:#F4845F;color:white;padding:0.15rem 0.5rem;border-radius:4px;font-size:0.7rem;font-weight:600;">
                             {{ ucfirst($ad->placement) }}
                         </span>
+                        @endif
                     </td>
                     <td style="padding:0.6rem;text-align:center;font-size:0.72rem;">
                         @if($ad->starts_at || $ad->ends_at)
@@ -284,11 +290,18 @@
                 <div>
                     <label class="form-label-custom">Placement *</label>
                     <select name="placement" id="editAdPlacement" class="form-control-custom" required>
+                        {{-- Empty value = "not chosen", which `required` refuses. It is
+                             the placeholder-label option, and it is selected only for
+                             an ad saved with a placement that no longer exists (see
+                             openEditAdModal), so that ad opens without an error but
+                             cannot be saved until it is pointed at a live placement. --}}
+                        <option value="" id="editAdPlacementLegacy" hidden>Choose a placement…</option>
                         <option value="game">Game Page</option>
                         <option value="menu">Menu Page</option>
-                        <option value="cart">Cart Page</option>
-                        <option value="orders">Orders Page</option>
                     </select>
+                    <small id="editAdPlacementLegacyNote" style="display:none;font-size:0.7rem;color:#C0392B;">
+                        This ad used a placement that no longer exists and is not shown anywhere. Choose Game or Menu to use it again.
+                    </small>
                 </div>
                 <div>
                     <label class="form-label-custom">Start Date</label>
@@ -328,7 +341,14 @@
         document.getElementById('editAdTitle').value = btn.dataset.title || '';
         document.getElementById('editAdDescription').value = btn.dataset.description || '';
         document.getElementById('editAdLink').value = btn.dataset.link || '';
-        document.getElementById('editAdPlacement').value = btn.dataset.placement || 'game';
+        // Only the live placements exist as options. An old cart/orders ad
+        // falls back to the "Choose a placement…" option and says why, rather
+        // than leaving the select blank with no explanation.
+        var placementField = document.getElementById('editAdPlacement');
+        var placementNote = document.getElementById('editAdPlacementLegacyNote');
+        var isLive = btn.dataset.placement === 'game' || btn.dataset.placement === 'menu';
+        placementField.value = isLive ? btn.dataset.placement : '';
+        placementNote.style.display = isLive ? 'none' : 'block';
         document.getElementById('editAdStartsAt').value = btn.dataset.startsAt || '';
         document.getElementById('editAdEndsAt').value = btn.dataset.endsAt || '';
 

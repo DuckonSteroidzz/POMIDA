@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Models\DiscountCard;
 use App\Models\MenuItem;
 use App\Models\Order;
 use App\Models\OrderDiscountBeneficiary;
@@ -37,8 +36,11 @@ use Tests\TestCase;
  * discount.
  *
  * Also pinned: checkout no longer collects or stores an ID photo (staff check
- * the physical ID in person, as the counter always has), and the PWD expiry
- * eligibility check is unchanged.
+ * the physical ID in person, as the counter always has).
+ *
+ * Batch 2 (2026-09-29): the PWD expiry check was later removed on request, and
+ * checkout now needs the cart's Apply intent (discount_applied) — see section
+ * 7 below and PwdSeniorApplyStepTest.
  */
 class PwdSeniorMultiIdCheckoutTest extends TestCase
 {
@@ -117,13 +119,18 @@ class PwdSeniorMultiIdCheckoutTest extends TestCase
         return ['discount_type' => 'senior', 'discount_beneficiaries' => $rows];
     }
 
-    private function pwdWith(array $rows, ?string $expiration = null): array
+    /**
+     * No expiration any more (Batch 2, 2026-09-29). $staleExpiration is what
+     * an out-of-date page might still post under the old field name; checkout
+     * never reads it.
+     */
+    private function pwdWith(array $rows, ?string $staleExpiration = null): array
     {
-        return [
+        return array_filter([
             'discount_type'                   => 'pwd',
             'discount_beneficiaries'          => $rows,
-            'discount_beneficiary_expiration' => $expiration ?? now()->addYear()->format('n/j/Y'),
-        ];
+            'discount_beneficiary_expiration' => $staleExpiration,
+        ], fn ($value) => $value !== null);
     }
 
     /**
@@ -143,6 +150,11 @@ class PwdSeniorMultiIdCheckoutTest extends TestCase
                 'order_type'     => 'pick_up',
                 'payment_method' => 'cash',
                 'items'          => [['menu_item_id' => $item->id, 'quantity' => $qty]],
+                // Every checkout in this file is a customer who pressed the
+                // cart's Apply button (Batch 2, 2026-09-29) — without it no
+                // PWD/Senior discount is considered at all, which
+                // PwdSeniorApplyStepTest covers on its own.
+                'discount_applied' => '1',
             ], $extra));
 
         $order = Order::where('id', '>', $before)->orderByDesc('id')->first();
@@ -443,23 +455,24 @@ class PwdSeniorMultiIdCheckoutTest extends TestCase
     }
 
     /**
-     * Bug fixed in passing: the modal's Expiration row only ever read the
-     * (unused) saved-card table, so a PWD order's validated expiration always
-     * showed "Not provided" to the staff approving it.
+     * CHANGED Batch 2 (2026-09-29): checkout no longer takes an expiration,
+     * so even a date a stale page still posts is not stored and the modal
+     * carries none — its Expiration row stays hidden. (Was: "the order board
+     * shows the PWD expiration typed at checkout". An OLDER order's stored
+     * date still shows; see PwdSeniorApplyStepTest.)
      */
-    public function test_the_order_board_shows_the_pwd_expiration_typed_at_checkout(): void
+    public function test_the_order_board_carries_no_expiration_for_a_new_order(): void
     {
-        $expiry = now()->addYears(2)->startOfDay();
-
-        [, $order] = $this->place($this->pwdWith($this->rows(2, 'PWD'), $expiry->format('n/j/Y')));
+        [, $order] = $this->place($this->pwdWith($this->rows(2, 'PWD'), now()->addYears(2)->format('n/j/Y')));
         $this->assertNotNull($order);
+        $this->assertNull($order->discount_beneficiary_expiration);
 
         $html = $this->actingAs($this->staff(), 'admin')->get('/admin/home')->getContent();
 
         $pattern = '/data-order-id="' . $order->id . '"[^>]*?data-expiration="([^"]*)"/s';
         preg_match($pattern, $html, $m);
 
-        $this->assertSame($expiry->format('M d, Y'), $m[1] ?? null);
+        $this->assertSame('', $m[1] ?? null);
     }
 
     /** Orders from before this change have only the legacy pair — still listed. */
@@ -648,20 +661,28 @@ class PwdSeniorMultiIdCheckoutTest extends TestCase
 
     // ══════════ 7. eligibility checks are unchanged ══════════
 
-    public function test_an_expired_pwd_id_is_refused_however_many_ids_are_listed(): void
+    /*
+     * CHANGED Batch 2 (2026-09-29) — the PWD expiry check was removed on
+     * request. These two used to pin the refusal of an expired / blank PWD
+     * expiration; they now pin the opposite: neither affects checkout, and
+     * the discount is still exactly one, however many IDs are listed.
+     */
+    public function test_an_old_pwd_expiration_no_longer_refuses_and_still_gives_one_discount(): void
     {
-        [$response, $order] = $this->place($this->pwdWith($this->rows(3, 'PWD'), '1/1/1940'));
+        [$response, $order, $subtotal] = $this->place($this->pwdWith($this->rows(3, 'PWD'), '1/1/1940'));
 
-        $response->assertSessionHasErrors(['discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRED]);
-        $this->assertNull($order);
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertSame(Order::pwdSeniorDiscountFor($subtotal), (float) $order->discount_amount);
+        $this->assertNull($order->discount_beneficiary_expiration);
     }
 
-    public function test_a_blank_pwd_expiration_is_refused_with_the_shared_message(): void
+    public function test_a_pwd_order_needs_no_expiration_at_all(): void
     {
-        [$response, $order] = $this->place($this->pwdWith($this->rows(2, 'PWD'), ''));
+        [$response, $order, $subtotal] = $this->place($this->pwdWith($this->rows(2, 'PWD')));
 
-        $response->assertSessionHasErrors(['discount_beneficiary_expiration' => DiscountCard::ERROR_EXPIRATION_MISSING]);
-        $this->assertNull($order);
+        $response->assertSessionDoesntHaveErrors();
+        $this->assertSame('pwd', $order->discount_type);
+        $this->assertSame(Order::pwdSeniorDiscountFor($subtotal), (float) $order->discount_amount);
     }
 
     public function test_senior_ids_still_need_no_expiration(): void

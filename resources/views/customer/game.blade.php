@@ -209,7 +209,12 @@
             margin-bottom: 1.25rem;
         }
 
-        canvas {
+        {{-- Scoped to the wheel only. A bare "canvas" tag selector here used to
+             also hit #confettiCanvas below, which is a full-viewport fixed
+             element — border-radius:50% on a box that size turns it into a
+             giant ellipse, and its box-shadow then traced that ellipse as a
+             large faint ring visible behind everything on the page. --}}
+        #wheelCanvas {
             border-radius: 50%;
             box-shadow: 0 10px 30px rgba(192,57,43,.2);
         }
@@ -1190,24 +1195,50 @@
             overlay.id = 'adOverlay';
             overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
 
-            function buildSlide(slideIdx) {
-                var ad = gameAds[slideIdx];
-                var dots = '';
-                for (var i = 0; i < gameAds.length; i++) {
-                    dots += '<span style="width:8px;height:8px;border-radius:50%;display:inline-block;background:' + (i === slideIdx ? '#F4845F' : '#ddd') + ';"></span>';
-                }
-                return '<div style="background:white;border-radius:12px;max-width:340px;width:90%;position:relative;overflow:hidden;">' +
-                    '<button onclick="closeAd()" style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:50%;width:28px;height:28px;font-size:1rem;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;">✕</button>' +
-                    (ad.image ? '<img src="{{ asset('') }}' + String(ad.image).replace(/^\/+/, '') + '" style="width:100%;max-height:250px;object-fit:cover;border-radius:12px 12px 0 0;">' : '') +
-                    '<div style="padding:1rem;text-align:center;">' +
-                    '<p style="font-size:0.95rem;font-weight:700;color:#F4845F;margin:0 0 0.25rem;">' + ad.title + '</p>' +
-                    '<p style="font-size:0.78rem;color:#666;margin:0;">' + (ad.description || '') + '</p>' +
-                    '</div>' +
-                    (gameAds.length > 1 ? '<div style="display:flex;justify-content:center;gap:6px;padding:0 1rem 0.75rem;">' + dots + '</div>' : '') +
-                    '</div>';
+            /* The ad's title and description are typed by an owner or
+               supervisor, so they go in through textContent — never through an
+               HTML string, where "<img onerror=...>" would run on a customer's
+               phone. The image goes in through .src for the same reason. */
+            function el(tag, css, text) {
+                var node = document.createElement(tag);
+                if (css) node.style.cssText = css;
+                if (text !== undefined) node.textContent = text;
+                return node;
             }
 
-            overlay.innerHTML = buildSlide(0);
+            function buildSlide(slideIdx) {
+                var ad = gameAds[slideIdx];
+
+                var card = el('div', 'background:white;border-radius:12px;max-width:340px;width:90%;position:relative;overflow:hidden;');
+
+                var closeBtn = el('button', 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:50%;width:28px;height:28px;font-size:1rem;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;', '✕');
+                closeBtn.type = 'button';
+                closeBtn.addEventListener('click', closeAd);
+                card.appendChild(closeBtn);
+
+                if (ad.image) {
+                    var img = el('img', 'width:100%;max-height:250px;object-fit:cover;border-radius:12px 12px 0 0;');
+                    img.src = '{{ asset('') }}' + String(ad.image).replace(/^\/+/, '');
+                    card.appendChild(img);
+                }
+
+                var body = el('div', 'padding:1rem;text-align:center;');
+                body.appendChild(el('p', 'font-size:0.95rem;font-weight:700;color:#F4845F;margin:0 0 0.25rem;', ad.title));
+                body.appendChild(el('p', 'font-size:0.78rem;color:#666;margin:0;', ad.description || ''));
+                card.appendChild(body);
+
+                if (gameAds.length > 1) {
+                    var dots = el('div', 'display:flex;justify-content:center;gap:6px;padding:0 1rem 0.75rem;');
+                    for (var i = 0; i < gameAds.length; i++) {
+                        dots.appendChild(el('span', 'width:8px;height:8px;border-radius:50%;display:inline-block;background:' + (i === slideIdx ? '#F4845F' : '#ddd') + ';'));
+                    }
+                    card.appendChild(dots);
+                }
+
+                return card;
+            }
+
+            overlay.appendChild(buildSlide(0));
             document.body.appendChild(overlay);
 
             var slideInterval = null;
@@ -1216,7 +1247,8 @@
                     currentSlide = (currentSlide + 1) % gameAds.length;
                     var container = document.getElementById('adOverlay');
                     if (container) {
-                        container.innerHTML = buildSlide(currentSlide);
+                        while (container.firstChild) container.removeChild(container.firstChild);
+                        container.appendChild(buildSlide(currentSlide));
                     } else {
                         clearInterval(slideInterval);
                     }
