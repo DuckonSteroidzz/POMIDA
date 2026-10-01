@@ -77,6 +77,8 @@ class CustomerAccountReauthTest extends TestCase
             'is_active'      => true,
             'contact_number' => '09170000000',
             'address'        => 'Original address',
+            // A customer who can log in has confirmed their email (Oct 2026 gate).
+            'email_verified_at' => now(),
         ]);
     }
 

@@ -155,14 +155,16 @@ class LoginMessagingAndTermsAcceptanceTest extends TestCase
             'terms'                 => '1',
         ]);
 
+        // October 2026: "completes" now means the account is created and the
+        // customer is sent to confirm their email. They are not signed in.
         $response->assertSessionHasNoErrors();
-        $response->assertRedirect(route('customer.menu'));
+        $response->assertRedirect(route('customer.email-verification.pending'));
 
         $this->assertDatabaseHas('users', [
             'email' => $email,
             'role'  => 'customer',
         ]);
-        $this->assertAuthenticatedAs(User::where('email', $email)->first(), 'customer');
+        $this->assertGuest('customer');
     }
 
     public function test_registration_still_refuses_when_terms_not_accepted(): void

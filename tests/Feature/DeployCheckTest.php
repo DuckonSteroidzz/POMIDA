@@ -172,6 +172,14 @@ class DeployCheckTest extends TestCase
             'array mailer'        => [['mail.default' => 'array'], 'DELIVERS NOTHING'],
             'no mail password'    => [['mail.mailers.smtp.password' => ''], 'MAIL_PASSWORD'],
             'example from addr'   => [['mail.from.address' => 'hello@example.com'], 'MAIL_FROM_ADDRESS'],
+            // Oct 2026: sign-up needs a delivered confirmation email, so these
+            // are blocking too, and the message says why.
+            'log mailer blocks sign-up'  => [['mail.default' => 'log'], 'New customers could never activate their accounts'],
+            'null mailer'                => [['mail.default' => 'null'], 'DELIVERS NOTHING'],
+            'env.example gmail user'     => [['mail.mailers.smtp.username' => 'your-gmail-address@gmail.com'], 'MAIL_USERNAME'],
+            'env.example app password'   => [['mail.mailers.smtp.password' => 'your-16-char-app-password'], 'MAIL_PASSWORD'],
+            'env.example from address'   => [['mail.from.address' => 'your-gmail-address@gmail.com'], 'MAIL_FROM_ADDRESS'],
+            'no mail host'               => [['mail.mailers.smtp.host' => ''], 'MAIL_HOST'],
             'force https off'     => [['app.force_https' => false], 'FORCE_HTTPS is on'],
             'insecure cookie'     => [['session.secure' => false], 'Session cookie is HTTPS-only'],
             'demo data on'        => [['demo.auto_top_up_sales' => true], 'Demo sales fabrication is off'],

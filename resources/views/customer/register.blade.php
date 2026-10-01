@@ -847,16 +847,19 @@
 
                 @if ($errors->any())
 
-                    <div class="alert">
+                    {{-- Each message is tagged with its field (data-field) so the
+                         last script on this page can take it down once that
+                         field has been fixed. --}}
+                    <div class="alert" id="registerErrorSummary" role="alert">
 
                         <ul>
 
-                            @foreach ($errors->all() as $error)
+                            @foreach ($errors->getMessages() as $field => $messages)
+                                @foreach ($messages as $message)
 
-                                <li>
-                                    {{ $error }}
-                                </li>
+                                    <li data-field="{{ $field }}">{{ $message }}</li>
 
+                                @endforeach
                             @endforeach
 
                         </ul>
@@ -907,7 +910,7 @@
 
                             @error('name')
 
-                                <span class="error-text">
+                                <span class="error-text" data-error-for="name">
                                     {{ $message }}
                                 </span>
 
@@ -935,7 +938,7 @@
 
                             @error('email')
 
-                                <span class="error-text">
+                                <span class="error-text" data-error-for="email">
                                     {{ $message }}
                                 </span>
 
@@ -963,7 +966,7 @@
 
                             @error('password')
 
-                                <span class="error-text">
+                                <span class="error-text" data-error-for="password">
                                     {{ $message }}
                                 </span>
 
@@ -991,7 +994,7 @@
 
                             @error('password_confirmation')
 
-                                <span class="error-text">
+                                <span class="error-text" data-error-for="password_confirmation">
                                     {{ $message }}
                                 </span>
 
@@ -1020,7 +1023,7 @@
 
                             @error('contact_number')
 
-                                <span class="error-text">
+                                <span class="error-text" data-error-for="contact_number">
                                     {{ $message }}
                                 </span>
 
@@ -1053,7 +1056,7 @@
 
                             @error('address')
 
-                                <span class="error-text">
+                                <span class="error-text" data-error-for="address">
                                     {{ $message }}
                                 </span>
 
@@ -1096,7 +1099,7 @@
 
                     @error('terms')
 
-                        <p class="error-text">
+                        <p class="error-text" data-error-for="terms">
                             {{ $message }}
                         </p>
 
@@ -1276,6 +1279,9 @@
 
             if (checkbox) {
                 checkbox.checked = true;
+                // Setting .checked in code fires no event; the error
+                // summary script below listens for this one.
+                checkbox.dispatchEvent(new Event('change'));
             }
 
             /*
@@ -1380,6 +1386,190 @@
             if (pw && pwc) {
                 pw.addEventListener('input', function () {
                     if (pwc.value !== '') apply(pwc, 'password_confirmation', false);
+                });
+            }
+
+        })();
+
+    </script>
+
+    @php
+        // The exact sentences the server's validator produces for the
+        // password field, from the same translation keys Laravel's Password
+        // rule uses, so the live list below cannot drift from them.
+        // RegisterErrorSummaryTest compares the two.
+        $passwordMessages = [
+            'required' => __('validation.required', ['attribute' => 'password']),
+            'min' => __('validation.min.string', ['attribute' => 'password', 'min' => \App\Support\PasswordPolicy::MIN_LENGTH]),
+            'max' => __('validation.max.string', ['attribute' => 'password', 'max' => \App\Support\PasswordPolicy::MAX_LENGTH]),
+            'mixed' => __('validation.password.mixed', ['attribute' => 'password']),
+            'symbols' => __('validation.password.symbols', ['attribute' => 'password']),
+            'numbers' => __('validation.password.numbers', ['attribute' => 'password']),
+            // AuthController::register() overrides the stock `confirmed` text.
+            'confirmed' => 'Password confirmation does not match.',
+        ];
+    @endphp
+
+    <script>
+        /*
+         * Keeps the SERVER's error messages honest after a failed submit.
+         *
+         * The red summary at the top and the red line under each field are
+         * printed by the server from the submit that just failed. Before this,
+         * nothing ever took them down, so a customer who fixed the password
+         * still read "must be at least 8 characters" (etc.) next to a green
+         * tick. The two scripts above only toggled border colours.
+         *
+         * What happens now, per field the server complained about:
+         *  - password: the list is recomputed on every keystroke from the
+         *    SAME translation strings and the SAME order the server uses
+         *    (Laravel's Password rule: min, max, mixed, symbols, numbers,
+         *    then `confirmed`). A partly fixed password shows only what is
+         *    still missing; a fully valid one shows nothing.
+         *  - every other field: the server's message stays while the value is
+         *    still the rejected one or still fails the format check above,
+         *    and goes once it holds a new value that passes. Uniqueness
+         *    (email already registered) cannot be checked here, so going back
+         *    to the rejected address brings its message back.
+         *  - anything not tied to a field (e.g. a rate-limit notice) is left
+         *    alone.
+         * The summary box disappears when nothing is left in it. The server
+         * is still the authority: this only removes messages about values the
+         * customer has since changed, and every submit is validated again.
+         */
+        (function () {
+
+            var form = document.getElementById('registerForm');
+            var summary = document.getElementById('registerErrorSummary');
+            if (!form || !summary) return;
+
+            var list = summary.querySelector('ul');
+            var pw = form.querySelector('input[name="password"]');
+            var pwc = form.querySelector('input[name="password_confirmation"]');
+            var confirmLeft = false;
+
+            var MSG = {!! json_encode($passwordMessages, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) !!};
+
+            // The server's messages, grouped by field, in the order it sent them.
+            var order = [];
+            var current = {};
+            list.querySelectorAll('li[data-field]').forEach(function (li) {
+                var f = li.getAttribute('data-field');
+                if (!current[f]) { current[f] = []; order.push(f); }
+                current[f].push(li.textContent.trim());
+            });
+            var original = JSON.parse(JSON.stringify(current));
+
+            // The value each field held when the server answered.
+            var submitted = {};
+            order.forEach(function (f) {
+                var input = form.querySelector('[name="' + f + '"]');
+                if (!input) return;
+                submitted[f] = input.type === 'checkbox' ? input.checked : input.value;
+            });
+
+            var formatOk = {
+                name: function (v) { return v.trim().length > 0 && v.length <= 255; },
+                email: function (v) { return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v); },
+                contact_number: function (v) { return /^[0-9]{10,13}$/.test(v); }
+            };
+
+            function passwordMessages() {
+                var v = pw.value, out = [];
+                if (v === '') return [MSG.required];
+                if (v.length < {{ \App\Support\PasswordPolicy::MIN_LENGTH }}) out.push(MSG.min);
+                if (v.length > {{ \App\Support\PasswordPolicy::MAX_LENGTH }}) out.push(MSG.max);
+                if (!(/[a-z]/.test(v) && /[A-Z]/.test(v))) out.push(MSG.mixed);
+                if (!/[^A-Za-z0-9]/.test(v)) out.push(MSG.symbols);
+                if (!/[0-9]/.test(v)) out.push(MSG.numbers);
+                // While the confirmation is still being typed toward the
+                // password (a prefix of it), it is not "wrong" yet; once the
+                // customer leaves that box, any difference counts.
+                if (pwc && pwc.value !== '' && pwc.value !== v
+                    && (confirmLeft || v.indexOf(pwc.value) !== 0)) {
+                    out.push(MSG.confirmed);
+                }
+                return out;
+            }
+
+            function recompute(f) {
+                if (!original[f]) return;
+                var input = form.querySelector('[name="' + f + '"]');
+                if (!input) return;
+
+                if (f === 'password') {
+                    current[f] = passwordMessages();
+                    return;
+                }
+
+                var value = input.type === 'checkbox' ? input.checked : input.value;
+                var fixed = input.type === 'checkbox'
+                    ? value === true
+                    : value !== submitted[f] && (!formatOk[f] || formatOk[f](value));
+
+                current[f] = fixed ? [] : original[f].slice();
+            }
+
+            function render() {
+                var total = 0;
+                list.innerHTML = '';
+                order.forEach(function (f) {
+                    current[f].forEach(function (text) {
+                        var li = document.createElement('li');
+                        li.setAttribute('data-field', f);
+                        li.textContent = text;
+                        list.appendChild(li);
+                        total++;
+                    });
+
+                    var inline = form.querySelector('[data-error-for="' + f + '"]');
+                    if (inline) {
+                        inline.textContent = current[f][0] || '';
+                        inline.hidden = current[f].length === 0;
+                    }
+
+                    // A field the server still objects to must not wear the
+                    // green tick at the same time.
+                    var input = form.querySelector('[name="' + f + '"]');
+                    if (input && input.type !== 'checkbox') {
+                        var field = input.closest('.field');
+                        if (current[f].length) {
+                            input.classList.remove('is-valid');
+                            if (field) field.classList.remove('is-valid');
+                            input.classList.add('is-invalid');
+                        } else {
+                            // Nothing left against it: no red border either.
+                            input.classList.remove('is-invalid');
+                        }
+                    }
+                });
+                summary.hidden = total === 0;
+            }
+
+            function onChange(f) {
+                return function () {
+                    recompute(f);
+                    render();
+                };
+            }
+
+            order.forEach(function (f) {
+                var input = form.querySelector('[name="' + f + '"]');
+                if (!input) return;
+                var evt = input.type === 'checkbox' ? 'change' : 'input';
+                input.addEventListener(evt, onChange(f));
+                // After the border script's own blur handler, so the final
+                // state is this one.
+                input.addEventListener('blur', onChange(f));
+            });
+
+            // The password's "confirmation does not match" line lives under
+            // `password`, so the confirmation box must refresh it too.
+            if (pwc && original.password) {
+                pwc.addEventListener('input', onChange('password'));
+                pwc.addEventListener('blur', function () {
+                    confirmLeft = true;
+                    onChange('password')();
                 });
             }
 

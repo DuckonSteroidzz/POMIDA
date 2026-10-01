@@ -595,6 +595,17 @@
                         @endforeach
                     </ul>
 
+                    {{-- Only after a CORRECT password on an unconfirmed
+                         account — see AuthController::login(). --}}
+                    @if (session('unverified_login'))
+                        <p>
+                            Can't find the email?
+                            <a href="{{ route('customer.email-verification.pending') }}" class="auth-link">
+                                Resend confirmation email
+                            </a>
+                        </p>
+                    @endif
+
                 </div>
 
             @endif

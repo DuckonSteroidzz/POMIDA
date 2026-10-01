@@ -334,7 +334,11 @@ A branch is flagged a "stronger sales" leader when
 8. This Week vs Last Week warning when the drop ≥ 15 %.
 9. Branch leader (All Branches scope only), per §9.3.
 
-### 9.5 Sales forecasting (Simple Linear Regression)
+### 9.5 Sales forecasting (Simple Linear Regression) — DORMANT, NOT THE LIVE METHOD
+
+> **This section documents unused code.** The live Analytics forecast is the
+> flat trailing 7-day moving average in §10 (`DemandForecastService`).
+> `salesForecast()` has no caller and is not rendered anywhere.
 
 `salesForecast(int $lookbackDays = 30, int $forecastDays = 7)`.
 
@@ -364,7 +368,7 @@ Derived outputs:
 - **Insufficient-data guard** — fewer than 5 days with any completed orders in
   the lookback window returns `insufficient_data: true` instead of a forecast.
 
-Why SLR: explainable by hand to a non-technical panel, no ML infrastructure,
+Why SLR was originally chosen (historical rationale; superseded by §10): explainable by hand to a non-technical panel, no ML infrastructure,
 and the smallest step up from descriptive that still fits the rest of this
 codebase.
 

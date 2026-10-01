@@ -15,10 +15,12 @@ use Tests\TestCase;
  * App\Http\Controllers\Concerns\HandlesEmailVerification, and the
  * 2026_09_28_000000_backfill_email_verified_at_for_existing_users migration).
  *
- * Decision 3 (locked): this is the email only, NOT a login/order gate. An
- * unverified customer must still be able to log in and browse — several
- * tests below exist specifically to pin that down as a regression guard,
- * not an assumption.
+ * Decision 3 was REVERSED in October 2026 on the owner's instruction:
+ * confirming the email is now a login gate for customers. The tests below
+ * that used to pin "an unverified customer is not blocked" were rewritten
+ * to pin the opposite; each rewritten test says so. The full gate
+ * (enumeration safety, flow routing, resend throttling, portal/guest
+ * exemptions) lives in CustomerEmailVerificationGateTest.
  *
  * DATA HYGIENE
  * Everything runs inside DatabaseTransactions and every account minted
@@ -54,9 +56,10 @@ class CustomerEmailVerificationTest extends TestCase
 
         $payload = $this->registerPayload('signup');
 
+        // Changed Oct 2026: lands on "check your email", not the menu.
         $this->post(route('customer.register.post'), $payload)
             ->assertSessionHasNoErrors()
-            ->assertRedirect(route('customer.menu'));
+            ->assertRedirect(route('customer.email-verification.pending'));
 
         $user = User::where('email', $payload['email'])->firstOrFail();
 
@@ -77,15 +80,17 @@ class CustomerEmailVerificationTest extends TestCase
 
         $response = $this->post(route('customer.register.post'), $payload);
 
+        // Changed Oct 2026: the account still exists and the customer lands on
+        // "check your email", where Resend can try again once mail works.
+        // Nobody is signed in either way.
         $response->assertSessionHasNoErrors();
-        $response->assertRedirect(route('customer.menu'));
+        $response->assertRedirect(route('customer.email-verification.pending'));
 
-        // The account exists and the customer is signed in either way.
         $this->assertDatabaseHas('users', [
             'email' => $payload['email'],
             'role' => 'customer',
         ]);
-        $this->assertAuthenticatedAs(User::where('email', $payload['email'])->first(), 'customer');
+        $this->assertGuest('customer');
     }
 
     // ── 3. resend from the account page ──────────────────────────────────────
@@ -158,23 +163,46 @@ class CustomerEmailVerificationTest extends TestCase
         $this->assertAuthenticatedAs($user->fresh(), 'customer');
     }
 
-    // ── 5. a brand-new, UNVERIFIED customer is not blocked at all ───────────
+    // ── 5. a brand-new, UNVERIFIED customer IS blocked until they confirm ───
+    //
+    // REVERSED Oct 2026. This was
+    // test_a_new_unverified_customer_is_not_blocked_from_logging_in_or_browsing,
+    // the regression guard for the old "not a gate" decision. It now pins
+    // the opposite, end to end: sign-up signs nobody in, the correct
+    // password is refused until the link is clicked, then it works.
+    // Browsing the menu as a guest was never gated and still is not.
 
-    public function test_a_new_unverified_customer_is_not_blocked_from_logging_in_or_browsing(): void
+    public function test_a_new_unverified_customer_cannot_log_in_until_the_email_is_confirmed(): void
     {
         Mail::fake();
 
-        $payload = $this->registerPayload('unblocked');
+        $payload = $this->registerPayload('blocked');
 
-        // Registration itself signs the customer in immediately.
         $this->post(route('customer.register.post'), $payload)
-            ->assertRedirect(route('customer.menu'));
+            ->assertRedirect(route('customer.email-verification.pending'));
+        $this->assertGuest('customer');
 
         $user = User::where('email', $payload['email'])->firstOrFail();
         $this->assertNull($user->email_verified_at, 'a freshly registered customer starts out unverified');
 
-        // Log out, then log back in — unverified must not refuse the login.
-        $this->post(route('customer.logout'));
+        $this->post(route('customer.login.post'), [
+            'email' => $payload['email'],
+            'password' => self::STRONG_PASSWORD,
+        ])->assertSessionHasErrors(['email' => \App\Support\VerificationFlow::UNVERIFIED_LOGIN_MESSAGE]);
+        $this->assertGuest('customer');
+
+        // Browsing as a guest is not gated.
+        $this->get(route('customer.menu'))->assertOk();
+
+        // Click the link from the email, then log in.
+        $link = null;
+        Mail::assertSent(VerifyEmailMail::class, function ($mail) use (&$link) {
+            $link = $mail->verificationUrl;
+
+            return true;
+        });
+        $this->get($link)->assertRedirect();
+        $this->assertGuest('customer');
 
         $this->post(route('customer.login.post'), [
             'email' => $payload['email'],
@@ -182,9 +210,6 @@ class CustomerEmailVerificationTest extends TestCase
         ])->assertRedirect(route('customer.menu'));
 
         $this->assertAuthenticatedAs($user->fresh(), 'customer');
-
-        // And browsing (the menu) is not blocked either.
-        $this->get(route('customer.menu'))->assertOk();
     }
 
     // ── clicking the signed link actually verifies the account ──────────────
@@ -207,9 +232,12 @@ class CustomerEmailVerificationTest extends TestCase
             ['id' => $user->id, 'hash' => sha1($user->email)]
         );
 
-        $this->get($url)->assertRedirect(route('customer.login'));
+        // Changed Oct 2026: a link with no `flow` (like one emailed before
+        // this change) opens the Pick-Up login. Verifying signs nobody in.
+        $this->get($url)->assertRedirect(route('customer.login', ['order_type' => 'pick_up']));
 
         $this->assertNotNull($user->fresh()->email_verified_at);
+        $this->assertGuest('customer');
     }
 
     public function test_a_verification_link_whose_hash_no_longer_matches_the_account_is_rejected(): void

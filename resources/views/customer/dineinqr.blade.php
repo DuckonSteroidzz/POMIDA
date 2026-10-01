@@ -278,6 +278,20 @@
             display: none;
         }
 
+        /* Green twin of .manual-error, same greens as the login page's
+           .alert-success. Used for "Email verified — please log in". */
+        .manual-notice {
+            margin-bottom: 1rem;
+            padding: 0.6rem 0.75rem;
+            border-radius: 0.6rem;
+            background: rgba(39, 103, 73, 0.08);
+            border: 1px solid rgba(39, 103, 73, 0.2);
+            color: #276749;
+            font-size: 0.85rem;
+            line-height: 1.45;
+            text-align: left;
+        }
+
         .links {
             display: flex;
             align-items: center;
@@ -370,6 +384,14 @@
                 Scan the QR code on your table with your phone's camera to jump
                 straight to the menu, or type the table's code below.
             </p>
+
+            {{-- A Dine-In sign-up that has just confirmed its email on a
+                 device holding no table. See App\Support\VerificationFlow. --}}
+            @if (session('success'))
+                <p class="manual-notice" role="status">
+                    {{ session('success') }}
+                </p>
+            @endif
 
             {{-- =========================
                  TABLE CODE ENTRY

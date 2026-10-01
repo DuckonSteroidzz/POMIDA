@@ -86,6 +86,9 @@ class SingleSessionPerAccountTest extends TestCase
             'role'      => $role,
             'is_active' => true,
             'branch_id' => $role === 'customer' ? null : 1,
+            // A customer who can log in has confirmed their email (Oct 2026
+            // gate). Portal fixtures are left exactly as they were.
+            'email_verified_at' => $role === 'customer' ? now() : null,
         ]);
     }
 
@@ -593,7 +596,15 @@ class SingleSessionPerAccountTest extends TestCase
 
     // ══════════ interactions with the other auth flows ══════════
 
-    public function test_registration_signs_the_new_account_in_as_its_only_session(): void
+    /**
+     * REWRITTEN October 2026 (email-confirmation gate). This used to be
+     * "registration signs the new account in as its only session". Sign-up
+     * now signs nobody in, so it must claim no session either: no
+     * fingerprint in remember_token, no guard. The account's first real
+     * session is its first login after confirming, and single-session then
+     * behaves exactly as before.
+     */
+    public function test_registration_signs_nobody_in_and_the_first_login_owns_the_session(): void
     {
         Cache::flush();
         $email = 'ss-register-' . Str::lower(Str::random(12)) . '@invalid.local';
@@ -605,11 +616,15 @@ class SingleSessionPerAccountTest extends TestCase
             'password_confirmation' => self::PASSWORD,
             'contact_number'        => '09171234567',
             'terms'                 => '1',
-        ]))->assertRedirect(route('customer.menu'));
+        ]))->assertRedirect(route('customer.email-verification.pending'));
 
         $user = User::where('email', $email)->firstOrFail();
-        $this->assertStillSignedIn('A', $user);
+        $this->assertFalse(Auth::guard('customer')->check(), 'registration must not sign the customer in');
+        $this->assertNull($user->remember_token, 'registration must not claim a session for the account');
 
+        $user->forceFill(['email_verified_at' => now()])->save();
+
+        $this->signIn('A', $user);
         $this->signIn('B', $user);
         $this->assertEndedOnNextRequest('A', $user);
         $this->assertStillSignedIn('B', $user);

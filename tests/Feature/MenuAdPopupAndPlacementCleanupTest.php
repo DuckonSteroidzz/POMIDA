@@ -468,6 +468,8 @@ class MenuAdPopupAndPlacementCleanupTest extends TestCase
             'role'      => 'customer',
             'branch_id' => null,
             'is_active' => true,
+            // A customer who can log in has confirmed their email (Oct 2026 gate).
+            'email_verified_at' => now(),
         ]);
 
         $this->withSession(['branch_id' => 1, 'order_type' => 'pick_up'])

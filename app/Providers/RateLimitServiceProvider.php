@@ -319,6 +319,17 @@ class RateLimitServiceProvider extends ServiceProvider
     public const CUSTOMER_EMAIL_VERIFY_PER_IP = 10;
     public const CUSTOMER_EMAIL_VERIFY_RESEND_PER_IP = 3;
 
+    /**
+     * "Resend confirmation email" on the check-your-email page, where nobody
+     * is signed in and the address comes from the form. Its own counter
+     * again. Two limits: per IP, and per typed address, so one person cannot
+     * use the button to flood someone else's inbox from a shared café IP.
+     * Both apply whether or not the address has an account, so a 429 reveals
+     * nothing either.
+     */
+    public const CUSTOMER_EMAIL_VERIFY_REQUEST_PER_IP = 3;
+    public const CUSTOMER_EMAIL_VERIFY_REQUEST_PER_EMAIL_PER_HOUR = 5;
+
     public function boot(): void
     {
         /*
@@ -370,6 +381,17 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-account-update', self::CUSTOMER_ACCOUNT_UPDATE_PER_IP);
         $this->perIp('customer-email-verify', self::CUSTOMER_EMAIL_VERIFY_PER_IP);
         $this->perIp('customer-email-verify-resend', self::CUSTOMER_EMAIL_VERIFY_RESEND_PER_IP);
+
+        RateLimiter::for('customer-email-verify-request', function (Request $request) {
+            $email = strtolower(trim((string) $request->input('email')));
+
+            return [
+                Limit::perMinute(self::CUSTOMER_EMAIL_VERIFY_REQUEST_PER_IP)
+                    ->by('customer-email-verify-request|ip:' . $request->ip()),
+                Limit::perHour(self::CUSTOMER_EMAIL_VERIFY_REQUEST_PER_EMAIL_PER_HOUR)
+                    ->by('customer-email-verify-request|email:' . sha1($email)),
+            ];
+        });
 
         $this->pair('place-order', self::PLACE_ORDER_PER_SESSION, self::PLACE_ORDER_PER_IP);
         $this->pair('gcash-paid', self::GCASH_PAID_PER_SESSION, self::GCASH_PAID_PER_IP);

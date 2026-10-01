@@ -95,6 +95,21 @@ Route::prefix('customer')->name('customer.')->group(function () {
         ->middleware('throttle:customer-email-verify-resend')
         ->name('email-verification.resend');
 
+    // "Check your email to activate your account" — where sign-up lands now
+    // that it no longer signs the customer in. Nobody is signed in here.
+    Route::get('/email-verification/pending', [AuthController::class, 'showVerificationPending'])
+        ->name('email-verification.pending');
+
+    // That page's Resend button. It takes a typed address, so it gives the
+    // same answer whether or not the address has an account, and it has its
+    // own named limiter (per IP + per address).
+    Route::post('/email-verification/request', [AuthController::class, 'requestEmailVerification'])
+        ->middleware([
+            'throttle.friendly:Please wait a minute before asking for another confirmation email.',
+            'throttle:customer-email-verify-request',
+        ])
+        ->name('email-verification.request');
+
 
     // ══════════ PASSWORD / VERIFICATION ══════════
 

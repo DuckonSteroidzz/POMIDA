@@ -325,17 +325,27 @@ class User extends Authenticatable implements MustVerifyEmail
      * `verification.verify` route — see customer.email-verification.verify
      * in routes/web.php and HandlesEmailVerification.
      *
-     * Never lets a mail failure surface to the caller: registration must
-     * still succeed even if Gmail SMTP is down or misconfigured. Same
+     * Never lets a mail failure surface to the caller: the account row is
+     * still created even if Gmail SMTP is down or misconfigured, and the
+     * customer can ask for a new link from the "check your email" page. Same
      * try/catch-and-log shape as HandlesPasswordReset::deliverResetCode().
+     * Since customers must now confirm before they can log in, a broken
+     * mailer blocks every new sign-up, which is why `php artisan
+     * deploy:check` treats it as a blocking FAIL.
      */
-    public function sendEmailVerificationNotification(): void
+    public function sendEmailVerificationNotification(string $flow = \App\Support\VerificationFlow::PICKUP): void
     {
         try {
+            // `flow` (Pick-Up or Dine-In) is part of the signed query, so
+            // editing it breaks the signature. See App\Support\VerificationFlow.
             $url = URL::temporarySignedRoute(
                 'customer.email-verification.verify',
                 now()->addMinutes(60),
-                ['id' => $this->getKey(), 'hash' => sha1($this->getEmailForVerification())]
+                [
+                    'id' => $this->getKey(),
+                    'hash' => sha1($this->getEmailForVerification()),
+                    'flow' => \App\Support\VerificationFlow::normalize($flow),
+                ]
             );
 
             Mail::to($this->email)->send(new VerifyEmailMail($this, $url));

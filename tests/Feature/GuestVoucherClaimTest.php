@@ -549,6 +549,10 @@ class GuestVoucherClaimTest extends TestCase
 
         $email = 'adopt' . uniqid() . '@peachy.local';
 
+        // October 2026: sign-up no longer signs the customer in (the email
+        // must be confirmed first), so the hand-over moved to their first
+        // login in this same browser. Until then the prize stays with this
+        // browser's session, not lost and not given to anyone.
         $this->post('/customer/register', [
             'name'                  => 'Adoption Test',
             'email'                 => $email,
@@ -556,14 +560,24 @@ class GuestVoucherClaimTest extends TestCase
             'password_confirmation' => 'LiveTest!2026',
             'contact_number'        => '09171234567',
             'terms'                 => 'on',
-        ])->assertRedirect(route('customer.menu'));
+        ])->assertRedirect(route('customer.email-verification.pending'));
 
         $user = User::where('email', $email)->firstOrFail();
+        $this->assertNull($claim->fresh()->user_id, 'the prize moved before the customer could even log in');
+
+        // They click the link in their email (a different device is fine)...
+        $user->forceFill(['email_verified_at' => now()])->save();
+
+        // ...then log in here, in the browser that won the prize.
+        $this->post('/customer/login', [
+            'email'    => $email,
+            'password' => 'LiveTest!2026',
+        ])->assertRedirect(route('customer.menu'));
 
         $this->assertSame(
             (int) $user->id,
             (int) $claim->fresh()->user_id,
-            'the prize was left behind when the guest registered'
+            'the prize was left behind when the new customer first logged in'
         );
 
         // The code must keep working: the customer may well have written it

@@ -22,7 +22,8 @@
 
         <p style="font-size:15px;line-height:1.6;">
             Thanks for creating a Peachy Cakes account. Please confirm this is
-            your email address by clicking the button below.
+            your email address by clicking the button below. You can log in
+            as soon as it is confirmed.
         </p>
 
         <p style="margin:24px 0;text-align:center;">
@@ -32,9 +33,11 @@
         </p>
 
         <p style="font-size:14px;line-height:1.6;color:#8A6A61;">
-            This link expires in 60 minutes. If you did not create this
-            account, you can safely ignore this email — your account will
-            still work, it will just stay unverified.
+            This link expires in 60 minutes. If it has expired, try logging
+            in and choose "Resend confirmation email" to get a new one. If
+            you did not create this account, you can safely ignore this
+            email: the account cannot be used until this address is
+            confirmed.
         </p>
 
     </div>

@@ -91,6 +91,8 @@ class RememberMeAndSessionGuardTest extends TestCase
             'password'  => self::CUSTOMER_PW,
             'role'      => 'customer',
             'is_active' => true,
+            // A customer who can log in has confirmed their email (Oct 2026 gate).
+            'email_verified_at' => now(),
         ]);
     }
 

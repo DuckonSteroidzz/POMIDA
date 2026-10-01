@@ -15,9 +15,11 @@ use Illuminate\Support\Facades\Log;
  *
  * THE PROBLEM THIS SOLVES
  * -----------------------
- * salesForecast() regresses over a ROLLING window ending today, and refuses to
- * draw anything until at least FORECAST_MIN_DAYS_WITH_SALES of those days carry
- * completed sales. DemoSalesSeeder was run once, on 2026-08-23, writing orders
+ * The forecast needs recent history: DemandForecastService (a trailing 7-day
+ * moving average) refuses to draw anything until the selected range holds at
+ * least FORECAST_MIN_DAYS_WITH_SALES days with completed sales, and averages
+ * only the last 7 days of it. This class checks a ROLLING window of
+ * FORECAST_LOOKBACK_DAYS ending today as its proxy for that. DemoSalesSeeder was run once, on 2026-08-23, writing orders
  * at fixed calendar dates. Those dates do not move. Every day that passes slides
  * one of them out of the window, so the forecast was guaranteed to revert to
  * "insufficient data" at some point before the defense, silently, with nothing

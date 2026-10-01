@@ -496,7 +496,9 @@ class AnalyticsService
         return ['labels' => $labels, 'values' => $values];
     }
 
-    // ══════════ Sales forecast (Simple Linear Regression) ══════════
+    // ══════════ Sales forecast (Simple Linear Regression) — DORMANT ══════════
+    // NOT the live forecast. The Analytics page uses the flat 7-day moving
+    // average in DemandForecastService; nothing calls salesForecast() below.
 
     /**
      * Forecast upcoming daily sales with Simple Linear Regression (SLR)

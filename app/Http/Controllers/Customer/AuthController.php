@@ -1649,15 +1649,13 @@ private function switchBranch($branchId): void
     ]);
 
     /*
-     * Preserve the current order context before creating/logging in
-     * the customer.
-     *
-     * This is important for Dine-In because the QR code already
-     * stored the branch and table number in the session.
+     * Which door they came in through (Pick-Up, or Dine-In via a table QR or
+     * code). It goes into the signed confirmation link so the right login
+     * page opens afterwards, even on another device. The session's Dine-In
+     * context (branch, table) is left untouched, so this browser can still
+     * log in to its table later.
      */
-    $orderType = session('order_type');
-    $tableNumber = session('table_number');
-    $branchId = session('branch_id');
+    $flow = \App\Support\VerificationFlow::fromSession();
 
     $user = User::create([
         'name' => $validated['name'],
@@ -1670,70 +1668,31 @@ private function switchBranch($branchId): void
     ]);
 
     /*
-     * Confirmation email. Never blocks or fails registration — a mail
-     * transport failure is caught and logged inside the model method
-     * itself. There is no login/order gate on verification; this only
-     * starts the "check your inbox" loop for the account page.
+     * Confirmation email. A mail transport failure is caught and logged
+     * inside the model method, so the account row is still created and the
+     * customer can ask for another link from the next page.
      */
-    $user->sendEmailVerificationNotification();
-
-    // Automatically log the newly registered customer in.
-    Auth::guard('customer')->login($user);
+    $user->sendEmailVerificationNotification($flow);
 
     /*
-     * Regenerate the session for security.
+     * NOT signed in (October 2026). The customer must click the emailed
+     * link first; AuthController::login() refuses an unconfirmed customer.
+     * So there is no SingleSession::claim() and no welcome popup here. Wheel
+     * prizes won as a guest in this browser stay in this session and move
+     * into the account at login (login() calls GuestVoucherClaims::adoptInto()).
+     *
+     * The session id is still regenerated: the new account's address is
+     * about to be written into this session for the next page, and a session
+     * that changes what it holds should not keep an id someone else may have
+     * set.
      */
     $request->session()->regenerate();
 
-    // Registration signs the new account in, so it is that account's one
-    // session from the start. See App\Support\SingleSession.
-    \App\Support\SingleSession::claim($request, 'customer');
+    session()->put(\App\Support\VerificationFlow::SESSION_EMAIL, $user->email);
+    session()->put(\App\Support\VerificationFlow::SESSION_FLOW, $flow);
 
-    /*
-     * Hand over any wheel prizes won as a guest in this browser.
-     *
-     * "I played while I waited, won something, then made an account" is an
-     * ordinary sequence, and without this the prize would only be reachable by
-     * re-typing its claim code — which does still work, but looks to the
-     * customer as though signing up cost them their voucher. See
-     * GuestVoucherClaims::adoptInto() for what it deliberately will not do.
-     */
-    $adopted = GuestVoucherClaims::adoptInto($user->id);
-
-    /*
-     * Restore the Dine-In context after session regeneration.
-     *
-     * Without this, the customer can lose the QR table information
-     * when registering.
-     */
-    if ($orderType === 'dine_in') {
-
-        session()->put('order_type', 'dine_in');
-
-        if ($tableNumber !== null) {
-            session()->put('table_number', $tableNumber);
-        }
-
-        if ($branchId !== null) {
-            session()->put('branch_id', $branchId);
-        }
-
-    } else {
-
-        // Normal registration = Pickup
-        session()->put('order_type', 'pick_up');
-        session()->forget('table_number');
-    }
-
-    $this->flashWelcomePopup($user);
-
-    return redirect()->route('customer.menu')
-        ->with('success', 'Account created successfully! Welcome, ' . $user->name . '!'
-            . ($adopted > 0
-                ? ' Your ' . ($adopted === 1 ? 'voucher has' : $adopted . ' vouchers have')
-                    . ' been moved to your account.'
-                : '')
-            . ' We\'ve sent a confirmation link to your email.');
+    return redirect()->route('customer.email-verification.pending')
+        ->with('success', 'Your account has been created.');
 }
         public function login(Request $request)
         {
@@ -1765,6 +1724,34 @@ private function switchBranch($branchId): void
                     return back()->withErrors([
                         'email' => 'This is an administrator account. Please use the Admin Login page..',
                     ]);
+                }
+
+                /*
+                 * Email-confirmation gate (October 2026). Reached ONLY after
+                 * the password has already matched, so a wrong password or
+                 * an unknown address still gets the one generic "Invalid
+                 * email or password" below, and this message reveals nothing
+                 * to someone who does not know the password.
+                 *
+                 * logoutCurrentDevice(), not logout(), for the same reason
+                 * as the administrator branch above: no remember_token
+                 * rotation, and no SingleSession::claim() either. Nothing
+                 * about the account's sessions changes.
+                 *
+                 * Only customers reach this line. Portal accounts were turned
+                 * away just above and log in through AdminAuthController,
+                 * which has no such check.
+                 */
+                if (! $user->hasVerifiedEmail()) {
+                    Auth::guard('customer')->logoutCurrentDevice();
+
+                    session()->put(\App\Support\VerificationFlow::SESSION_EMAIL, $user->email);
+                    session()->put(\App\Support\VerificationFlow::SESSION_FLOW, \App\Support\VerificationFlow::fromSession());
+
+                    return back()
+                        ->withErrors(['email' => \App\Support\VerificationFlow::UNVERIFIED_LOGIN_MESSAGE])
+                        ->withInput($request->only('email'))
+                        ->with('unverified_login', true);
                 }
 
                 /*

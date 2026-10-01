@@ -11,9 +11,10 @@ use Illuminate\Database\Seeder;
  *
  * WHY THIS EXISTS
  * ---------------
- * AnalyticsService::salesForecast() refuses to draw anything until at least
- * FORECAST_MIN_DAYS_WITH_SALES of the last FORECAST_LOOKBACK_DAYS days have
- * completed sales. The real order history only had three such days, so the
+ * The Analytics forecast (DemandForecastService, a trailing 7-day moving
+ * average) refuses to draw anything until at least FORECAST_MIN_DAYS_WITH_SALES
+ * days in the selected range (measured here over the last
+ * FORECAST_LOOKBACK_DAYS days) have completed sales. The real order history only had three such days, so the
  * Admin Analytics forecast chart and its low-sales alert never rendered.
  *
  * THESE ORDERS ARE FABRICATED.

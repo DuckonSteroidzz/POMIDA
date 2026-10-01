@@ -160,6 +160,13 @@ class DeployCheck extends Command
         );
     }
 
+    /**
+     * BLOCKING since October 2026: a new customer cannot log in until they
+     * click the confirmation link emailed at sign-up
+     * (AuthController::login()). With no working mailer that email never
+     * arrives, so every new sign-up is stuck. Password reset has the same
+     * dependency. Both results below are FAILs, never notes.
+     */
     private function checkMailer(): void
     {
         $mailer = (string) config('mail.default');
@@ -169,22 +176,32 @@ class DeployCheck extends Command
             'MAIL_MAILER delivers real email',
             ! in_array($mailer, $notDelivering, true),
             in_array($mailer, $notDelivering, true)
-                ? "currently '{$mailer}', which DELIVERS NOTHING. Customers would be told a password-reset "
-                    . 'email was sent and it would never arrive. Set MAIL_MAILER=smtp and fill in the '
+                ? "currently '{$mailer}', which DELIVERS NOTHING. New customers could never activate their "
+                    . 'accounts (sign-up now requires clicking the emailed confirmation link before the first '
+                    . 'login), and password-reset codes would never arrive. Set MAIL_MAILER=smtp and fill in the '
                     . 'MAIL_HOST / MAIL_PORT / MAIL_USERNAME / MAIL_PASSWORD values from your mail provider.'
                 : $mailer
         );
 
-        // A real mailer with no credentials behind it is just as broken.
+        // A real mailer with no credentials behind it is just as broken, and
+        // so is one still holding the .env.example placeholders.
         if (! in_array($mailer, $notDelivering, true)) {
+            $placeholders = [
+                'null',
+                'hello@example.com',
+                'your-gmail-address@gmail.com',
+                'your-16-char-app-password',
+            ];
+
             $missing = [];
             foreach (['host' => 'MAIL_HOST', 'username' => 'MAIL_USERNAME', 'password' => 'MAIL_PASSWORD'] as $k => $envName) {
                 $v = config("mail.mailers.{$mailer}.{$k}");
-                if ($v === null || $v === '' || $v === 'null') {
+                if ($v === null || $v === '' || in_array($v, $placeholders, true)) {
                     $missing[] = $envName;
                 }
             }
-            if (config('mail.from.address') === null || config('mail.from.address') === '' || config('mail.from.address') === 'hello@example.com') {
+            $from = config('mail.from.address');
+            if ($from === null || $from === '' || in_array($from, $placeholders, true)) {
                 $missing[] = 'MAIL_FROM_ADDRESS';
             }
 
@@ -194,6 +211,7 @@ class DeployCheck extends Command
                 $missing === []
                     ? 'all set'
                     : 'still empty or still the example value: ' . implode(', ', $missing)
+                        . '. New customers cannot activate their accounts without working email.'
             );
         }
     }
@@ -334,8 +352,9 @@ class DeployCheck extends Command
         if (config('app.debug') === false && config('app.env') === 'production') {
             $this->note(
                 'Remember the two things this command cannot check for you: that https:// actually loads '
-                . 'with a padlock in a browser, and that a real password-reset email actually arrives in a '
-                . 'real inbox. Do both by hand before opening the site to customers.'
+                . 'with a padlock in a browser, and that real email actually arrives in a real inbox: sign '
+                . 'up a test customer and click the confirmation link, and request a password-reset code. '
+                . 'Do both by hand before opening the site to customers.'
             );
         }
     }

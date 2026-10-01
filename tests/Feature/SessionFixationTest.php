@@ -223,7 +223,10 @@ class SessionFixationTest extends TestCase
             'registration did not succeed, so this proves nothing. Errors: '
             . json_encode(session('errors')?->all() ?? [])
         );
-        $this->assertTrue(Auth::guard('customer')->check(), 'registration should sign the customer in');
+        // October 2026: registration no longer signs the customer in (email
+        // confirmation comes first), but it still writes the new address into
+        // the session, so the id must still change.
+        $this->assertFalse(Auth::guard('customer')->check(), 'registration must not sign the customer in');
 
         $this->assertNotSame(
             $before,
