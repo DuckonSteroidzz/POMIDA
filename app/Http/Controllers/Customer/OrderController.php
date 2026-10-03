@@ -138,8 +138,15 @@ class OrderController extends Controller
         // Branch logic — from session only (set from QR or branch selector)
         $branchId = session('branch_id') ?? $request->input('branch_id');
 
-        // Table number — request first, then session fallback
-        $tableNumber = $request->input('table_number') ?? session('table_number');
+        // Table number. For Dine-In the session's table wins: it only ever
+        // changes through a validated QR or code (App\Services\TableChange),
+        // while the posted field is whatever the cart page held when it was
+        // rendered — after a table change, an older tab would still carry the
+        // previous table. The posted field is only a fallback when the session
+        // holds none.
+        $tableNumber = $validated['order_type'] === 'dine_in' && filled(session('table_number'))
+            ? session('table_number')
+            : ($request->input('table_number') ?? session('table_number'));
 
         if (!$branchId) {
             return back()->withErrors(['error' => 'No branch selected. Please select a branch first.']);

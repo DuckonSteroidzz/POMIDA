@@ -5266,15 +5266,14 @@ public function markOrderRefunded(int $id)
         // offered EVERY branch's picker. Asking lockedBranchId() means this
         // section can never again disagree with the lists and the per-record
         // endpoints about who is branch-bound.
-        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
-
-        $branches = ($lockedBranchId !== null)
-            ? \App\Models\Branch::where('id', $lockedBranchId)->where('is_active', true)->get()
-            : \App\Models\Branch::where('is_active', true)->get();
+        $branches = $this->qrBranchesInScope()->get();
 
         /*
          * Who may rotate a table code — it invalidates a printed card and
          * forces a reprint, so it is a management call, not a counter action.
+         * The same flag shows the Deactivate / Reactivate table button beside
+         * it (admin.qr-generator.deactivate-table / reactivate-table, the same
+         * `role:admin,supervisor` gate).
          *
          * "QR & Table Codes" is Y | Y | VIEW-ONLY, so this is isManager()
          * rather than the `role === 'admin'` it read before: a supervisor gets
@@ -5289,6 +5288,51 @@ public function markOrderRefunded(int $id)
         $canRegenerate = $staff && $staff->isManager();
 
         return view('admin.qr-generator', compact('branches', 'canRegenerate'));
+    }
+
+    /**
+     * The branches this user may pick on the QR & Table Codes page: active,
+     * and only their own for a branch-locked role. The one definition — the
+     * page's dropdown and the "Manage tables" list endpoint both read it, so
+     * the list can never answer for a branch the dropdown would not offer.
+     */
+    private function qrBranchesInScope()
+    {
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        return \App\Models\Branch::where('is_active', true)
+            ->when($lockedBranchId !== null, fn ($q) => $q->where('id', $lockedBranchId));
+    }
+
+    /**
+     * The "Manage tables" list: every table registered at ONE branch, with its
+     * state (in service / occupied / not in service). Managers only — the same
+     * `role:admin,supervisor` gate as Deactivate / Reactivate, whose endpoints
+     * its Remove / Restore buttons post to.
+     *
+     * The branch is the dropdown's selection, but it is only ever a request to
+     * look at a branch from the page's own list (qrBranchesInScope()): an
+     * unknown branch, a closed one and another branch's id are all the same
+     * 404, for every role, so nothing leaks about a branch that is not theirs.
+     * Only that branch's tables come back, and no table code is selected at all.
+     */
+    public function qrManageTables(Request $request)
+    {
+        $validated = $request->validate([
+            'branch_id' => 'required|integer',
+        ]);
+
+        $branch = $this->qrBranchesInScope()->whereKey((int) $validated['branch_id'])->first();
+
+        if (!$branch) {
+            abort(404);
+        }
+
+        return response()->json([
+            'branch_id'   => (int) $branch->id,
+            'branch_name' => $branch->name,
+            'tables'      => \App\Services\TableOccupancy::manageList((int) $branch->id),
+        ]);
     }
 
     /**
@@ -5357,6 +5401,9 @@ public function markOrderRefunded(int $id)
             // showing only the QR leaves them with nothing to do.
             'code'         => $table->code,
             'table_id'     => $table->id,
+            // A table taken out of service still gets its card — the preview
+            // says so and offers Reactivate. Nothing here refuses it.
+            'is_active'    => (bool) $table->is_active,
         ]);
     }
 
@@ -5423,9 +5470,87 @@ public function markOrderRefunded(int $id)
             // shape qrTableCard() already returns.
             'url'           => $table->qrUrl(),
             'branch_code'   => strtoupper($table->branch->code ?? ''),
+            'is_active'     => (bool) $table->is_active,
             'message'       => 'Table ' . $table->table_number . ': '
                 . $previous . ' → ' . $table->code . '. '
                 . 'The old QR and code both stopped working — reprint this table\'s card.',
+        ]);
+    }
+
+    /**
+     * Take ONE table out of service. Tables are never deleted: this only
+     * clears restaurant_tables.is_active, after which the QR door and the
+     * typed-code door answer "not in service", "Move table" stops offering it
+     * and moveSession() refuses it. Its code, orders, help requests and session
+     * history are untouched. See TableOccupancy::setInService() for the
+     * occupied-table refusal and the locking.
+     */
+    public function deactivateTable(Request $request)
+    {
+        return $this->changeTableService($request, false);
+    }
+
+    /** Put a table taken out of service back. The inverse of deactivateTable(). */
+    public function reactivateTable(Request $request)
+    {
+        return $this->changeTableService($request, true);
+    }
+
+    /**
+     * The shared body of the two actions above.
+     *
+     * Takes the table's registry id and nothing else. The row is resolved
+     * through AdminOrderAccess — the one branch rule, a 404 for another branch
+     * and for an id that does not exist alike, so nothing leaks about another
+     * branch's tables — and the branch is read off that row. A posted
+     * branch_id or table_number is never read.
+     */
+    private function changeTableService(Request $request, bool $inService)
+    {
+        $validated = $request->validate([
+            'table_id' => 'required|integer',
+        ]);
+
+        $table = \App\Services\AdminOrderAccess::resolveRecordInScope(
+            \App\Models\RestaurantTable::class,
+            (int) $validated['table_id'],
+            ['branch']
+        );
+
+        try {
+            $result = \App\Services\TableOccupancy::setInService($table, $inService, Auth::guard('admin')->user());
+        } catch (\Throwable $e) {
+            // Rolled back: the transaction committed whole or not at all.
+            // QueryException is a RuntimeException, so never let SQL reach the
+            // screen; the detail goes to the log.
+            report($e);
+
+            return response()->json([
+                'message' => 'Could not change that table just now. Nothing was changed. Please try again.',
+            ], 500);
+        }
+
+        if (!$result['ok']) {
+            return response()->json(['message' => $result['error']], $result['status']);
+        }
+
+        $label = 'Table ' . $result['table_number'] . ' at ' . ($table->branch?->name ?? 'this branch');
+
+        if (!$result['changed']) {
+            $message = $label . ($inService ? ' is already in service.' : ' is already out of service.');
+        } else {
+            $message = $inService
+                ? $label . ' is back in service. Customers can open it again.'
+                : $label . ' is now out of service. Existing order history is kept.';
+        }
+
+        return response()->json([
+            'message'      => $message,
+            'changed'      => $result['changed'],
+            'table_id'     => $result['table_id'],
+            'branch_id'    => $result['branch_id'],
+            'table_number' => $result['table_number'],
+            'is_active'    => $result['is_active'],
         ]);
     }
 
@@ -5449,6 +5574,10 @@ public function markOrderRefunded(int $id)
         return response()->json([
             'tables' => \App\Services\TableOccupancy::activeSessions($scope)->map(function ($s) {
                 return [
+                    // What "Move table" posts back. Out of scope it resolves
+                    // to nothing (AdminOrderAccess), so the id alone grants
+                    // nothing.
+                    'session_id'   => $s->id,
                     'branch_id'    => $s->branch_id,
                     'branch_name'  => $s->branch?->name,
                     'table_number' => $s->table_number,
@@ -5541,6 +5670,166 @@ public function markOrderRefunded(int $id)
             'order_id'     => $result['order_id'],
             'order_number' => $result['order_number'],
             'order_status' => $result['order_status'],
+        ]);
+    }
+
+    /**
+     * The tables the "Move table" dialog may offer for one occupied table:
+     * registered, in service, free, and at the occupancy's OWN branch — for an
+     * Owner too. See TableOccupancy::moveTargets().
+     *
+     * The occupancy is resolved through AdminOrderAccess, so another branch's
+     * is a 404 to staff and supervisors, exactly like a missing id.
+     */
+    public function tableMoveTargets(Request $request)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|integer',
+        ]);
+
+        $source = \App\Services\AdminOrderAccess::resolveRecordInScope(
+            \App\Models\TableSession::class,
+            (int) $validated['session_id'],
+            ['branch']
+        );
+
+        if ($source->active_lock === null) {
+            return response()->json([
+                'message' => 'Table ' . $source->table_number . ' no longer has an active session. Please check the list.',
+            ], 409);
+        }
+
+        return response()->json([
+            'session_id'   => $source->id,
+            'branch_name'  => $source->branch?->name,
+            'table_number' => $source->table_number,
+            'tables'       => \App\Services\TableOccupancy::moveTargets($source)
+                ->map(fn ($t) => ['id' => $t->id, 'table_number' => $t->table_number])
+                ->values(),
+        ]);
+    }
+
+    /**
+     * Move a seated party to another table at the same branch: its shared
+     * session (so every phone at the table follows), and every open order of
+     * the visit. Completed and cancelled orders keep their table.
+     *
+     * Takes two ids and nothing else. The source occupancy is resolved through
+     * AdminOrderAccess — the one branch rule, 404 out of scope. The branch is
+     * then read off that occupancy, and TableOccupancy::moveSession() refuses a
+     * destination at any other branch, for every role. A posted branch_id is
+     * never read.
+     */
+    public function moveTable(Request $request)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|integer',
+            'table_id'   => 'required|integer',
+        ]);
+
+        $source = \App\Services\AdminOrderAccess::resolveRecordInScope(
+            \App\Models\TableSession::class,
+            (int) $validated['session_id']
+        );
+
+        $destination = \App\Models\RestaurantTable::find((int) $validated['table_id']);
+
+        if (!$destination) {
+            return response()->json(['message' => \App\Services\TableOccupancy::ERR_MOVE_NO_TABLE], 404);
+        }
+
+        try {
+            $result = \App\Services\TableOccupancy::moveSession($source, $destination, Auth::guard('admin')->user());
+        } catch (\Throwable $e) {
+            // Rolled back: the transaction either committed whole or not at
+            // all. Never let SQL reach the screen (QueryException is a
+            // RuntimeException); the detail goes to the log.
+            report($e);
+
+            return response()->json(['message' => \App\Services\TableOccupancy::ERR_MOVE_FAILED], 500);
+        }
+
+        if (!$result['ok']) {
+            return response()->json(['message' => $result['error']], $result['status']);
+        }
+
+        $count = count($result['order_ids']);
+        $message = 'Moved Table ' . $result['from'] . ' to Table ' . $result['to'] . '.';
+
+        if ($count > 0) {
+            $message .= ' ' . ($count === 1 ? 'Its open order' : "Its {$count} open orders")
+                . ' now ' . ($count === 1 ? 'shows' : 'show') . ' Table ' . $result['to'] . '.';
+        }
+
+        return response()->json([
+            'message'      => $message,
+            'session_id'   => $result['session_id'],
+            'from'         => $result['from'],
+            'to'           => $result['to'],
+            'order_ids'    => $result['order_ids'],
+        ]);
+    }
+
+    /**
+     * Delete a table that was never used — the trash icon beside a free table
+     * in the Move table dialog. Owner and supervisor only (the route's role
+     * gate, the same as regenerate-code).
+     *
+     * Takes two ids, like moveTable(), and nothing else. The dialog's occupancy
+     * is resolved through AdminOrderAccess (404 out of scope); the table is too,
+     * and its branch — read off the row, never the request — must be that
+     * occupancy's branch. Another branch's table, a missing id and an id
+     * deleted a moment ago are the same 404 for every role, Owner included, so
+     * the delete can reach exactly the tables the dialog lists and no others.
+     * TableOccupancy::deleteUnusedTable() re-checks the branch and every
+     * refusal under the registry row's lock.
+     */
+    public function deleteUnusedTable(Request $request)
+    {
+        $validated = $request->validate([
+            'session_id' => 'required|integer',
+            'table_id'   => 'required|integer',
+        ]);
+
+        $source = \App\Services\AdminOrderAccess::resolveRecordInScope(
+            \App\Models\TableSession::class,
+            (int) $validated['session_id']
+        );
+
+        $table = \App\Services\AdminOrderAccess::resolveRecordInScope(
+            \App\Models\RestaurantTable::class,
+            (int) $validated['table_id'],
+            ['branch']
+        );
+
+        if ((int) $table->branch_id !== (int) $source->branch_id) {
+            abort(404);
+        }
+
+        try {
+            $result = \App\Services\TableOccupancy::deleteUnusedTable(
+                $table,
+                (int) $source->branch_id,
+                Auth::guard('admin')->user()
+            );
+        } catch (\Throwable $e) {
+            // Rolled back whole. QueryException is a RuntimeException, so never
+            // let SQL reach the screen; the detail goes to the log.
+            report($e);
+
+            return response()->json([
+                'message' => 'Could not delete that table just now. Nothing was deleted. Please try again.',
+            ], 500);
+        }
+
+        if (!$result['ok']) {
+            return response()->json(['message' => $result['error']], $result['status']);
+        }
+
+        return response()->json([
+            'message'      => 'Table ' . $result['table_number'] . ' at ' . ($table->branch?->name ?? 'this branch') . ' was deleted.',
+            'table_id'     => $result['table_id'],
+            'table_number' => $result['table_number'],
         ]);
     }
 

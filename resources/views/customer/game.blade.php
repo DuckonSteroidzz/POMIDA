@@ -120,9 +120,11 @@
 
         /* Timing badge on the voucher-win modal — states plainly when a
            wheel-won voucher actually becomes usable, since AuthController
-           always mints these with valid_from = tomorrow (see
-           AuthController::addPoints / VoucherClaims::mintForGuest), never
-           usable on the order that won it. */
+           always mints these with valid_from = today (see
+           AuthController::addPoints / VoucherClaims::mintForGuest) — usable
+           on the very next order, but never on the order that won it, since
+           that order already existed before the win and a voucher can only
+           ever be attached to an order at the moment it is created. */
         .voucher-timing-badge {
             display: inline-flex;
             align-items: center;
@@ -626,9 +628,9 @@
         <div style="background:#fff;border-radius:18px;padding:1.5rem 1.25rem;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 50px -20px rgba(139,26,26,.5);">
             <p style="font-family:'Fraunces',Georgia,serif;font-size:1.15rem;font-weight:900;color:#8B1A1A;margin:0 0 .25rem;">🎉 You won a voucher!</p>
             {{-- States plainly when this can actually be used. The server
-                 always mints wheel-won vouchers as valid starting the next
-                 day (never on the order that won them) — this shows that
-                 exact date rather than leaving it to be assumed. --}}
+                 always mints wheel-won vouchers as valid starting today —
+                 usable on the very next order, never on the order that won
+                 them — rather than leaving that to be assumed. --}}
             <span id="voucherWinTiming" class="voucher-timing-badge" style="display:none;"></span>
             <p id="voucherWinDesc" style="font-size:.8rem;color:#8A6A61;margin:0 0 .75rem;"></p>
             <div id="voucherWinCode" style="font-size:1.5rem;font-weight:900;letter-spacing:2px;color:#C0392B;background:#FFF7F3;border:2px dashed #F4845F;border-radius:10px;padding:.6rem .5rem;margin:0 0 .6rem;word-break:break-all;"></div>
@@ -1011,7 +1013,7 @@
 
             var timing = document.getElementById('voucherWinTiming');
             if (timingMessage) {
-                timing.textContent = '⏳ ' + timingMessage;
+                timing.textContent = '✅ ' + timingMessage;
                 timing.style.display = 'inline-flex';
             } else {
                 timing.style.display = 'none';

@@ -117,6 +117,14 @@ class TableEntry
     public const ERR_TABLE_INACTIVE = 'That table is not in service right now. Please ask our staff to seat you.';
 
     /**
+     * The table this customer's code was validated against was deleted (a
+     * manager removing an unused typo table from the Move table list) in the
+     * instant between validate() and TableOccupancy::claim(). Decided under the
+     * registry row's lock — see claim().
+     */
+    public const ERR_TABLE_NOT_FOUND = 'That table could not be found. Please ask our staff to seat you.';
+
+    /**
      * Shown when a QR carries no code, a stale code, or a code that never
      * matched this table — the "someone photographed the old card" case. It is
      * not an accusation: an ordinary customer holding a reprinted table's old

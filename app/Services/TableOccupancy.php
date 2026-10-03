@@ -4,6 +4,7 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\Order;
+use App\Models\RestaurantTable;
 use App\Models\TableSession;
 use App\Models\TableSessionDevice;
 use Illuminate\Database\QueryException;
@@ -188,7 +189,7 @@ class TableOccupancy
      * THE CUSTOMER OFF THEIR PAGE.
      *
      * releaseRow() stamps release_reason on every occupancy it frees, and there
-     * are exactly four values it can write:
+     * are exactly five values it can write:
      *
      *   staff_cleared     a staff member pressed Clear on the Occupied Tables
      *                     panel. Somebody deliberately ended this party's
@@ -198,6 +199,8 @@ class TableOccupancy
      *   order_cancelled   the party's order was cancelled.
      *   abandoned         sweepIdle() reclaimed a table nobody had touched for
      *                     INACTIVITY_MINUTES.
+     *   table_changed     the last device at the table moved to another one
+     *                     (RELEASE_TABLE_CHANGED, leaveAfterTableChange()).
      *
      * Only the first is a reason to interrupt somebody mid-page.
      * order_completed in particular must NEVER bounce anyone: it fires on the
@@ -207,6 +210,9 @@ class TableOccupancy
      * promise is kept by a value comparison rather than by remembering it.
      */
     public const RELEASE_STAFF_CLEARED = 'staff_cleared';
+
+    /** See leaveAfterTableChange(). Fits release_reason's varchar(20). */
+    public const RELEASE_TABLE_CHANGED = 'table_changed';
 
     /**
      * Shown on the code-entry page when staff ended this table's session from
@@ -225,9 +231,29 @@ class TableOccupancy
      * Seat this visitor at a table: open its session, or JOIN the one already
      * there.
      *
-     * There is no refusal path here. Whoever scans, in whatever order, ends up
-     * on the table's single shared session — see the class docblock for why the
-     * second person at a table of four must never be turned away.
+     * There is no refusal path for a second person. Whoever scans, in whatever
+     * order, ends up on the table's single shared session — see the class
+     * docblock for why the second person at a table of four must never be
+     * turned away.
+     *
+     * The ONE refusal is a table an admin took out of service in the instant
+     * between TableEntry::validate() (a plain read, outside this transaction)
+     * and here. It is decided under the registry row's lock — the same lock
+     * setInService() takes before it looks for a live session — so a claim and
+     * a deactivation are serialised: either the claim commits first and the
+     * deactivation sees it and refuses, or the deactivation commits first and
+     * the claim sees is_active = 0 and refuses. Without it a customer who had
+     * already passed validation could seat themselves at a table the admin was
+     * told was empty.
+     *
+     * The same lock answers a table DELETED in that instant (deleteUnusedTable()).
+     * Every customer door validated a registry row before calling this and
+     * passes its id as $registeredId; if that row is gone (or a different row
+     * now holds the number) when the lock is taken, the claim is refused with
+     * ERR_TABLE_NOT_FOUND and nothing is written. Either the claim commits first
+     * and the delete sees a live session and refuses, or the delete commits
+     * first and the claim finds no row. A caller that passes no id keeps the
+     * old behaviour, in which an unregistered table is not a refusal.
      *
      * `continued` reports which of the two happened, for callers and tests that
      * care: true when this visitor joined (or resumed) an existing session,
@@ -235,7 +261,7 @@ class TableOccupancy
      *
      * @return array{ok: bool, session?: TableSession, error?: string, continued?: bool}
      */
-    public static function claim(Branch $branch, string $tableNumber, ?string $ip = null): array
+    public static function claim(Branch $branch, string $tableNumber, ?string $ip = null, ?int $registeredId = null): array
     {
         $tableNumber = strtoupper(trim($tableNumber));
         $lock = self::lockKey($branch->id, $tableNumber);
@@ -248,7 +274,23 @@ class TableOccupancy
         // Serialised so two simultaneous scans of the same table cannot both
         // read "free" and both try to insert. The unique index on active_lock
         // is the backstop if they somehow do.
-        return DB::transaction(function () use ($branch, $tableNumber, $lock, $ip) {
+        return DB::transaction(function () use ($branch, $tableNumber, $lock, $ip, $registeredId) {
+            // Registry row first, session second — the order moveSession(),
+            // setInService() and deleteUnusedTable() use. Without $registeredId
+            // an unregistered table has no row to lock and is not a refusal.
+            $registered = RestaurantTable::where('branch_id', $branch->id)
+                ->where('table_number', $tableNumber)
+                ->lockForUpdate()
+                ->first();
+
+            if ($registeredId !== null && (!$registered || (int) $registered->id !== $registeredId)) {
+                return ['ok' => false, 'error' => TableEntry::ERR_TABLE_NOT_FOUND];
+            }
+
+            if ($registered && !$registered->is_active) {
+                return ['ok' => false, 'error' => TableEntry::ERR_TABLE_INACTIVE];
+            }
+
             $existing = TableSession::where('active_lock', $lock)->lockForUpdate()->first();
 
             if ($existing) {
@@ -841,6 +883,597 @@ class TableOccupancy
             ->whereNull('active_lock')
             ->where('release_reason', self::RELEASE_STAFF_CLEARED)
             ->first();
+    }
+
+    // ══════════ leaving a table for another one ══════════
+
+    /**
+     * THIS device has just moved from $from to another table
+     * (App\Services\TableChange::move(), after claim() seated it there).
+     *
+     * Two steps, and only the first always happens:
+     *
+     *   1. This device stops counting at the old table — its device row goes,
+     *      so the staff panel's Devices figure drops by one straight away
+     *      instead of fifteen minutes later.
+     *   2. The old table is released ONLY if nobody else is still on it, by the
+     *      same rule the Devices figure uses (activeDeviceCount()), and no order
+     *      placed during this occupancy is still open. People still seated there
+     *      keep their session; an order still cooking keeps its table.
+     *
+     * Nothing else on the old row is written. In particular last_seen_at and
+     * last_activity_at are left alone, so a table someone else is still at gets
+     * no extra time on either clock from this device leaving it.
+     *
+     * Locked so a second device leaving the same table at the same moment
+     * cannot have both see "one other device left" and both skip the release.
+     *
+     * @return bool whether the old table was released
+     */
+    public static function leaveAfterTableChange(TableSession $from): bool
+    {
+        return DB::transaction(function () use ($from) {
+            $row = TableSession::whereKey($from->id)->lockForUpdate()->first();
+
+            if (!$row || $row->active_lock === null) {
+                return false;
+            }
+
+            $device = session(self::DEVICE_KEY);
+
+            if (is_string($device) && $device !== '') {
+                TableSessionDevice::where('table_session_id', $row->id)
+                    ->where('device_token', $device)
+                    ->delete();
+            }
+
+            if (self::activeDeviceCount($row) > 0 || self::hasOpenOrderSince($row)) {
+                return false;
+            }
+
+            self::releaseRow($row, self::RELEASE_TABLE_CHANGED, null);
+
+            return true;
+        });
+    }
+
+    /**
+     * An order still open on this table that belongs to this occupancy — its
+     * linked order, or any dine-in order placed there since it opened. An older
+     * party's order left in the queue after a staff Clear predates it.
+     */
+    private static function hasOpenOrderSince(TableSession $session): bool
+    {
+        return self::visitOpenOrders($session)->exists();
+    }
+
+    /**
+     * The open dine-in orders of this occupancy's visit — the rule
+     * hasOpenOrderSince() has always used, as a query, so moveSession() moves
+     * exactly the orders that hold a table and no others.
+     */
+    private static function visitOpenOrders(TableSession $session)
+    {
+        return Order::query()
+            ->where('branch_id', $session->branch_id)
+            ->where('type', 'dine_in')
+            ->whereRaw('UPPER(TRIM(table_number)) = ?', [
+                strtoupper(trim((string) $session->table_number)),
+            ])
+            ->whereNotIn('status', self::FINISHED_STATUSES)
+            ->where(function ($q) use ($session) {
+                $q->where('created_at', '>=', $session->created_at);
+
+                if ($session->order_id) {
+                    $q->orWhere('id', $session->order_id);
+                }
+            });
+    }
+
+    // ══════════ staff moving a party to another table ══════════
+    //
+    // "Move table" on the Occupied Tables panel. The occupancy row itself
+    // moves — same row, same session_token — so every phone sharing it follows
+    // without being told anything: followSessionTable() below re-points each
+    // device's own session on its next request. Nothing is released, so no
+    // release_reason is written; the old table is free because active_lock no
+    // longer names it.
+
+    public const ERR_MOVE_NO_TABLE = 'That table is not available. Please pick a table from the list.';
+
+    public const ERR_MOVE_FAILED = 'Could not move the table just now. Nothing was changed. Please try again.';
+
+    /** Is this table free (no live session)? The one definition of "free" the dialog and the move share. */
+    public static function isFree(int $branchId, string $tableNumber): bool
+    {
+        return !TableSession::where('active_lock', self::lockKey($branchId, $tableNumber))->exists();
+    }
+
+    /**
+     * Where a staff member may move this party: registered tables at the
+     * occupancy's OWN branch, in service, with nobody at them. The branch is
+     * read off the occupancy row; nothing a client sends can widen it.
+     *
+     * @return \Illuminate\Support\Collection<int, RestaurantTable>
+     */
+    public static function moveTargets(TableSession $source)
+    {
+        // Same housekeeping the panel's poll runs, so a table someone walked
+        // away from is offered rather than hidden behind a ghost session.
+        self::sweepIdle();
+
+        return RestaurantTable::where('branch_id', $source->branch_id)
+            ->where('is_active', true)
+            ->orderByRaw('LENGTH(table_number), table_number')
+            ->get()
+            ->filter(fn (RestaurantTable $t) => self::isFree((int) $t->branch_id, (string) $t->table_number))
+            ->values();
+    }
+
+    /**
+     * Move a live occupancy, and every open order of its visit, to another
+     * table at the same branch.
+     *
+     * ONE transaction, READ COMMITTED like every order path (OrderTransaction),
+     * and the locks are always taken in the same order:
+     *
+     *   1. the destination restaurant_tables row — two moves into one table
+     *      queue here;
+     *   2. the visit's open orders, by id — the order completion path locks
+     *      the order before it writes the occupancy (releaseForOrder() from the
+     *      Order saved() hook), so orders-before-occupancy is the order both
+     *      paths agree on;
+     *   3. the source occupancy row.
+     *
+     * Everything is re-checked under those locks: the source is still live and
+     * is still where it was when the orders were chosen, the destination is at
+     * the SAME branch, in service and free. Any change is a refusal and nothing
+     * is written. The unique index on active_lock stays the last word: a
+     * customer who scans the destination in the instant between the check and
+     * the write makes this update fail, which is reported as the table having
+     * just been taken.
+     *
+     * Completed and cancelled orders keep the table they were served at. Who
+     * moved what is written to the table_moves log after the commit.
+     *
+     * @return array{ok: bool, status?: int, error?: string, session_id?: int, branch_id?: int, from?: string, to?: string, order_ids?: array<int, int>}
+     */
+    public static function moveSession(TableSession $source, RestaurantTable $to, ?\App\Models\User $by = null): array
+    {
+        self::sweepIdle();
+
+        $result = \App\Support\OrderTransaction::run(function () use ($source, $to) {
+            $dest = RestaurantTable::whereKey($to->id)->lockForUpdate()->first();
+            $seen = TableSession::find($source->id);
+
+            if (!$seen || $seen->active_lock === null) {
+                return self::refuse(409, 'Table ' . ($seen ?? $source)->table_number
+                    . ' no longer has an active session. Please check the list.');
+            }
+
+            if (!$dest || (int) $dest->branch_id !== (int) $seen->branch_id) {
+                return self::refuse(404, self::ERR_MOVE_NO_TABLE);
+            }
+
+            $orderIds = self::visitOpenOrders($seen)->orderBy('id')->lockForUpdate()->pluck('id')->all();
+
+            $row = TableSession::whereKey($seen->id)->lockForUpdate()->first();
+
+            // Its order finished (or staff cleared it) while this move waited.
+            if (!$row || $row->active_lock === null) {
+                return self::refuse(409, 'Table ' . $seen->table_number
+                    . ' no longer has an active session. Please check the list.');
+            }
+
+            if ($row->active_lock !== $seen->active_lock) {
+                return self::refuse(409, 'Table ' . $seen->table_number
+                    . ' was just changed by someone else. Please check the list and try again.');
+            }
+
+            $from = (string) $row->table_number;
+            $toNumber = strtoupper(trim((string) $dest->table_number));
+
+            if ($toNumber === strtoupper(trim($from))) {
+                return self::refuse(409, 'This customer is already at Table ' . $toNumber . '.');
+            }
+
+            if (!$dest->is_active) {
+                return self::refuse(422, 'Table ' . $toNumber . ' is not in service. Please pick another table.');
+            }
+
+            if (!self::isFree((int) $row->branch_id, $toNumber)) {
+                return self::refuse(409, self::takenMessage($toNumber));
+            }
+
+            try {
+                $row->forceFill([
+                    'table_number' => $toNumber,
+                    'active_lock'  => self::lockKey($row->branch_id, $toNumber),
+                    // A staff member just saw this party, so the 90-minute
+                    // housekeeping clock restarts. The guest's own fifteen-minute
+                    // clock (last_activity_at) is theirs and is left alone.
+                    'last_seen_at' => now(),
+                ])->save();
+            } catch (QueryException $e) {
+                if (!self::isDuplicateKey($e)) {
+                    throw $e;
+                }
+
+                return self::refuse(409, self::takenMessage($toNumber));
+            }
+
+            if ($orderIds) {
+                Order::whereKey($orderIds)->update(['table_number' => $toNumber]);
+            }
+
+            return [
+                'ok'         => true,
+                'session_id' => (int) $row->id,
+                'branch_id'  => (int) $row->branch_id,
+                'from'       => $from,
+                'to'         => $toNumber,
+                'order_ids'  => array_map('intval', $orderIds),
+            ];
+        });
+
+        if ($result['ok']) {
+            // After the commit, so it never records a move that rolled back.
+            self::auditTableAction('Table moved', [
+                'action'        => 'move',
+                'moved_by_id'   => $by?->id,
+                'moved_by_name' => $by?->name,
+                'moved_by_role' => $by?->role,
+                'branch_id'     => $result['branch_id'],
+                'session_id'    => $result['session_id'],
+                'from_table'    => $result['from'],
+                'to_table'      => $result['to'],
+                'order_ids'     => $result['order_ids'],
+                'moved_at'      => now()->toIso8601String(),
+            ]);
+        }
+
+        return $result;
+    }
+
+    /**
+     * One line in the table_moves log. Every table action by staff — a move, a
+     * deactivation, a reactivation, a deletion — goes through here, so the channel stays a
+     * single trail and the `action` field says which it was.
+     *
+     * A log that cannot be written (a full disk, a read-only storage/logs) is
+     * reported, but must not turn an action that DID happen into "Nothing was
+     * changed" on the staff member's screen.
+     */
+    private static function auditTableAction(string $message, array $context): void
+    {
+        try {
+            \Illuminate\Support\Facades\Log::channel('table_moves')->info($message, $context);
+        } catch (\Throwable $e) {
+            report($e);
+        }
+    }
+
+    // ══════════ taking a table out of service ══════════
+    //
+    // The QR & Table Codes card's "Deactivate table" / "Reactivate table".
+    // Tables are never deleted: this flips restaurant_tables.is_active and
+    // nothing else. Its code, its orders, its help requests and its session
+    // history are not read for writing, let alone touched. Every door already
+    // honours the flag — TableEntry::validate() refuses a scan or a typed code
+    // ("not in service"), moveTargets() hides the table, moveSession() refuses
+    // it — so this is the missing control, not new behaviour.
+
+    /**
+     * Take a table out of service, or put it back.
+     *
+     * Deactivating is refused while the table has a live session. The check and
+     * the write are ONE transaction (READ COMMITTED like every order path,
+     * OrderTransaction), locked in the order every other path uses:
+     *
+     *   1. the registry row — the first lock moveSession() takes on a
+     *      destination, and now the first one claim() takes;
+     *   2. the table's live occupancy row, by active_lock — the row claim()
+     *      joins and moveSession() moves.
+     *
+     * A customer claiming the table at the same instant therefore waits for
+     * this transaction or this one waits for theirs: if the claim lands first
+     * the table is occupied and this refuses; if this lands first claim() reads
+     * is_active = 0 under the same lock and refuses. Orders are not locked
+     * because nothing here writes one, so no lock cycle with the order
+     * completion path (order, then occupancy) is possible.
+     *
+     * The table is identified by its registry id alone and its branch is read
+     * off the locked row, never taken from the caller.
+     *
+     * An action that changes nothing (already out of service / already in
+     * service) answers ok with changed = false and writes no audit line.
+     *
+     * @return array{ok: bool, status?: int, error?: string, changed?: bool, table_id?: int, branch_id?: int, table_number?: string, is_active?: bool}
+     */
+    public static function setInService(RestaurantTable $table, bool $inService, ?\App\Models\User $by = null): array
+    {
+        if (!$inService) {
+            // The same housekeeping the Move list runs, so a table somebody
+            // walked away from is not kept "occupied" by a ghost session.
+            self::sweepIdle();
+        }
+
+        $result = \App\Support\OrderTransaction::run(function () use ($table, $inService) {
+            $row = RestaurantTable::whereKey($table->id)->lockForUpdate()->first();
+
+            if (!$row) {
+                return self::refuse(404, 'That table no longer exists.');
+            }
+
+            $number = (string) $row->table_number;
+            $state = [
+                'ok'           => true,
+                'changed'      => false,
+                'table_id'     => (int) $row->id,
+                'branch_id'    => (int) $row->branch_id,
+                'table_number' => $number,
+                'is_active'    => (bool) $row->is_active,
+            ];
+
+            if ((bool) $row->is_active === $inService) {
+                return $state;
+            }
+
+            if (!$inService) {
+                $live = TableSession::where('active_lock', self::lockKey($row->branch_id, $number))
+                    ->lockForUpdate()
+                    ->first();
+
+                if ($live) {
+                    return self::refuse(409, 'Table ' . $number . ' is occupied. Move or clear it first.');
+                }
+            }
+
+            $row->forceFill(['is_active' => $inService])->save();
+
+            return ['changed' => true, 'is_active' => $inService] + $state;
+        });
+
+        if ($result['ok'] && $result['changed']) {
+            self::auditTableAction($inService ? 'Table reactivated' : 'Table deactivated', [
+                'action'        => $inService ? 'reactivate' : 'deactivate',
+                'acted_by_id'   => $by?->id,
+                'acted_by_name' => $by?->name,
+                'acted_by_role' => $by?->role,
+                'branch_id'     => $result['branch_id'],
+                'table_id'      => $result['table_id'],
+                'table_number'  => $result['table_number'],
+                'acted_at'      => now()->toIso8601String(),
+            ]);
+        }
+
+        return $result;
+    }
+
+    // ══════════ deleting a table that was never used ══════════
+    //
+    // The trash icon beside a free table in the Move table dialog. This is the
+    // one place a restaurant_tables row is ever deleted, and only for a table
+    // with no trace anywhere — the typo (100 for 10) a manager registered by
+    // pressing Generate. Anything a customer, an order, a help request or a
+    // code rotation ever touched is history, and history is never deleted.
+
+    public const ERR_TABLE_HAS_HISTORY = 'This table has history and cannot be deleted.';
+
+    /**
+     * Hard-delete ONE registry row, if and only if nothing has ever used it.
+     *
+     * $branchId is the branch the caller resolved the table under (the Move
+     * dialog's own occupancy). It is re-checked against the locked row, so a
+     * table at any other branch is a 404 here whatever the caller believed.
+     *
+     * ONE transaction (READ COMMITTED, OrderTransaction), with the lock order
+     * every table path shares:
+     *
+     *   1. the registry row — the lock claim() takes first, so a customer
+     *      seating themselves and this delete are serialised: if the claim
+     *      commits first its session is seen below and this refuses; if this
+     *      commits first claim() finds no row and refuses (ERR_TABLE_NOT_FOUND);
+     *   2. the table's live occupancy row, by active_lock.
+     *
+     * Every refusal is decided under those locks and writes nothing:
+     *
+     *   - a live session (occupied);
+     *   - an open order at this branch + table number;
+     *   - ANY history at this branch + table number: an order of any status, a
+     *     session (released ones too), a help request, a staff-issued access
+     *     code, or a code that was ever rotated.
+     *
+     * The deleted code is not handed to anything; allocateCode() only ever
+     * draws fresh random codes. One line goes to the table_moves log, after the
+     * commit, with action = table_deleted.
+     *
+     * @return array{ok: bool, status?: int, error?: string, table_id?: int, branch_id?: int, table_number?: string}
+     */
+    public static function deleteUnusedTable(RestaurantTable $table, int $branchId, ?\App\Models\User $by = null): array
+    {
+        $result = \App\Support\OrderTransaction::run(function () use ($table, $branchId) {
+            $row = RestaurantTable::whereKey($table->id)->lockForUpdate()->first();
+
+            if (!$row || (int) $row->branch_id !== $branchId) {
+                return self::refuse(404, 'That table no longer exists.');
+            }
+
+            $number = (string) $row->table_number;
+
+            $live = TableSession::where('active_lock', self::lockKey($row->branch_id, $number))
+                ->lockForUpdate()
+                ->first();
+
+            if ($live) {
+                return self::refuse(409, 'Table ' . $number . ' is occupied. Move or clear it first.');
+            }
+
+            $orders = Order::where('branch_id', $row->branch_id)->where('table_number', $number);
+
+            if ((clone $orders)->whereNotIn('status', self::FINISHED_STATUSES)->exists()) {
+                return self::refuse(409, 'Table ' . $number . ' has an open order and cannot be deleted.');
+            }
+
+            $hasHistory = $row->previous_code !== null
+                || $row->code_rotated_at !== null
+                || $orders->exists()
+                || TableSession::where('branch_id', $row->branch_id)->where('table_number', $number)->exists()
+                || DB::table('help_requests')->where('branch_id', $row->branch_id)->where('table_number', $number)->exists()
+                || DB::table('table_access_codes')->where('branch_id', $row->branch_id)->where('table_number', $number)->exists();
+
+            if ($hasHistory) {
+                return self::refuse(409, self::ERR_TABLE_HAS_HISTORY);
+            }
+
+            $row->delete();
+
+            return [
+                'ok'           => true,
+                'table_id'     => (int) $row->id,
+                'branch_id'    => (int) $row->branch_id,
+                'table_number' => $number,
+            ];
+        });
+
+        if ($result['ok']) {
+            self::auditTableAction('Table deleted', [
+                'action'        => 'table_deleted',
+                'acted_by_id'   => $by?->id,
+                'acted_by_name' => $by?->name,
+                'acted_by_role' => $by?->role,
+                'branch_id'     => $result['branch_id'],
+                'table_id'      => $result['table_id'],
+                'table_number'  => $result['table_number'],
+                'acted_at'      => now()->toIso8601String(),
+            ]);
+        }
+
+        return $result;
+    }
+
+    // ══════════ the "Manage tables" list ══════════
+
+    public const STATE_IN_SERVICE = 'in_service';
+
+    public const STATE_OCCUPIED = 'occupied';
+
+    public const STATE_OUT_OF_SERVICE = 'not_in_service';
+
+    /**
+     * Every table registered at ONE branch, with where it stands — the
+     * QR & Table Codes "Manage tables" list, where a table added by mistake
+     * (100 instead of 10) is taken out of service without printing a card.
+     *
+     * Reads only. "Remove" and "Restore" are the existing setInService()
+     * actions, so the occupied refusal and every lock stay in one place; this
+     * only says in advance which tables that refusal would stop.
+     *
+     * Occupied means exactly what setInService() refuses on: a live occupancy
+     * (active_lock) at the table, after the same idle sweep. A table that is
+     * already out of service is reported as such even if a staff-opened counter
+     * order left a session at it, because the only thing left to do with it is
+     * restore it.
+     *
+     * The table's code is never selected, so it cannot reach the response.
+     *
+     * @return \Illuminate\Support\Collection<int, array{id: int, table_number: string, status: string, blocked_reason: ?string}>
+     */
+    public static function manageList(int $branchId)
+    {
+        self::sweepIdle();
+
+        $live = TableSession::where('branch_id', $branchId)
+            ->whereNotNull('active_lock')
+            ->pluck('active_lock')
+            ->flip();
+
+        return RestaurantTable::where('branch_id', $branchId)
+            ->orderByRaw('LENGTH(table_number), table_number')
+            ->orderBy('id')
+            ->get(['id', 'branch_id', 'table_number', 'is_active'])
+            ->map(function (RestaurantTable $t) use ($live) {
+                $number = (string) $t->table_number;
+
+                if (!$t->is_active) {
+                    $status = self::STATE_OUT_OF_SERVICE;
+                } elseif ($live->has(self::lockKey($t->branch_id, $number))) {
+                    $status = self::STATE_OCCUPIED;
+                } else {
+                    $status = self::STATE_IN_SERVICE;
+                }
+
+                return [
+                    'id'             => (int) $t->id,
+                    'table_number'   => $number,
+                    'status'         => $status,
+                    'blocked_reason' => $status === self::STATE_OCCUPIED
+                        ? 'Table ' . $number . ' is occupied. Move or clear the customer first.'
+                        : null,
+                ];
+            })
+            ->values();
+    }
+
+    /**
+     * Point THIS device at the table its shared occupancy is at now.
+     *
+     * A device's table lives in its own Laravel session (session('table_number'))
+     * while the occupancy row is shared through the token every device at the
+     * table holds. After a staff move the row names the new table and each
+     * device's session still names the old one; this closes the gap on the
+     * device's next request, before any page or order reads it — so an order
+     * from a tab rendered before the move is still placed at the new table
+     * (placeOrder() prefers the session's table over the posted field).
+     *
+     * Only the table number is touched, only for Dine-In, and only when the
+     * row is at the branch this device is already at — a token never carries a
+     * device across branches. Every other way a device changes table also
+     * rewrites its token (claim()), so outside a staff move the two always
+     * agree and this changes nothing.
+     *
+     * @return string|null the table this device was moved to, or null when nothing changed
+     */
+    public static function followSessionTable(): ?string
+    {
+        if (session('order_type') !== 'dine_in') {
+            return null;
+        }
+
+        $token = session(self::SESSION_KEY);
+        $branchId = session('branch_id');
+        $current = session('table_number');
+
+        if (!is_string($token) || $token === '' || !is_numeric($branchId) || !is_scalar($current)) {
+            return null;
+        }
+
+        $row = TableSession::where('session_token', $token)->first(['branch_id', 'table_number']);
+
+        if (!$row || (int) $row->branch_id !== (int) $branchId) {
+            return null;
+        }
+
+        $table = strtoupper(trim((string) $row->table_number));
+
+        if ($table === '' || $table === strtoupper(trim((string) $current))) {
+            return null;
+        }
+
+        session()->put('table_number', $table);
+
+        return $table;
+    }
+
+    private static function takenMessage(string $tableNumber): string
+    {
+        return 'Table ' . $tableNumber . ' was just taken. Please pick another table.';
+    }
+
+    /** @return array{ok: false, status: int, error: string} */
+    private static function refuse(int $status, string $error): array
+    {
+        return ['ok' => false, 'status' => $status, 'error' => $error];
     }
 
     // ══════════ internals ══════════

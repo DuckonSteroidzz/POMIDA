@@ -291,7 +291,18 @@ class RolePermissionMatrixTest extends TestCase
             'manage menu options'    => ['GET',    'admin.menu-options',        ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'qr and table codes'     => ['GET',    'admin.qr-generator',        ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'rotate table code'      => ['POST',   'admin.qr-generator.regenerate-code', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
-            'view vouchers'          => ['GET',    'admin.vouchers',            ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
+            // Same tier as rotating a code: it changes what customers can do at
+            // a physical table, so staff see the card but not these buttons.
+            'deactivate table'       => ['POST',   'admin.qr-generator.deactivate-table', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'reactivate table'       => ['POST',   'admin.qr-generator.reactivate-table', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            // The Manage tables list fed those two actions' Remove / Restore
+            // buttons, so it is the same tier. Its section is gone from the page
+            // (Oct 2026); the endpoint is kept, unused by the UI.
+            'manage tables list'     => ['GET',    'admin.qr-generator.tables', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            // The Move dialog's trash icon: deleting a table nobody ever used.
+            // Same tier as rotating a code; staff move tables but never delete them.
+            'delete unused table'    => ['POST',   'admin.tables.delete',       ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'view vouchers'         => ['GET',    'admin.vouchers',            ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'restore archived'       => ['PUT',    'admin.archived.restore',    ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
             'permanently delete archived menu item' => ['DELETE', 'admin.archived.menu-item.force-delete', ['admin' => self::ALLOW, 'supervisor' => self::DENY, 'staff' => self::DENY]],
         ];
@@ -430,6 +441,7 @@ class RolePermissionMatrixTest extends TestCase
             'admin.archived.restore' => [['menu-item', $this->menuItemIn($branch)->id], []],
             'admin.archived.menu-item.force-delete' => [[$this->archivedMenuItemIn($branch)->id], []],
             'admin.qr-generator.regenerate-code' => [[], ['branch_id' => $branch, 'table_number' => 1]],
+            'admin.qr-generator.tables' => [[], ['branch_id' => $branch]],
             'admin.customization.update' => [[], ['primary_color' => '#F4845F']],
             'admin.game.toggle' => [[], []],
             default => [[], []],
@@ -551,6 +563,10 @@ class RolePermissionMatrixTest extends TestCase
             'staff / no add menu item'     => ['staff', 'admin.menu-items', 'admin.new-menu-item.post', []],
             'staff / no export csv'        => ['staff', 'admin.summary', 'admin.export.orders', []],
             'staff / no rotate table code' => ['staff', 'admin.qr-generator', 'admin.qr-generator.regenerate-code', []],
+            'staff / no deactivate table'  => ['staff', 'admin.qr-generator', 'admin.qr-generator.deactivate-table', []],
+            'staff / no reactivate table'  => ['staff', 'admin.qr-generator', 'admin.qr-generator.reactivate-table', []],
+            'staff / no manage tables list' => ['staff', 'admin.qr-generator', 'admin.qr-generator.tables', []],
+            'staff / no delete table'      => ['staff', 'admin.qr-generator', 'admin.tables.delete', []],
 
             // Manager — must not see the owner-only controls.
             'manager / no branches link'   => ['supervisor', 'admin.home', 'admin.branches', []],
@@ -661,6 +677,10 @@ class RolePermissionMatrixTest extends TestCase
             'manager sees create voucher'  => ['supervisor', 'admin.vouchers', 'admin.vouchers.store'],
             'manager sees add inventory'   => ['supervisor', 'admin.inventory', 'admin.inventory.store'],
             'manager sees export csv'      => ['supervisor', 'admin.summary', 'admin.export.orders'],
+            // The Manage tables section is gone (Oct 2026); a manager's table
+            // control on this page is now the Move dialog's delete-table action.
+            'manager sees delete table'    => ['supervisor', 'admin.qr-generator', 'admin.tables.delete'],
+            'owner sees delete table'      => ['admin', 'admin.qr-generator', 'admin.tables.delete'],
             'owner sees branches link'     => ['admin', 'admin.home', 'admin.branches'],
             'owner sees spin wheel'        => ['admin', 'admin.vouchers', 'admin.game.toggle'],
             'staff still see summary'      => ['staff', 'admin.home', 'admin.summary'],

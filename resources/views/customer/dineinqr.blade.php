@@ -419,7 +419,6 @@
                     autocapitalize="characters"
                     spellcheck="false"
                     maxlength="10"
-                    placeholder="e.g. 7K4M9QXP"
                     value="{{ old('table_code') }}"
                 >
 

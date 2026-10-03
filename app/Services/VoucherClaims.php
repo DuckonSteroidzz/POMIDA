@@ -137,10 +137,11 @@ class VoucherClaims
      * Mint an ownerless claim on this voucher and return it.
      *
      * The per-customer validity window is set the same way the account path
-     * sets it in AuthController::addPoints() — from tomorrow — so a guest and
-     * a signed-in winner are held to exactly the same rule. Item 41 put that
-     * window on the claim row precisely so it could differ per holder; nothing
-     * here reads the shared vouchers.valid_from column.
+     * sets it in AuthController::addPoints() — from today, i.e. usable the
+     * moment it is won — so a guest and a signed-in winner are held to
+     * exactly the same rule. Item 41 put that window on the claim row
+     * precisely so it could differ per holder; nothing here reads the shared
+     * vouchers.valid_from column.
      */
     public static function mintForGuest(Voucher $voucher, ?string $validFrom = null, ?int $issuedBy = null): UserVoucher
     {
@@ -150,7 +151,7 @@ class VoucherClaims
             'voucher_id'    => $voucher->id,
             'claim_code'    => self::generateCode(),
             'acquired_date' => today()->toDateString(),
-            'valid_from'    => $validFrom ?? now()->addDay()->toDateString(),
+            'valid_from'    => $validFrom ?? today()->toDateString(),
             'is_used'       => false,
         ]);
     }
@@ -159,26 +160,11 @@ class VoucherClaims
      * Mint a bearer claim that an ADMIN is handing to a walk-in customer.
      *
      * Deliberately the same minting path as a guest wheel win — same method,
-     * same row shape, same code generator — rather than a second parallel
-     * implementation that could drift. What differs is only:
-     *
-     *   - issued_by records the admin, so "who handed this out" is a query
-     *     rather than a guess (same convention as table_access_codes);
-     *   - valid_from is TODAY, not tomorrow. See below.
-     *
-     * WHY THIS ONE IS USABLE IMMEDIATELY, AND A WHEEL WIN IS NOT
-     * ----------------------------------------------------------
-     * A wheel claim opens the next day. That window exists to stop a
-     * self-service loop — play, win, redeem, repeat — where the customer
-     * controls both ends. An admin issuing a code at the counter is not that
-     * loop: a person with authority has deliberately decided to grant it, and
-     * the customer is standing there. Making them come back tomorrow would
-     * make the feature useless for the case it was asked for.
-     *
-     * This is a widening of WHEN a claim opens, not of WHETHER one may exist.
-     * Every gate on existence is unchanged and is checked before this is
-     * called — see Voucher::issuanceErrorFor(), which mirrors the wheel's own
-     * issuability rule including the shared max_uses cap.
+     * same row shape, same code generator, same immediate "valid from today"
+     * window — rather than a second parallel implementation that could drift.
+     * What differs is only that issued_by records the admin, so "who handed
+     * this out" is a query rather than a guess (same convention as
+     * table_access_codes).
      */
     public static function mintForCounter(Voucher $voucher, int $issuedBy): UserVoucher
     {

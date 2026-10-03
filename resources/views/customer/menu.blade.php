@@ -871,6 +871,7 @@
     before. See the partial for the full reasoning.
 --}}
 @include('customer.partials.dine-in-session-guard', ['pingsActivity' => true])
+@include('customer.partials.change-table')
 
     @include('customer.partials.navbar')
 </body>

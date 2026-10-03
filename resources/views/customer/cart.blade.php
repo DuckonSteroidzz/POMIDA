@@ -2769,6 +2769,7 @@ async function confirmOrderNow() {
          it — which is exactly what this page did before the guard existed. See
          the partial. --}}
     @include('customer.partials.dine-in-session-guard')
+    @include('customer.partials.change-table', ['tableChangeReturnTo' => 'cart'])
 </body>
 
 </html>

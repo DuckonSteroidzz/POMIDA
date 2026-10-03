@@ -226,6 +226,7 @@ class AdminRemainingThrottleIsolationTest extends TestCase
             'admin-verification-resend',
             'admin-new-password',
             'admin-qr-regenerate-code',
+            'admin-qr-table-service',
             'admin-tables-occupancy',
             'admin-tables-clear',
             'admin-notifications',

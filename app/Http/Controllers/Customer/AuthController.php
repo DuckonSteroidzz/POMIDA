@@ -175,11 +175,13 @@ class AuthController extends Controller
             $occupancy = $this->claimTable(
                 $parsed['branch'],
                 $parsed['table_number'],
-                $request->ip()
+                $request->ip(),
+                true,
+                ($parsed['table'] ?? null)?->id
             );
 
             if (!$occupancy['ok']) {
-                return redirect()->route('customer.dineinqr')
+                return $occupancy['redirect'] ?? redirect()->route('customer.dineinqr')
                     ->with('error', $occupancy['error']);
             }
 
@@ -404,7 +406,8 @@ private function switchBranch($branchId): void
             return $this->startDineIn(
                 $request,
                 $permanent['branch'],
-                $permanent['table_number']
+                $permanent['table_number'],
+                ($permanent['table'] ?? null)?->id
             );
         }
 
@@ -432,7 +435,7 @@ private function switchBranch($branchId): void
 
         RateLimiter::clear($scanKey);
 
-        return $this->startDineIn($request, $parsed['branch'], $parsed['table_number']);
+        return $this->startDineIn($request, $parsed['branch'], $parsed['table_number'], ($parsed['table'] ?? null)?->id);
     }
 
     /**
@@ -489,12 +492,54 @@ private function switchBranch($branchId): void
      * table, so a visibility side effect added here reaches both without being
      * duplicated in each caller.
      */
-    private function claimTable(\App\Models\Branch $branch, string $tableNumber, ?string $ip): array
+    private function claimTable(\App\Models\Branch $branch, string $tableNumber, ?string $ip, bool $askBeforeMoving = false, ?int $registeredId = null): array
     {
+        /*
+         * A device already seated at ANOTHER table of this branch is changing
+         * table, not arriving — App\Services\TableChange decides what that
+         * means. Everything else (no seat, the same table, another branch's
+         * QR) falls through to the ordinary claim below, exactly as before.
+         *
+         * $askBeforeMoving is the phone-camera door: it renders the menu at the
+         * QR's own URL, so a refresh or the Back button replays an old table's
+         * QR, and that must never move a seated customer without a tap.
+         */
+        $change = \App\Services\TableChange::assess($branch, $tableNumber);
+
+        if ($change['kind'] === 'active_order') {
+            return ['ok' => false, 'redirect' => redirect()->route('customer.menu')->with(
+                'table_change_error',
+                \App\Services\TableChange::activeOrderMessage((string) $change['order']->table_number)
+            )];
+        }
+
+        if ($change['kind'] === 'occupied' || ($change['kind'] === 'free' && $askBeforeMoving)) {
+            $staged = \App\Services\TableEntry::find($branch->id, $tableNumber);
+
+            // Deleted (an unused typo table) since this door validated it.
+            if (!$staged) {
+                return ['ok' => false, 'error' => \App\Services\TableEntry::ERR_TABLE_NOT_FOUND];
+            }
+
+            \App\Services\TableChange::stage($staged, $change['seat'], $change['kind'] === 'occupied');
+
+            return ['ok' => false, 'redirect' => redirect()->route('customer.menu')];
+        }
+
+        // $registeredId is the registry row this door validated: claim()
+        // refuses under its lock if that row has been deleted since.
         try {
-            $occupancy = \App\Services\TableOccupancy::claim($branch, $tableNumber, $ip);
+            $occupancy = $change['kind'] === 'free'
+                ? \App\Services\TableChange::move($branch, $tableNumber, $ip, $registeredId)
+                : \App\Services\TableOccupancy::claim($branch, $tableNumber, $ip, $registeredId);
         } catch (\App\Services\TableAlreadyOccupied) {
             return ['ok' => false, 'error' => \App\Services\TableOccupancy::BLOCKED_MESSAGE];
+        }
+
+        if ($occupancy['moved'] ?? false) {
+            session()->flash('success', "You've moved to Table " . strtoupper(trim($tableNumber)) . '.');
+
+            return $occupancy;
         }
 
         // Visibility only — see TableOccupancy::claim()'s docblock. Never a
@@ -511,7 +556,7 @@ private function switchBranch($branchId): void
         return $occupancy;
     }
 
-    private function startDineIn(Request $request, \App\Models\Branch $branch, $tableNumber)
+    private function startDineIn(Request $request, \App\Models\Branch $branch, $tableNumber, ?int $registeredId = null)
     {
         /*
          * Table occupancy. Both dine-in doors — a camera scan and a staff-issued
@@ -521,13 +566,17 @@ private function switchBranch($branchId): void
          * turned away rather than starting a second concurrent session on the
          * same physical table.
          */
-        $occupancy = $this->claimTable($branch, (string) $tableNumber, $request->ip());
+        $occupancy = $this->claimTable($branch, (string) $tableNumber, $request->ip(), false, $registeredId);
 
         if (!$occupancy['ok']) {
-            return back()
+            return $occupancy['redirect'] ?? back()
                 ->with('error', $occupancy['error'])
                 ->with('show_manual', (bool) $request->input('table_code'));
         }
+
+        // Same party, new table: no "welcome" moment, and their orders from
+        // earlier in this visit stay theirs. See App\Services\TableChange.
+        $moved = (bool) ($occupancy['moved'] ?? false);
 
         // Always establish the Dine-In context before authentication.
         // This lets Login/Sign Up preserve the scanned branch and table.
@@ -566,12 +615,14 @@ private function switchBranch($branchId): void
             // A guest order is tracked separately from an account order.
             // Clearing the whole set matters now that a visit can hold several
             // orders: the next party at this table must not inherit them.
-            \App\Support\GuestOrders::forget();
+            if (!$moved) {
+                \App\Support\GuestOrders::forget();
+            }
 
             // Only a genuinely new table claim is a "just scanned the QR"
             // moment — a refresh or a re-scan of the same table (continued)
             // must not re-show the welcome popup every time.
-            if (($occupancy['continued'] ?? false) === false) {
+            if (!$moved && ($occupancy['continued'] ?? false) === false) {
                 session()->flash('welcome_customer', ['type' => 'new', 'name' => null]);
             }
         }
@@ -1566,9 +1617,11 @@ private function switchBranch($branchId): void
             session()->put('voucher_code', $request->input('voucher_code'));
         }
 
-        if ($request->input('table_number')) {
-            session()->put('table_number', $request->input('table_number'));
-        }
+        // No `table_number` here any more. This used to copy any posted value
+        // straight into session('table_number') — a table change with no QR or
+        // code behind it, which nothing on the cart page ever sent. A Dine-In
+        // table now only changes through a validated credential: see
+        // App\Services\TableChange.
 
         /*
          * The '+' / '-' controls on the cart page update the quantity on screen
@@ -2694,8 +2747,7 @@ private function switchBranch($branchId): void
                             ?? $this->voucherDiscountText($earnedVoucher),
                         'valid_from'  => $claim->valid_from?->toDateString(),
                         'expires_at'  => $earnedVoucher->expires_at?->format('M d, Y'),
-                        'message'     => 'Valid starting ' .
-                            ($claim->valid_from?->format('M d, Y') ?? 'today') . '.',
+                        'message'     => 'Valid now — use it on your next order.',
                     ];
                 }
             }
@@ -2803,8 +2855,9 @@ private function switchBranch($branchId): void
                 $user->points = $totalPoints;
                 $user->save();
 
-                // Valid from = tomorrow (hindi pwede gamitin ngayon)
-                $validFrom = now()->addDay()->toDateString();
+                // Valid from = today (pwede nang gamitin sa susunod na order,
+                // hindi lang sa order na kinuha ang panalo)
+                $validFrom = today()->toDateString();
 
                 /*
                  * This window belongs on THIS CUSTOMER'S claim, not on the
@@ -2861,8 +2914,7 @@ private function switchBranch($branchId): void
                     'expires_at'  => $earnedVoucher->expires_at
                         ? $earnedVoucher->expires_at->format('M d, Y')
                         : null,
-                    'message'     => 'Valid starting tomorrow — ' .
-                        \Carbon\Carbon::parse($validFrom)->format('M d, Y'),
+                    'message'     => 'Valid now — use it on your next order.',
                 ];
             }
         }

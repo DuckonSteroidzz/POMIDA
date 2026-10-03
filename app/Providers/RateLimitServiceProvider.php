@@ -210,6 +210,15 @@ class RateLimitServiceProvider extends ServiceProvider
     public const ADMIN_QR_REGENERATE_CODE_PER_IP = 20;
 
     /**
+     * Taking a mistaken table out of service, or putting it back, from the QR
+     * & Table Codes card. The same shape of use as a code rotation — one table,
+     * occasionally, by a manager — so the same ceiling, on its own counter so
+     * neither can spend the other's budget. Deactivate and Reactivate are one
+     * feature and share it.
+     */
+    public const ADMIN_QR_TABLE_SERVICE_PER_IP = 20;
+
+    /**
      * The Occupied Tables panel — Phase 3b F2. Polled every 5s by one open
      * counter screen; several terminals in a shop share one NAT'd IP, which
      * is exactly the isolation problem this whole pass exists to fix.
@@ -222,6 +231,24 @@ class RateLimitServiceProvider extends ServiceProvider
      * throttle:60,1 it replaces.
      */
     public const ADMIN_TABLES_CLEAR_PER_IP = 60;
+
+    /**
+     * Moving a party to another table from the Occupied Tables panel. Same
+     * ceiling as Clear, its sibling on the same panel; its own counter, so a
+     * busy floor clearing tables cannot spend the budget for moving them. The
+     * dialog's list of free tables (admin.tables.move-targets) is a read like
+     * the panel's poll and rides on admin-tables-occupancy.
+     */
+    public const ADMIN_TABLES_MOVE_PER_IP = 60;
+
+    /**
+     * Deleting an unused table from the Move table dialog's trash icon. The
+     * same shape of use as taking a table out of service — one table,
+     * occasionally, by a manager — so the same ceiling as
+     * admin-qr-table-service, on its own counter so neither can spend the
+     * other's budget (nor Move's, beside it in the same dialog).
+     */
+    public const ADMIN_TABLES_DELETE_PER_IP = 20;
 
     /**
      * The admin notification bell — index, unread-count, read-all, and the
@@ -300,6 +327,17 @@ class RateLimitServiceProvider extends ServiceProvider
     public const CUSTOMER_IDLE_LOGOUT_PER_IP = 20;
 
     /**
+     * The Dine-In "Change table" control (change / confirm / cancel). Per
+     * party and per address, like table-session: a party moves table once or
+     * twice in a visit, so ten a minute is far above any real use, and the
+     * room-wide ceiling sits well above a busy café. Guessing a table code is
+     * held separately and more tightly, by the SAME `table-code:` counter the
+     * typed-code door uses (TableEntry::MAX_ATTEMPTS).
+     */
+    public const TABLE_CHANGE_PER_SESSION = 10;
+    public const TABLE_CHANGE_PER_IP = 120;
+
+    /**
      * PUT /customer/account — hardening pass F5 (2026-09-27). Changing the
      * email or password now checks the current password, which would make an
      * unthrottled route a password-guessing oracle for anyone holding a
@@ -357,8 +395,11 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('admin-verification-resend', self::ADMIN_VERIFICATION_RESEND_PER_IP);
         $this->perIp('admin-new-password', self::ADMIN_NEW_PASSWORD_PER_IP);
         $this->perIp('admin-qr-regenerate-code', self::ADMIN_QR_REGENERATE_CODE_PER_IP);
+        $this->perIp('admin-qr-table-service', self::ADMIN_QR_TABLE_SERVICE_PER_IP);
         $this->perIp('admin-tables-occupancy', self::ADMIN_TABLES_OCCUPANCY_PER_IP);
         $this->perIp('admin-tables-clear', self::ADMIN_TABLES_CLEAR_PER_IP);
+        $this->perIp('admin-tables-move', self::ADMIN_TABLES_MOVE_PER_IP);
+        $this->perIp('admin-tables-delete', self::ADMIN_TABLES_DELETE_PER_IP);
         $this->perIp('admin-notifications', self::ADMIN_NOTIFICATIONS_PER_IP);
         $this->perIp('admin-users-destroy', self::ADMIN_USERS_DESTROY_PER_IP);
 
@@ -400,6 +441,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->pair('apply-voucher', self::VOUCHER_PER_SESSION, self::VOUCHER_PER_IP);
         $this->pair('help-request', self::HELP_REQUEST_PER_SESSION, self::HELP_REQUEST_PER_IP);
         $this->pair('table-session', self::TABLE_SESSION_PER_SESSION, self::TABLE_SESSION_PER_IP);
+        $this->pair('table-change', self::TABLE_CHANGE_PER_SESSION, self::TABLE_CHANGE_PER_IP);
     }
 
     /**

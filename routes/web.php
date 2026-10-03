@@ -5,6 +5,7 @@ use App\Http\Controllers\Customer\AuthController;
 use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Customer\OrderController;
+use App\Http\Controllers\Customer\TableChangeController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Customer\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
@@ -54,7 +55,10 @@ Route::get('/discount-id/{order}', [\App\Http\Controllers\DiscountIdController::
 |--------------------------------------------------------------------------
 */
 
-Route::prefix('customer')->name('customer.')->group(function () {
+// FollowStaffTableMove: a phone whose table staff moved ("Move table" on the
+// Occupied Tables panel) is re-pointed at the new table before anything below
+// reads session('table_number'). See TableOccupancy::followSessionTable().
+Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\FollowStaffTableMove::class)->group(function () {
 
     // ══════════ AUTH ══════════
 
@@ -186,6 +190,29 @@ Route::prefix('customer')->name('customer.')->group(function () {
 
     Route::get('/scan', [AuthController::class, 'scanQr'])
         ->name('scan');
+
+    // ── "Table N · Change table" on the Dine-In menu and cart ──
+    //
+    // A seated Dine-In customer moving to another table at the same branch,
+    // with that table's typed code (a QR scan comes in through /menu, which
+    // asks App\Services\TableChange the same questions). The code is checked
+    // exactly as at first entry and shares the typed-code door's guessing
+    // budget; the `table-change` limiter caps the three actions per party and
+    // per address. See TableChangeController.
+    Route::middleware([
+        'throttle.friendly:You are changing tables a little too quickly. '
+            . 'Please wait a moment and try again.',
+        'throttle:table-change',
+    ])->group(function () {
+        Route::post('/table/change', [TableChangeController::class, 'change'])
+            ->name('table-change');
+
+        Route::post('/table/change/confirm', [TableChangeController::class, 'confirm'])
+            ->name('table-change.confirm');
+
+        Route::post('/table/change/cancel', [TableChangeController::class, 'cancel'])
+            ->name('table-change.cancel');
+    });
 
     // ── the dine-in guest's fifteen-minute inactivity clock ──
     //
@@ -726,6 +753,36 @@ Route::prefix('admin')
                 ->middleware(['role:admin,supervisor', 'throttle:admin-qr-regenerate-code'])
                 ->name('qr-generator.regenerate-code');
 
+            // Takes ONE mistaken table out of service, or puts it back. Tables
+            // are never deleted — this only flips restaurant_tables.is_active,
+            // which the QR door, the typed-code door and "Move table" already
+            // honour. Same tier, role gate, branch rule and limiter family as
+            // regenerate-code just above, and for the same reason: it changes
+            // what customers can do at a physical table, so it is a management
+            // call. The only input is the table's registry id; the branch is
+            // read off that row (out of scope = 404, like Move table).
+            Route::post('/qr-generator/deactivate-table', [AdminController::class, 'deactivateTable'])
+                ->middleware(['role:admin,supervisor', 'throttle:admin-qr-table-service'])
+                ->name('qr-generator.deactivate-table');
+
+            Route::post('/qr-generator/reactivate-table', [AdminController::class, 'reactivateTable'])
+                ->middleware(['role:admin,supervisor', 'throttle:admin-qr-table-service'])
+                ->name('qr-generator.reactivate-table');
+
+            // The "Manage tables" list under the generator: one branch's
+            // registered tables and their state, so a mistaken table can be
+            // removed (the deactivate endpoint above) without printing a card.
+            // Oct 2026: the page no longer draws that list (a mistaken table is
+            // deleted from the Move table dialog instead, admin.tables.delete),
+            // but this endpoint and the two above are kept on purpose, unused
+            // by the UI. Same manager tier as the two actions it feeds. A read like the
+            // Move table list, so it rides on the same per-IP limiter; the
+            // branch must be one the page's own dropdown offers (404 otherwise)
+            // and no table code is ever returned.
+            Route::get('/qr-generator/tables', [AdminController::class, 'qrManageTables'])
+                ->middleware(['role:admin,supervisor', 'throttle:admin-tables-occupancy'])
+                ->name('qr-generator.tables');
+
 
             // ══════════ TABLE OCCUPANCY ══════════
             //
@@ -749,6 +806,32 @@ Route::prefix('admin')
             Route::post('/tables/clear', [AdminController::class, 'clearTableOccupancy'])
                 ->middleware('throttle:admin-tables-clear')
                 ->name('tables.clear');
+
+            // "Move table": a seated party (its shared session, every phone at
+            // it, and its open orders) to a free table at the SAME branch.
+            // Owner, supervisor and staff alike — live floor work, like Clear —
+            // each limited by AdminOrderAccess to the occupancies they can
+            // see; the branch comes from the occupancy, never the request.
+            Route::get('/tables/move-targets', [AdminController::class, 'tableMoveTargets'])
+                ->middleware('throttle:admin-tables-occupancy')
+                ->name('tables.move-targets');
+
+            Route::post('/tables/move', [AdminController::class, 'moveTable'])
+                ->middleware('throttle:admin-tables-move')
+                ->name('tables.move');
+
+            // The trash icon beside a free table in the Move table dialog:
+            // hard-deletes a table that was NEVER used (a typo, 100 for 10).
+            // Same role gate as regenerate-code — a management call, so staff
+            // get the dialog without the icon and are bounced here by the role
+            // gate. Two ids, like Move: the dialog's occupancy (resolved through
+            // AdminOrderAccess) and the table, which must be at that occupancy's
+            // branch — another branch's table is a 404 for every role, Owner
+            // included. Anything with history is refused; see
+            // TableOccupancy::deleteUnusedTable().
+            Route::post('/tables/delete', [AdminController::class, 'deleteUnusedTable'])
+                ->middleware(['role:admin,supervisor', 'throttle:admin-tables-delete'])
+                ->name('tables.delete');
 
 
             // ══════════ INVENTORY — view + stock movement (In/Out) ══════════

@@ -79,6 +79,30 @@ return [
             'replace_placeholders' => true,
         ],
 
+        /*
+         * The audit trail for staff table actions: one line per action, each
+         * carrying an `action` field.
+         *
+         *   move        "Move table" on the Occupied Tables panel — who, from
+         *               which table to which, which open orders went with the
+         *               party, and when. Written by
+         *               App\Services\TableOccupancy::moveSession().
+         *   deactivate  "Deactivate table" on the QR & Table Codes card — who,
+         *   reactivate  which table, when. Written by
+         *               App\Services\TableOccupancy::setInService(); a request
+         *               that changes nothing writes no line.
+         *
+         * Each is written after its transaction commits, so a refused or rolled
+         * back action leaves no line. Its own level so a production LOG_LEVEL of
+         * warning/error cannot silence it.
+         */
+        'table_moves' => [
+            'driver' => 'single',
+            'path' => storage_path('logs/table-moves.log'),
+            'level' => 'info',
+            'replace_placeholders' => true,
+        ],
+
         'daily' => [
             'driver' => 'daily',
             'path' => storage_path('logs/laravel.log'),

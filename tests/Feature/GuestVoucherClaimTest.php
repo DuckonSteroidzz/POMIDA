@@ -119,13 +119,13 @@ class GuestVoucherClaimTest extends TestCase
     }
 
     /** A guest order, which is what unlocks a spin window (item 36). */
-    private function guestOrder(): Order
+    private function guestOrder(string $type = 'pick_up'): Order
     {
         $order = Order::create([
             'order_number'   => 'GV-' . substr(uniqid(), -8),
             'user_id'        => null,
             'branch_id'      => 1,
-            'type'           => 'pick_up',
+            'type'           => $type,
             'status'         => 'pending',
             'payment_method' => 'cash',
             'payment_status' => 'pending',
@@ -174,11 +174,62 @@ class GuestVoucherClaimTest extends TestCase
         $this->assertNotNull($claim, 'the code shown to the guest resolves to no claim');
         $this->assertNull($claim->user_id, 'a guest claim must have no owner');
         $this->assertFalse((bool) $claim->is_used);
+        /*
+         * Walk-in/dine-in vouchers now match pick-up: usable the moment they
+         * are won, not the next day. This test used to pin
+         * now()->addDay()->toDateString() here — that was the very rule the
+         * owner asked to remove (dine-in waited a day while pick-up, per the
+         * same code path, did not; both now behave the same and open today).
+         */
         $this->assertSame(
-            now()->addDay()->toDateString(),
+            today()->toDateString(),
             $claim->valid_from->toDateString(),
-            'a guest claim must use the same next-day window the account path uses'
+            'a guest claim must be usable the same day it is won, same as the account path'
         );
+    }
+
+    /**
+     * The decision driving this file's rewrite: dine-in (walk-in) and pick-up
+     * guest wins must behave identically — both open the same day, never the
+     * next. Covers both order types explicitly rather than trusting that
+     * neither mint path reads $order->type at all (it doesn't, but that is
+     * precisely the kind of fact a later refactor could silently break).
+     *
+     * @dataProvider orderTypesForGuestWin
+     */
+    public function test_a_guest_win_is_usable_the_same_day_for_both_order_types(string $orderType): void
+    {
+        $voucher = $this->wheelVoucher(['points_required' => 5]);
+        $this->guestOrder($orderType);
+
+        $body = $this->spin(8)->assertOk()->json();
+
+        $this->assertNotNull($body['voucher'], "a guest win via a {$orderType} order minted no voucher");
+        $this->assertSame(
+            today()->toDateString(),
+            $body['voucher']['valid_from'],
+            "a {$orderType} guest win must open today, not the next day"
+        );
+        $this->assertStringNotContainsStringIgnoringCase(
+            'tomorrow',
+            $body['voucher']['message'] ?? '',
+            'the win message must not still claim a next-day wait'
+        );
+
+        // And it is genuinely redeemable right now, not merely dated today.
+        $claim = VoucherClaims::resolveByCode($body['voucher']['claim_code']);
+        $this->assertNull(
+            $voucher->fresh()->availabilityErrorFor(null, $claim),
+            "a {$orderType} guest win should be redeemable immediately"
+        );
+    }
+
+    public static function orderTypesForGuestWin(): array
+    {
+        return [
+            'pick up'           => ['pick_up'],
+            'walk-in (dine-in)' => ['dine_in'],
+        ];
     }
 
     public function test_the_win_response_tells_the_guest_to_save_the_code(): void
@@ -413,17 +464,22 @@ class GuestVoucherClaimTest extends TestCase
         );
     }
 
-    public function test_the_claim_is_refused_before_its_window_opens(): void
+    /**
+     * REVERSED, same decision as above: mintForGuest() used to default to
+     * tomorrow, so a claim minted with no explicit $validFrom was refused
+     * until the next day. It now defaults to today, exactly as a real win
+     * does, so the very same call must be usable immediately.
+     */
+    public function test_a_freshly_minted_claim_with_the_default_window_is_usable_immediately(): void
     {
-        // mintForGuest() defaults to tomorrow, exactly as a real win does.
+        // No explicit $validFrom — this is the default a real win uses.
         $claim = VoucherClaims::mintForGuest($this->wheelVoucher());
 
         $this->flushSession();
 
         $result = $this->apply(VoucherClaims::display($claim->claim_code));
 
-        $this->assertFalse($result['success']);
-        $this->assertStringContainsString('not yet valid', $result['message']);
+        $this->assertTrue($result['success'] ?? false, $result['message'] ?? 'no message');
     }
 
     public function test_a_used_claim_is_refused(): void
@@ -491,6 +547,69 @@ class GuestVoucherClaimTest extends TestCase
          * silently not have counted against max_uses at all.
          */
         $this->assertSame($usedCountBefore + 1, (int) $voucher->fresh()->used_count);
+    }
+
+    /**
+     * The owner's core requirement: a voucher a guest wins is NEVER usable on
+     * the very order that won it. Structurally this cannot happen even by
+     * accident — a spin needs a live order to attach to, so the earning order
+     * already exists before the win, and a voucher can only ever be attached
+     * to an order at the moment that order is CREATED. Proven for both order
+     * types, with a genuinely new order placed the same day right after
+     * winning (no time travel at all, which is also the "usable immediately"
+     * proof).
+     *
+     * @dataProvider orderTypesForGuestWin
+     */
+    public function test_a_guest_voucher_is_never_usable_on_the_order_that_earned_it(string $orderType): void
+    {
+        $voucher = $this->wheelVoucher(['points_required' => 5, 'discount_value' => 25]);
+        $earningOrder = $this->guestOrder($orderType);
+
+        $body = $this->spin(8)->assertOk()->json();
+        $this->assertNotNull($body['voucher'], "a guest win via a {$orderType} order minted no voucher");
+        $code = $body['voucher']['claim_code'];
+
+        // The order that earned the spin never carries the voucher it won —
+        // there is no endpoint that could retroactively attach one.
+        $this->assertNull($earningOrder->fresh()->voucher_id);
+
+        // Close it out, exactly as a real visit would (the meal is done, or
+        // the pick-up was collected) before a genuinely new order is placed.
+        $earningOrder->update(['status' => 'cancelled']);
+
+        $this->post('/customer/select-branch', ['branch_id' => 1]);
+        $this->post('/customer/cart/add', ['item_id' => self::ITEM_ID, 'quantity' => 2]);
+
+        $payload = [
+            'order_type'             => $orderType,
+            'payment_method'         => 'cash',
+            'voucher_code_confirmed' => $code,
+            'items'                  => [['menu_item_id' => self::ITEM_ID, 'quantity' => 2]],
+        ];
+
+        if ($orderType === 'dine_in') {
+            session(['table_number' => '5']);
+            $payload['table_number'] = '5';
+        }
+
+        $before = Order::max('id');
+        $this->from('/customer/cart')->post('/customer/place-order', array_filter($payload))
+            ->assertSessionHasNoErrors();
+
+        $newOrder = Order::where('id', '>', $before ?? 0)->orderByDesc('id')->first();
+
+        $this->assertNotNull($newOrder, 'the new order using the voucher was not created');
+        $this->assertNotSame(
+            $earningOrder->id,
+            $newOrder->id,
+            'the voucher was applied to the same order that earned it'
+        );
+        $this->assertSame(
+            (int) $voucher->id,
+            (int) $newOrder->voucher_id,
+            'the new, later order did not record the voucher'
+        );
     }
 
     public function test_the_same_claim_code_cannot_be_redeemed_twice(): void

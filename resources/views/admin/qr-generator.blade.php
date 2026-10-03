@@ -42,6 +42,66 @@
        counter. min-height leaves the existing padding/font-size (and the
        desktop look) untouched and only pads out the empty tap space. */
     .clear-table-btn, #refreshTablesBtn { min-height: 40px; }
+
+    /* Move table. Brown like Regenerate, never the red of Clear, and kept a
+       gap apart from it: moving a party and ending its visit must not share
+       one stray tap. */
+    .move-table-btn{background:#6B4A42; min-height:40px; margin-right:0.4rem;}
+    .qr-table td.num{white-space:nowrap;}
+
+    /* The Move table dialog: a native <dialog> (focus, Escape and the
+       backdrop come with it). Two steps in one box — pick a free table, then
+       confirm. */
+    /* margin:auto is the browser's own centring for a modal <dialog>; the
+       admin layout's global margin reset removes it, which pinned the box to
+       the top-left corner. */
+    .move-dialog{margin:auto;border:none;border-radius:16px;padding:0;width:min(420px, calc(100vw - 32px));max-height:calc(100vh - 32px);box-shadow:0 18px 45px rgba(0,0,0,0.25);color:#333;}
+    .move-dialog::backdrop{background:rgba(48,22,18,0.55);}
+    .move-dialog .md-body{padding:1.2rem 1.2rem 1rem;}
+    .move-dialog h3{margin:0 0 0.35rem;font-size:1.05rem;color:#3b2320;}
+    .move-dialog p{font-size:0.82rem;color:#555;margin:0 0 0.9rem;line-height:1.5;}
+    .move-targets{display:grid;grid-template-columns:repeat(auto-fill, minmax(84px, 1fr));gap:0.5rem;max-height:46vh;overflow-y:auto;margin:0 0 1rem;}
+    .move-target{min-height:44px;border:1px solid #F0C9BA;border-radius:10px;background:#FFF9F6;color:#3b2320;font-weight:700;font-size:0.85rem;cursor:pointer;}
+    .move-target:hover,.move-target:focus-visible{border-color:#F4845F;background:#FDE8DE;outline:none;}
+    .move-empty{font-size:0.82rem;color:#888;margin:0 0 1rem;}
+    .move-actions{display:flex;gap:0.5rem;justify-content:flex-end;flex-wrap:wrap;}
+    .move-actions button{min-height:40px;}
+    .btn-quiet{background:#fff !important;color:#6B4A42 !important;border:1px solid #E5D3CC !important;}
+    #moveMsg{display:none;font-size:0.8rem;padding:0.6rem 0.8rem;border-radius:8px;margin:0 0 0.9rem;background:#FDECEA;color:#B3261E;border:1px solid #F5C2BE;}
+
+    /* A table that is out of service still gets its card, but the preview says
+       so: a banner, and the artwork greyed on screen. The filter is CSS only —
+       Print and Download read the canvas pixels, which are not touched. */
+    #serviceNotice{display:none;font-size:0.8rem;line-height:1.45;padding:0.6rem 0.8rem;border-radius:8px;margin:0 0 0.9rem;background:#FFF4E5;color:#8A4B00;border:1px solid #F3D3A4;text-align:left;}
+    .card-inactive{opacity:0.5;filter:grayscale(1);}
+
+    @if($canRegenerate)
+    /* The trash icon beside a free table in the Move table list (managers
+       only). A small secondary button in the same grid cell, never inside the
+       table's own button, so tapping it can never pick that table. */
+    .move-targets.with-delete{grid-template-columns:repeat(auto-fill, minmax(128px, 1fr));}
+    .move-target-row{display:flex;gap:0.3rem;min-width:0;}
+    .move-target-row .move-target{flex:1 1 auto;min-width:0;}
+    .move-target-delete{flex:0 0 40px;min-height:44px;padding:0;border:1px solid #E7C3BD;border-radius:10px;background:#fff;color:#8E3B2F;font-size:0.95rem;cursor:pointer;}
+    .move-target-delete:hover{background:#FBEAE7;}
+    .move-target-delete:focus-visible{outline:2px solid #F4845F;outline-offset:1px;}
+    .btn-delete-table{background:#8E3B2F;}
+    #moveNotice{display:none;font-size:0.8rem;padding:0.6rem 0.8rem;border-radius:8px;margin:0 0 0.9rem;background:#E6F4EA;color:#1E7A3C;border:1px solid #B7E0C4;}
+    @endif
+
+    /* On a phone each occupied table is a card: with two buttons the Action
+       column sat past the right edge, reachable only by swiping the table
+       sideways. Each cell names itself (data-label) once the header row is
+       hidden. */
+    @media (max-width:600px){
+        .qr-table thead{display:none;}
+        .qr-table, .qr-table tbody, .qr-table tr, .qr-table td{display:block;width:100%;}
+        .qr-table tbody tr{border:1px solid #F0E2DC;border-radius:12px;padding:0.55rem 0.75rem;margin-bottom:0.6rem;background:#FFFDFB;}
+        .qr-table td{padding:0.18rem 0;}
+        .qr-table td[data-label]::before{content:attr(data-label) ": ";color:#8A6A61;font-weight:600;}
+        .qr-table td.num{display:flex;gap:0.5rem;padding-top:0.55rem;white-space:normal;}
+        .qr-table td.num button{flex:1;margin:0;}
+    }
 </style>
 
 <div class="content-card">
@@ -56,7 +116,8 @@
             has leaked or is receiving bogus orders: it stops both the printed QR and the
             typed code for that table working immediately, issues a fresh one for that
             table only, and redraws the card — you must print and place the new card
-            afterward.
+            afterward. A table added by mistake that nobody has used yet can be deleted
+            with the trash icon beside it in the <strong>Move table</strong> list under Occupied Tables.
         @endif
     </p>
 
@@ -89,6 +150,13 @@
         <div class="qr-output">
             <p class="qr-output-empty" id="qrEmpty">The generated table card will appear here.</p>
             <div id="qrResult" style="display:none; width:100%; text-align:center;">
+                {{-- Information only, no button. Shown to every role (staff
+                     included) when the table is out of service, so nobody prints
+                     and places a card for a table customers cannot open. --}}
+                <p id="serviceNotice" role="status">
+                    <i class="bi bi-slash-circle"></i> <strong>Not in service.</strong>
+                    Customers cannot open this table by QR or code.
+                </p>
                 <canvas id="cardCanvas" style="max-width:100%; width:280px; box-shadow:0 2px 12px rgba(0,0,0,0.12); border-radius:8px;"></canvas>
                 <p style="font-size:0.75rem; color:#555; margin:0.9rem 0 0;">
                     Printed card for <strong id="cardSummary"></strong>
@@ -101,9 +169,9 @@
                         <i class="bi bi-download"></i> Download PNG
                     </button>
                     @if($canRegenerate)
-                        {{-- Rotates the permanent code for the branch + table this card
-                             was generated for, then redraws the preview from the
-                             response so the printed code is never left stale. --}}
+                        {{-- Rotates the permanent code for the branch + table this
+                             card was generated for, then redraws the preview from
+                             the response so the printed code is never left stale. --}}
                         <button onclick="regenerateCurrentCode()" class="btn-primary-custom btn-regen" style="padding:0.5rem 1.2rem;" id="regenCardBtn">
                             <i class="bi bi-arrow-repeat"></i> Regenerate Code
                         </button>
@@ -141,6 +209,8 @@
         <strong>{{ \App\Services\TableOccupancy::INACTIVITY_MINUTES }} minutes</strong>
         with no sign of the customer. Clear it by hand only when you know they have gone —
         it ends the session and leaves any order exactly as it is.
+        <strong>Move table</strong> seats the party at a free table in the same branch:
+        every phone at the table, their carts and any open order go with them.
     </p>
 
     <p id="tablesMsg" style="display:none; font-size:0.8rem; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:1rem;"></p>
@@ -163,6 +233,52 @@
         </table>
     </div>
 </div>
+
+{{-- Move table. The list comes from admin.tables.move-targets — only free,
+     in-service tables at the party's own branch — and the server re-checks
+     all of it when Move is pressed. Managers also get a trash icon beside
+     each table (admin.tables.delete, for a table nobody has ever used) and
+     its own confirmation step; staff get neither. --}}
+<dialog id="moveTableDialog" class="move-dialog" aria-labelledby="moveTableTitle">
+    <div class="md-body">
+        <p id="moveMsg" role="alert"></p>
+        @if($canRegenerate)
+        <p id="moveNotice" role="status"></p>
+        @endif
+
+        <div id="moveStepPick">
+            <h3 id="moveTableTitle">Move Table <span id="moveFromLabel"></span></h3>
+            <p>Pick a free table at <strong id="moveBranchLabel"></strong>. Occupied tables are not listed.</p>
+            <div id="moveTargets" class="move-targets{{ $canRegenerate ? ' with-delete' : '' }}"></div>
+            <p id="moveEmpty" class="move-empty" hidden>No free tables at this branch right now.</p>
+            <div class="move-actions">
+                <button type="button" class="btn-primary-custom btn-quiet" data-move-close>Cancel</button>
+            </div>
+        </div>
+
+        <div id="moveStepConfirm" hidden>
+            <h3>Confirm move</h3>
+            <p id="moveConfirmText"></p>
+            <div class="move-actions">
+                <button type="button" class="btn-primary-custom btn-quiet" id="moveBackBtn">Back</button>
+                <button type="button" class="btn-primary-custom move-table-btn" id="moveConfirmBtn" style="margin-right:0;">Move</button>
+            </div>
+        </div>
+
+        @if($canRegenerate)
+        {{-- Delete an unused table: the trash icon's confirmation. A step of
+             its own, so the dialog stays open and the list stays as it was. --}}
+        <div id="moveStepDelete" hidden>
+            <h3 id="deleteTableTitle">Delete Table <span id="deleteTableLabel"></span>?</h3>
+            <p id="deleteTableText"></p>
+            <div class="move-actions">
+                <button type="button" class="btn-primary-custom btn-quiet" id="deleteCancelBtn">Cancel</button>
+                <button type="button" class="btn-primary-custom btn-delete-table" id="deleteConfirmBtn" style="margin-right:0;">Delete</button>
+            </div>
+        </div>
+        @endif
+    </div>
+</dialog>
 
 @endsection
 
@@ -375,6 +491,7 @@
 
             drawCard(data, qrCanvas);
             currentCard = data;
+            renderServiceState();
 
             document.getElementById('cardSummary').textContent =
                 data.branch_name + ' - Table ' + data.table_number;
@@ -388,6 +505,20 @@
         } finally {
             btn.disabled = false;
         }
+    }
+
+    /**
+     * Show whether the card on screen is for a table that is in service.
+     *
+     * Runs for every role: everyone sees the "not in service" note and the greyed
+     * artwork (so nobody prints a card for a table customers cannot open). The
+     * note is information only.
+     */
+    function renderServiceState() {
+        const inactive = !!currentCard && currentCard.is_active === false;
+
+        document.getElementById('serviceNotice').style.display = inactive ? 'block' : 'none';
+        document.getElementById('cardCanvas').classList.toggle('card-inactive', inactive);
     }
 
     @if($canRegenerate)
@@ -488,6 +619,7 @@
             if (btn) btn.disabled = false;
         }
     }
+
     @endif
 
     /* ══════════ Occupied tables ══════════ */
@@ -560,12 +692,15 @@
                     : '<span style="color:#888;">—</span>';
 
                 return '<tr>' +
-                    '<td>' + escapeHtml(t.branch_name || '—') + '</td>' +
-                    '<td style="font-weight:700;">' + escapeHtml(t.table_number) + '</td>' +
-                    '<td>' + order + source + '</td>' +
-                    '<td>' + devices + '</td>' +
-                    '<td style="color:#555;">' + sinceLabel(t.since) + '</td>' +
+                    '<td data-label="Branch">' + escapeHtml(t.branch_name || '—') + '</td>' +
+                    '<td data-label="Table" style="font-weight:700;">' + escapeHtml(t.table_number) + '</td>' +
+                    '<td data-label="Order">' + order + source + '</td>' +
+                    '<td data-label="Devices">' + devices + '</td>' +
+                    '<td data-label="Occupied since" style="color:#555;">' + sinceLabel(t.since) + '</td>' +
                     '<td class="num">' +
+                        '<button class="btn-primary-custom move-table-btn open-move-btn" style="padding:0.3rem 0.8rem; font-size:0.72rem;"' +
+                        ' data-session="' + escapeHtml(t.session_id) + '" data-table="' + escapeHtml(t.table_number) + '"' +
+                        ' data-branch-name="' + escapeHtml(t.branch_name || '') + '">Move table</button>' +
                         '<button class="btn-primary-custom clear-table-btn" style="padding:0.3rem 0.8rem; font-size:0.72rem; background:#C0392B;"' +
                         ' data-branch="' + t.branch_id + '" data-table="' + escapeHtml(t.table_number) + '">Clear</button>' +
                     '</td>' +
@@ -634,6 +769,321 @@
             loadOccupancy();
         }
     });
+
+    /* ══════════ Move table ══════════
+     *
+     * Step 1 lists the free tables the server offers for this party (same
+     * branch, in service, nobody there). Step 2 asks for confirmation. The
+     * POST carries two ids — the session and the table — and the server
+     * re-checks everything, so a list that went stale while the dialog was
+     * open is answered with a refusal and a fresh list, never a wrong move.
+     */
+    const MOVE_TARGETS_ENDPOINT = "{{ route('admin.tables.move-targets') }}";
+    const MOVE_ENDPOINT = "{{ route('admin.tables.move') }}";
+
+    const moveDialog = document.getElementById('moveTableDialog');
+    let moveState = null;
+
+    function showMoveMsg(message) {
+        const el = document.getElementById('moveMsg');
+        el.textContent = message || '';
+        el.style.display = message ? 'block' : 'none';
+    }
+
+    function showMoveStep(step) {
+        document.getElementById('moveStepPick').hidden = step !== 'pick';
+        document.getElementById('moveStepConfirm').hidden = step !== 'confirm';
+
+        // Managers only: the trash icon's confirmation step.
+        const del = document.getElementById('moveStepDelete');
+        if (del) del.hidden = step !== 'delete';
+    }
+
+    async function loadMoveTargets() {
+        const list = document.getElementById('moveTargets');
+        const empty = document.getElementById('moveEmpty');
+
+        list.innerHTML = '';
+        empty.hidden = true;
+
+        const res = await fetch(MOVE_TARGETS_ENDPOINT + '?session_id=' + encodeURIComponent(moveState.sessionId), {
+            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin',
+            cache: 'no-store'
+        });
+
+        const data = await res.json().catch(function () { return {}; });
+
+        if (!res.ok) throw new Error(data.message || 'Could not load the free tables.');
+
+        moveState.from = data.table_number;
+        document.getElementById('moveFromLabel').textContent = data.table_number;
+        document.getElementById('moveBranchLabel').textContent = data.branch_name || 'this branch';
+
+        data.tables.forEach(function (t) {
+            const b = document.createElement('button');
+            b.type = 'button';
+            b.className = 'move-target';
+            b.textContent = 'Table ' + t.table_number;
+            b.dataset.tableId = t.id;
+            b.dataset.tableNumber = t.table_number;
+            // Managers get the table's trash icon beside it (defined only on their page).
+            list.appendChild(typeof moveTargetWithDelete === 'function' ? moveTargetWithDelete(b, t) : b);
+        });
+
+        empty.hidden = data.tables.length > 0;
+    }
+
+    // Set while a Move dialog's free-table list is being fetched, so a second
+    // click — the same button again, or another row's — can't open a second
+    // dialog or start a second fetch before this one has rendered anything.
+    let moveOpening = false;
+
+    async function openMoveDialog(btn) {
+        if (moveOpening || moveDialog.open) return;
+        moveOpening = true;
+        btn.disabled = true;
+
+        moveState = { sessionId: btn.dataset.session, from: btn.dataset.table, to: null };
+
+        document.getElementById('moveFromLabel').textContent = btn.dataset.table;
+        document.getElementById('moveBranchLabel').textContent = btn.dataset.branchName || 'this branch';
+        showTablesMsg('', true);
+        showMoveMsg('');
+        showMoveStep('pick');
+
+        // The list is fetched BEFORE the dialog opens, so it never shows blank
+        // (just the title and Cancel) while the request is in flight — the
+        // dialog opens already showing the tables, the "no free table"
+        // message, or (on a failed fetch) the error message.
+        try {
+            await loadMoveTargets();
+        } catch (e) {
+            showMoveMsg(e.message);
+        } finally {
+            moveDialog.showModal();
+            btn.disabled = false;
+            moveOpening = false;
+        }
+    }
+
+    function pickMoveTarget(btn) {
+        moveState.to = { id: btn.dataset.tableId, number: btn.dataset.tableNumber };
+
+        document.getElementById('moveConfirmText').textContent =
+            'Move this customer from Table ' + moveState.from + ' to Table ' + moveState.to.number +
+            '? Their cart and any open order move with them.';
+        showMoveMsg('');
+        showMoveStep('confirm');
+        document.getElementById('moveConfirmBtn').focus();
+    }
+
+    async function confirmMove() {
+        const btn = document.getElementById('moveConfirmBtn');
+
+        if (!moveState || !moveState.to || btn.disabled) return;
+
+        btn.disabled = true;
+
+        try {
+            const res = await fetch(MOVE_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ session_id: moveState.sessionId, table_id: moveState.to.id })
+            });
+
+            const data = await res.json().catch(function () { return {}; });
+
+            if (!res.ok) {
+                // Refused: say why, and offer the list as it is NOW.
+                showMoveStep('pick');
+                showMoveMsg(data.message || 'Could not move that table.');
+
+                try {
+                    await loadMoveTargets();
+                } catch (e) {
+                    showMoveMsg((data.message ? data.message + ' ' : '') + e.message);
+                }
+
+                return;
+            }
+
+            moveDialog.close();
+            showTablesMsg(data.message, true);
+        } catch (e) {
+            showMoveMsg('Could not reach the server. Nothing was changed. Please try again.');
+        } finally {
+            btn.disabled = false;
+            loadOccupancy();
+        }
+    }
+
+    document.addEventListener('click', function (event) {
+        const open = event.target.closest('.open-move-btn');
+        if (open) { openMoveDialog(open); return; }
+
+        const target = event.target.closest('.move-target');
+        if (target) { pickMoveTarget(target); return; }
+
+        if (event.target.closest('[data-move-close]')) { moveDialog.close(); }
+    });
+
+    document.getElementById('moveBackBtn').addEventListener('click', function () {
+        showMoveMsg('');
+        showMoveStep('pick');
+    });
+
+    document.getElementById('moveConfirmBtn').addEventListener('click', confirmMove);
+
+    // A click on the backdrop lands on the <dialog> itself (its content box
+    // fills it), so that is "Cancel" too. Escape is native.
+    moveDialog.addEventListener('click', function (event) {
+        if (event.target === moveDialog) moveDialog.close();
+    });
+
+    @if($canRegenerate)
+    /* ══════════ Delete an unused table (managers only) ══════════
+     *
+     * A small trash icon beside each free table in the Move list. It is its own
+     * button beside the table's button, never inside it, and its click stops
+     * here, so it can never pick the table as the destination. Delete posts the
+     * dialog's occupancy and the table's id, nothing else; the server reads the
+     * branch off those rows and refuses any table with history. On success the
+     * table leaves the list and the dialog stays open.
+     */
+    const DELETE_TABLE_ENDPOINT = "{{ route('admin.tables.delete') }}";
+
+    let deleteTarget = null;
+
+    function showMoveNotice(message) {
+        const el = document.getElementById('moveNotice');
+        el.textContent = message || '';
+        el.style.display = message ? 'block' : 'none';
+    }
+
+    /** Wrap one table button with its trash icon. textContent / dataset only. */
+    function moveTargetWithDelete(button, t) {
+        const row = document.createElement('div');
+        row.className = 'move-target-row';
+
+        const trash = document.createElement('button');
+        trash.type = 'button';
+        trash.className = 'move-target-delete';
+        trash.dataset.tableId = t.id;
+        trash.dataset.tableNumber = t.table_number;
+        trash.setAttribute('aria-label', 'Delete Table ' + t.table_number);
+        trash.title = 'Delete Table ' + t.table_number;
+        trash.innerHTML = '<i class="bi bi-trash" aria-hidden="true"></i>';
+
+        row.append(button, trash);
+
+        return row;
+    }
+
+    function askDeleteTable(trash) {
+        deleteTarget = { id: trash.dataset.tableId, number: trash.dataset.tableNumber };
+
+        document.getElementById('deleteTableLabel').textContent = deleteTarget.number;
+        document.getElementById('deleteTableText').textContent =
+            'Table ' + deleteTarget.number + ' is removed from ' +
+            (document.getElementById('moveBranchLabel').textContent || 'this branch') + ' for good. ' +
+            'Only a table nobody has ever used can be deleted: one with any order, visit or help request is refused and nothing changes.';
+        showMoveMsg('');
+        showMoveNotice('');
+        showMoveStep('delete');
+        document.getElementById('deleteCancelBtn').focus();
+    }
+
+    /** Take one table out of the list on screen, without reloading it. */
+    function removeMoveTarget(tableId) {
+        const list = document.getElementById('moveTargets');
+
+        list.querySelectorAll('.move-target-delete').forEach(function (trash) {
+            if (String(trash.dataset.tableId) === String(tableId)) trash.closest('.move-target-row').remove();
+        });
+
+        document.getElementById('moveEmpty').hidden = list.children.length > 0;
+    }
+
+    async function confirmDeleteTable() {
+        const btn = document.getElementById('deleteConfirmBtn');
+
+        // Disabled until the answer is in, so a double click sends one request.
+        if (!moveState || !deleteTarget || btn.disabled) return;
+
+        btn.disabled = true;
+
+        const target = deleteTarget;
+
+        try {
+            const res = await fetch(DELETE_TABLE_ENDPOINT, {
+                method: 'POST',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest',
+                    'X-CSRF-TOKEN': '{{ csrf_token() }}'
+                },
+                credentials: 'same-origin',
+                body: JSON.stringify({ session_id: moveState.sessionId, table_id: target.id })
+            });
+
+            const data = await res.json().catch(function () { return {}; });
+
+            deleteTarget = null;
+            showMoveStep('pick');
+
+            if (!res.ok) {
+                // Refused (history, occupied, gone): say why, and show the list as it is NOW.
+                showMoveMsg(data.message || 'Could not delete that table.');
+
+                try {
+                    await loadMoveTargets();
+                } catch (e) {
+                    showMoveMsg((data.message ? data.message + ' ' : '') + e.message);
+                }
+
+                return;
+            }
+
+            removeMoveTarget(target.id);
+            showMoveNotice(data.message || ('Table ' + target.number + ' was deleted.'));
+        } catch (e) {
+            // Left on this step, so Delete can simply be pressed again.
+            showMoveMsg('Could not reach the server. Nothing was deleted. Please try again.');
+        } finally {
+            btn.disabled = false;
+        }
+    }
+
+    document.getElementById('moveTargets').addEventListener('click', function (event) {
+        const trash = event.target.closest('.move-target-delete');
+        if (!trash) return;
+
+        // Never let this click reach the destination picker.
+        event.stopPropagation();
+        askDeleteTable(trash);
+    });
+
+    document.getElementById('deleteConfirmBtn').addEventListener('click', confirmDeleteTable);
+
+    document.getElementById('deleteCancelBtn').addEventListener('click', function () {
+        deleteTarget = null;
+        showMoveMsg('');
+        showMoveStep('pick');
+    });
+
+    moveDialog.addEventListener('close', function () {
+        deleteTarget = null;
+        showMoveNotice('');
+    });
+    @endif
 
     /*
      * Auto-refresh. A table that just became occupied (or was just freed by

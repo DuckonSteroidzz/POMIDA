@@ -157,7 +157,12 @@ class GuestVoucherClaims
             'claim_code'  => VoucherClaims::display($c->claim_code),
             'code'        => $c->voucher?->code,
             'description' => $c->voucher?->description,
-            'valid_from'  => $c->valid_from?->format('M d, Y'),
+            // null once the window has opened (the normal case: claims mint
+            // valid from today), so the page has nothing stale to show —
+            // only a claim that genuinely still has to wait prints a date.
+            'valid_from'  => ($c->valid_from && today()->lessThan($c->valid_from))
+                ? $c->valid_from->format('M d, Y')
+                : null,
             'expires_at'  => $c->voucher?->expires_at?->format('M d, Y'),
             'is_used'     => (bool) $c->is_used,
         ])->values()->all();
