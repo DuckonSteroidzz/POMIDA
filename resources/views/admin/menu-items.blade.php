@@ -763,35 +763,25 @@
                 <small style="font-size:0.72rem;color:#374151;font-weight:500;">Item will be assigned to the currently selected branch.</small>
             </div>
 
-            {{-- Legacy Single-Ingredient Link (collapsed). Kept only so old menu items
-                 created before the Recipe Ingredients feature keep working. --}}
-            <details style="margin-bottom: 0.85rem; background:#f4f4f4; border-radius:8px; padding:0.55rem 0.75rem;">
-                <summary style="cursor:pointer; font-size:0.78rem; font-weight:600; color:#374151;">
-                    <i class="bi bi-archive"></i> Legacy Single-Ingredient Link (only used if no Recipe Ingredients are set)
-                </summary>
-                <p style="font-size:0.72rem; color:#4B5563; font-weight:500; margin:0.5rem 0;">
-                    Leave empty for new items — use the <strong>Recipe Ingredients</strong> section above instead.
-                </p>
-                <div style="display: flex; gap: 0.75rem;">
-                    <div style="flex: 1;">
-                        <label class="form-label-custom">Inventory Item</label>
-                        <select name="inventory_item_id" id="itemInventory" class="form-control-custom" style="margin-bottom:0;">
-                            <option value="">-- No link --</option>
-                            @if(isset($inventoryItems) && count($inventoryItems) > 0)
-                                @foreach($inventoryItems as $inv)
-                                    <option value="{{ $inv->id }}" {{ (string) old('inventory_item_id') === (string) $inv->id ? 'selected' : '' }}>{{ $inv->item_name }} ({{ $inv->quantity }} {{ $inv->unit }})</option>
-                                @endforeach
-                            @else
-                                <option value="" disabled>No inventory for this branch yet</option>
-                            @endif
-                        </select>
-                    </div>
-                    <div style="flex: 1;">
-                        <label class="form-label-custom">Amount Used per Order</label>
-                        <input type="number" name="inventory_amount_used" id="itemAmountUsed" class="form-control-custom" step="0.01" min="0" value="{{ old('inventory_amount_used', 0) }}" style="margin-bottom:0;">
-                    </div>
-                </div>
-            </details>
+            {{-- Legacy single-ingredient link: NOT shown to users. The two fields
+                 stay in the form (same names, ids and values) so that saving an
+                 old item that still carries a link posts it back unchanged —
+                 updateMenuItem() writes both straight from the request, so
+                 dropping them would silently clear the link. openAddModal() and
+                 openEditModal() below keep filling them. --}}
+            <div id="legacyLinkFields" hidden aria-hidden="true">
+                <select name="inventory_item_id" id="itemInventory" tabindex="-1">
+                    <option value="">-- No link --</option>
+                    @if(isset($inventoryItems) && count($inventoryItems) > 0)
+                        @foreach($inventoryItems as $inv)
+                            <option value="{{ $inv->id }}" {{ (string) old('inventory_item_id') === (string) $inv->id ? 'selected' : '' }}>{{ $inv->item_name }} ({{ $inv->quantity }} {{ $inv->unit }})</option>
+                        @endforeach
+                    @else
+                        <option value="" disabled>No inventory for this branch yet</option>
+                    @endif
+                </select>
+                <input type="number" name="inventory_amount_used" id="itemAmountUsed" step="any" min="0" value="{{ old('inventory_amount_used', 0) }}" tabindex="-1">
+            </div>
 
             <div id="currentImageWrapper" style="display:none; margin-bottom: 0.85rem;">
                 <label class="form-label-custom">Current Image</label>
