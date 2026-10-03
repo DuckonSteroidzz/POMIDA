@@ -289,46 +289,6 @@ class Notification extends Model
         );
     }
 
-    /**
-     * A customer's lifetime points crossed a reward threshold.
-     *
-     * The first notification here that is NOT about an order, which is what
-     * order_id being nullable was left for — the migration says as much. It
-     * goes through the same table, the same audience column and therefore the
-     * same bell the customer already watches for order updates; nothing about
-     * the delivery path is special-cased for it.
-     *
-     * Customer-audience rows for a signed-in user are matched by user_id
-     * alone in scopeVisibleToCurrentCustomer(), so a null order_id is fully
-     * visible. Guests are not eligible for these rewards at all (they have no
-     * account to issue against), which is why this takes a User rather than
-     * going through forCustomer()'s order-shaped signature.
-     *
-     * The wording below says "your account", never "staff at the counter":
-     * the only caller (AuthController::addPoints()) reaches this exclusively
-     * on the signed-in branch, and a signed-in winner's UserVoucher claim is
-     * self-service from the moment it is minted — typed straight into the
-     * checkout voucher field, no staff involved (Voucher::availabilityErrorFor()
-     * resolves it off VoucherClaims::heldOn($voucher, $user)). "Claim from
-     * staff" was only ever true for a guest, and a guest never reaches this
-     * method — see the early-return guest branch a few lines above the call
-     * site, which sends its own 'guest_notice' text instead.
-     */
-    public static function pointsRewardEarned(\App\Models\User $user, int $milestone): self
-    {
-        return self::create([
-            'user_id'   => $user->id,
-            'order_id'  => null,
-            'branch_id' => null,
-            'audience'  => self::AUDIENCE_CUSTOMER,
-            'type'      => 'points_reward_earned',
-            'title'     => 'You earned a voucher reward!',
-            'message'   => "Congratulations! You've reached " . $milestone
-                . ' points and earned a voucher reward. It\'s already in your account'
-                . ' — check My Vouchers to use it on your next order.',
-        ]);
-    }
-
     /*
     |--------------------------------------------------------------------------
     | Internal builders

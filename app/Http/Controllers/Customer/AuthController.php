@@ -2775,47 +2775,15 @@ private function switchBranch($branchId): void
         $totalPoints = $user->points;
 
         /*
-         * POINTS-THRESHOLD REWARD (2026-09-02).
+         * NO NOTIFICATION AT A LIFETIME-POINTS THRESHOLD.
          *
-         * Every PointsRewards::THRESHOLD lifetime points earns one voucher
-         * reward, minted straight onto the signed-in winner's account as a
-         * UserVoucher claim — self-service, no staff needed. Tell the
-         * customer the moment they cross a new multiple.
-         *
-         * Measured against LIFETIME points from the games_played ledger, not
-         * $totalPoints above. $user->points is a spendable balance — the
-         * wheel-voucher branch a few lines below subtracts points_required
-         * from it — so a milestone measured on it would be crossed again
-         * every time the customer spent points and re-earned them, paying out
-         * repeatedly for the same points. The ledger only ever grows.
-         *
-         * FIRING EXACTLY ONCE
-         * -------------------
-         * The GamePlayed row for this spin is already committed by the time
-         * we get here, so the lifetime SUM below is the total INCLUDING this
-         * spin, and the total before it is exactly that minus this spin's
-         * award. A new multiple was crossed if the reward count went up.
-         *
-         * Because the ledger is append-only, each multiple is passed exactly
-         * once in the customer's lifetime — so this fires once per threshold
-         * and stays silent on every subsequent point until the next one. A
-         * zero-point spin ("Try Again") cannot trigger it either: the before
-         * and after totals are equal, so the counts are too.
+         * Crossing a multiple of PointsRewards::THRESHOLD used to send the
+         * customer "You earned a voucher reward ... it's already in your
+         * account — check My Vouchers". Nothing was ever minted at that
+         * moment, so the message was false and was removed. The spin is
+         * already recorded in games_played above and the spendable balance is
+         * credited; nothing else happens here.
          */
-        $lifetimePoints = \App\Services\PointsRewards::lifetimePointsFor($user);
-        $rewardsBefore  = \App\Services\PointsRewards::rewardsIn($lifetimePoints - $points);
-        $rewardsAfter   = \App\Services\PointsRewards::rewardsIn($lifetimePoints);
-
-        if ($rewardsAfter > $rewardsBefore) {
-            // Name the milestone actually reached. A single spin cannot award
-            // enough to skip a whole threshold today (max 8 vs 30), but if the
-            // awards ever grow, announcing the HIGHEST new multiple is the
-            // honest number rather than the first one passed.
-            \App\Models\Notification::pointsRewardEarned(
-                $user,
-                $rewardsAfter * \App\Services\PointsRewards::THRESHOLD
-            );
-        }
 
         // Check kung may 2 na vouchers ang user — hindi na pwede kumita pa
         $existingVoucherCount = \App\Models\UserVoucher::where('user_id', $user->id)

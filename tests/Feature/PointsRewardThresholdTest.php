@@ -31,8 +31,10 @@ use Tests\TestCase;
  *    `games_played` ledger, and test_spending_points_on_a_wheel_voucher_does_
  *    not_re_arm_the_reward pins exactly that.
  *
- * 2. FIRING ONCE. The notification must fire on the spin that crosses a
- *    multiple and stay silent on every point after it, until the next one.
+ * 2. NO NOTIFICATION. Crossing a multiple used to send "You earned a voucher
+ *    reward ... already in your account", but nothing was minted, so the
+ *    message was false and was removed. The tests in section 1 pin its
+ *    absence; the ledger, spendable balance and wheel vouchers are unchanged.
  */
 class PointsRewardThresholdTest extends TestCase
 {
@@ -161,7 +163,20 @@ class PointsRewardThresholdTest extends TestCase
         $this->assertSame(30, PointsRewards::THRESHOLD);
     }
 
-    // ══════════ 1. firing exactly once ══════════
+    // ══════════ 1. crossing a threshold sends NO notification ══════════
+    //
+    // The "You earned a voucher reward ... already in your account" message was
+    // removed: nothing was ever minted at the crossing, so it was false. These
+    // tests used to pin that notification (once per multiple); they now pin its
+    // ABSENCE, while still proving the spin and the points are recorded.
+
+    /** Every notification row this test caused for this customer, of any type. */
+    private function notificationsFor(User $user): int
+    {
+        return Notification::where('id', '>', $this->notificationMark)
+            ->where('user_id', $user->id)
+            ->count();
+    }
 
     public function test_no_notification_before_the_threshold_is_reached(): void
     {
@@ -178,97 +193,60 @@ class PointsRewardThresholdTest extends TestCase
         $this->assertSame(0, $this->rewardNotifications($user));
     }
 
-    public function test_the_notification_fires_on_the_spin_that_crosses_the_threshold(): void
+    public function test_crossing_a_multiple_of_30_creates_no_notification_but_records_the_spin_and_points(): void
     {
+        // Wheel vouchers would deduct points and muddy the arithmetic; with none
+        // active every point credited is a point the wheel awarded. Rolled back.
+        Voucher::where('points_required', '>', 0)->update(['is_active' => false]);
+
         $user = $this->customer();
-        $this->order($user);
+        $order = $this->order($user);
         $this->actingAs($user, 'customer');
 
         // 4 x 8 = 32, crossing 30 on the fourth.
         for ($i = 0; $i < 4; $i++) {
-            $this->spin(8)->assertOk();
+            $this->spin(8)->assertOk()->assertJson(['success' => true]);
         }
 
-        $this->assertSame(
-            1,
-            $this->rewardNotifications($user),
-            'crossing the threshold did not tell the customer'
-        );
+        // CONTROL: the spins really happened — the absence below is not a
+        // request that was refused for some unrelated reason.
+        $this->assertSame(4, GamePlayed::where('user_id', $user->id)->where('order_id', $order->id)->count());
+        $this->assertSame(32, PointsRewards::lifetimePointsFor($user->refresh()));
+        $this->assertSame(32, (int) $user->points);
 
-        $notification = Notification::where('id', '>', $this->notificationMark)
-            ->where('user_id', $user->id)
-            ->where('type', 'points_reward_earned')
-            ->firstOrFail();
-
-        // Delivered through the same bell as order updates, to the customer.
-        $this->assertSame(Notification::AUDIENCE_CUSTOMER, $notification->audience);
-        $this->assertStringContainsString('30 points', $notification->message);
-        $this->assertStringContainsString('My Vouchers', $notification->message);
-
-        // Not an order notification — this is the first non-order row in the
-        // table, which is what order_id being nullable was left for.
-        $this->assertNull($notification->order_id);
+        $this->assertSame(0, $this->rewardNotifications($user), 'a points_reward_earned notification was created');
+        $this->assertSame(0, $this->notificationsFor($user), 'crossing 30 created some notification');
     }
 
-    public function test_it_does_not_fire_again_on_every_point_after_the_threshold(): void
+    public function test_later_spins_and_a_zero_point_spin_also_create_no_notification(): void
     {
         $user = $this->customer();
         $this->order($user);
         $this->actingAs($user, 'customer');
 
-        // Cross 30 (32), then keep spinning well short of 60.
-        for ($i = 0; $i < 7; $i++) {
-            $this->spin(8)->assertOk();
-        }
-
-        // 7 x 8 = 56: past 30, not yet 60.
-        $this->assertSame(56, PointsRewards::lifetimePointsFor($user->refresh()));
-
-        $this->assertSame(
-            1,
-            $this->rewardNotifications($user),
-            'the customer was congratulated again for points that earned nothing new'
-        );
-    }
-
-    public function test_a_zero_point_spin_never_notifies(): void
-    {
-        $user = $this->customer();
-        $this->order($user);
-        $this->actingAs($user, 'customer');
-
-        // Land exactly on 30, then take a "Try Again". The before and after
-        // totals are equal, so no new multiple can have been crossed.
+        // Land exactly on 30, then take a "Try Again" and keep going to 56.
         for ($i = 0; $i < 6; $i++) {
             $this->spin(5)->assertOk();
         }
-
         $this->assertSame(30, PointsRewards::lifetimePointsFor($user->refresh()));
-        $this->assertSame(1, $this->rewardNotifications($user));
+        $this->assertSame(0, $this->notificationsFor($user));
 
         $this->spin(0)->assertOk();
-
-        $this->assertSame(
-            1,
-            $this->rewardNotifications($user),
-            'a losing spin re-fired the reward notification'
-        );
+        $this->assertSame(30, PointsRewards::lifetimePointsFor($user->refresh()));
+        $this->assertSame(0, $this->notificationsFor($user));
     }
 
-    public function test_the_second_crossing_notifies_again_at_the_next_multiple(): void
+    public function test_the_second_crossing_at_60_creates_no_notification_either(): void
     {
         $user = $this->customer();
         $this->order($user);
         $this->actingAs($user, 'customer');
 
         // One order caps at SPINS_PER_ORDER spins, so reaching 60 needs a
-        // second order — which is also the realistic shape of a customer
-        // earning a second reward on a later visit.
+        // second order.
         for ($i = 0; $i < 7; $i++) {
             $this->spin(8)->assertOk();
         }
-
-        $this->assertSame(1, $this->rewardNotifications($user), 'CONTROL: one so far');
 
         $this->order($user);
 
@@ -276,22 +254,58 @@ class PointsRewardThresholdTest extends TestCase
         $this->spin(8)->assertOk();
 
         $this->assertSame(64, PointsRewards::lifetimePointsFor($user->refresh()));
+        $this->assertSame(0, $this->notificationsFor($user));
+    }
+
+    public function test_a_wheel_voucher_is_still_won_when_a_threshold_is_crossed(): void
+    {
+        Voucher::where('points_required', '>', 0)->update(['is_active' => false]);
+
+        $voucher = Voucher::create([
+            'branch_id'       => null,
+            'code'            => 'PRT' . strtoupper(substr(uniqid(), -7)),
+            'description'     => 'points reward test voucher',
+            'discount_type'   => 'fixed',
+            'discount_value'  => 25,
+            'max_uses'        => 100,
+            'used_count'      => 0,
+            'minimum_order'   => 0,
+            'is_active'       => true,
+            'points_required' => 30,
+        ]);
+
+        $user = $this->customer();
+        $this->order($user);
+        $this->actingAs($user, 'customer');
+
+        // 32 lifetime points; the 30-point wheel voucher is won on the spin that
+        // takes the spendable balance to 32 (and costs 30 of it).
+        $last = null;
+        for ($i = 0; $i < 4; $i++) {
+            $last = $this->spin(8)->assertOk();
+        }
+
+        $last->assertJsonPath('voucher.code', $voucher->code);
         $this->assertSame(
-            2,
-            $this->rewardNotifications($user),
-            'crossing the second threshold did not notify'
+            1,
+            \App\Models\UserVoucher::where('user_id', $user->id)->where('voucher_id', $voucher->id)->count()
         );
+        $this->assertSame(2, (int) $user->refresh()->points, 'spendable balance is credited then charged for the voucher');
+        $this->assertSame(32, PointsRewards::lifetimePointsFor($user), 'lifetime points are untouched by spending');
+        $this->assertSame(0, $this->notificationsFor($user));
+    }
 
-        $messages = Notification::where('id', '>', $this->notificationMark)
-            ->where('user_id', $user->id)
-            ->where('type', 'points_reward_earned')
-            ->orderBy('id')
-            ->pluck('message')
-            ->all();
+    public function test_ordinary_notifications_are_still_created(): void
+    {
+        $user = $this->customer();
+        $order = $this->order($user);
 
-        // Each names its own milestone, not the same one twice.
-        $this->assertStringContainsString('30 points', $messages[0]);
-        $this->assertStringContainsString('60 points', $messages[1]);
+        $row = Notification::orderStatusChanged($order, 'preparing');
+
+        $this->assertNotNull($row, 'CONTROL: an order notification is still created');
+        $this->assertSame($user->id, (int) $row->user_id);
+        $this->assertSame(1, $this->notificationsFor($user));
+        $this->assertSame(0, $this->rewardNotifications($user));
     }
 
     public function test_spending_points_on_a_wheel_voucher_does_not_re_arm_the_reward(): void
