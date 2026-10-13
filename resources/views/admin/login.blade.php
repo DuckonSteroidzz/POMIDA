@@ -288,7 +288,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.95rem;
+            font-size: 1rem;
 
             outline: none;
 

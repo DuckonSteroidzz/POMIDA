@@ -169,6 +169,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'email_verified_at' => 'datetime',
         'verified_at' => 'datetime',
         'is_active' => 'boolean',
+        'bonus_points' => 'integer',
         'password' => 'hashed',  // Auto-encrypt yung password
     ];
 
@@ -356,5 +357,26 @@ class User extends Authenticatable implements MustVerifyEmail
                 'error' => $e->getMessage(),
             ]);
         }
+    }
+
+    /**
+     * Points the Spin & Win wheel counts towards a voucher: the spin balance
+     * (`points`, reset on every order) plus the account's bonus balance
+     * (`bonus_points`, never reset — see config/loyalty.php). What the
+     * customer is shown as "your points".
+     */
+    public function wheelPoints(): int
+    {
+        return (int) $this->points + (int) $this->bonus_points;
+    }
+
+    public function loyaltyAwards(): HasMany
+    {
+        return $this->hasMany(LoyaltyAward::class);
+    }
+
+    public function freeDessertRewards(): HasMany
+    {
+        return $this->hasMany(FreeDessertReward::class);
     }
 }

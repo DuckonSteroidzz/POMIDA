@@ -13,6 +13,7 @@ use App\Support\GuestVoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use App\Support\ShopDay;
 use Tests\TestCase;
 
 /**
@@ -182,7 +183,7 @@ class GuestVoucherClaimTest extends TestCase
          * same code path, did not; both now behave the same and open today).
          */
         $this->assertSame(
-            today()->toDateString(),
+            ShopDay::today()->toDateString(),
             $claim->valid_from->toDateString(),
             'a guest claim must be usable the same day it is won, same as the account path'
         );
@@ -206,7 +207,7 @@ class GuestVoucherClaimTest extends TestCase
 
         $this->assertNotNull($body['voucher'], "a guest win via a {$orderType} order minted no voucher");
         $this->assertSame(
-            today()->toDateString(),
+            ShopDay::today()->toDateString(),
             $body['voucher']['valid_from'],
             "a {$orderType} guest win must open today, not the next day"
         );
@@ -305,7 +306,7 @@ class GuestVoucherClaimTest extends TestCase
         $cheap     = $this->wheelVoucher(['discount_value' => 5]);
         $expensive = $this->wheelVoucher(['discount_value' => 500]);
 
-        $claim = VoucherClaims::mintForGuest($cheap, today()->toDateString());
+        $claim = VoucherClaims::mintForGuest($cheap, ShopDay::today()->toDateString());
 
         // Naming the expensive voucher while holding a claim on the cheap one
         // must not pass any of the checks below it.
@@ -351,8 +352,8 @@ class GuestVoucherClaimTest extends TestCase
             'user_id'       => $owner->id,
             'voucher_id'    => $voucher->id,
             'claim_code'    => 'PCHOWNEDCLAIM',
-            'acquired_date' => today()->toDateString(),
-            'valid_from'    => today()->toDateString(),
+            'acquired_date' => ShopDay::today()->toDateString(),
+            'valid_from'    => ShopDay::today()->toDateString(),
             'is_used'       => false,
         ]);
 
@@ -389,8 +390,8 @@ class GuestVoucherClaimTest extends TestCase
             'user_id'       => $owner->id,
             'voucher_id'    => $cheap->id,
             'claim_code'    => 'PCHOWNEDCLAIM',
-            'acquired_date' => today()->toDateString(),
-            'valid_from'    => today()->toDateString(),
+            'acquired_date' => ShopDay::today()->toDateString(),
+            'valid_from'    => ShopDay::today()->toDateString(),
             'is_used'       => false,
         ]);
 
@@ -414,7 +415,7 @@ class GuestVoucherClaimTest extends TestCase
     {
         return VoucherClaims::mintForGuest(
             $voucher ?? $this->wheelVoucher(),
-            today()->toDateString()
+            ShopDay::today()->toDateString()
         );
     }
 
@@ -713,12 +714,12 @@ class GuestVoucherClaimTest extends TestCase
         UserVoucher::create([
             'user_id'       => $customer->id,
             'voucher_id'    => $voucher->id,
-            'acquired_date' => today()->toDateString(),
-            'valid_from'    => today()->toDateString(),
+            'acquired_date' => ShopDay::today()->toDateString(),
+            'valid_from'    => ShopDay::today()->toDateString(),
             'is_used'       => false,
         ]);
 
-        $guestClaim = VoucherClaims::mintForGuest($voucher, today()->toDateString());
+        $guestClaim = VoucherClaims::mintForGuest($voucher, ShopDay::today()->toDateString());
         GuestVoucherClaims::remember($guestClaim);
 
         $adopted = GuestVoucherClaims::adoptInto($customer->id);
@@ -736,7 +737,7 @@ class GuestVoucherClaimTest extends TestCase
     {
         $customer = User::where('role', 'customer')->where('is_active', true)->orderBy('id')->firstOrFail();
 
-        $claim = VoucherClaims::mintForGuest($this->wheelVoucher(), today()->toDateString());
+        $claim = VoucherClaims::mintForGuest($this->wheelVoucher(), ShopDay::today()->toDateString());
         $claim->forceFill(['is_used' => true, 'used_at' => now()])->save();
         GuestVoucherClaims::remember($claim);
 
@@ -859,7 +860,7 @@ class GuestVoucherClaimTest extends TestCase
     {
         $promo = $this->wheelVoucher([
             'points_required' => 0,
-            'valid_from'      => today()->subDay()->toDateString(),
+            'valid_from'      => ShopDay::today()->subDay()->toDateString(),
         ]);
 
         // No claim, no account, no wheel: a public code is still just a code.

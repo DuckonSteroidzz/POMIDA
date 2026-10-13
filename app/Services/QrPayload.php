@@ -88,7 +88,11 @@ class QrPayload
      */
     public const MAX_PAYLOAD_LENGTH = 2048;
 
-    /** Attempts allowed per IP per minute before scan submissions are throttled. */
+    /**
+     * Attempts allowed per IP per minute before scan submissions are throttled.
+     * A burst cap on parsing only; a wrong `k` additionally spends the shared
+     * failed-code budget (TableEntry::throughCodeBudget()).
+     */
     public const MAX_ATTEMPTS = 20;
 
     /**
@@ -145,9 +149,14 @@ class QrPayload
          *
          * The QR's `k` parameter — the table's permanent code — rides through
          * here untouched to TableEntry::validate(), which is where the code
-         * rule lives for every door.
+         * rule lives for every door. validateQr() is validate() plus the one
+         * fold a stranger-facing QR door needs (out of service reads the same
+         * as a wrong `k`); see its docblock.
+         *
+         * The failed-code budget is the CALLER's job, because it needs the
+         * request: both callers wrap this in TableEntry::throughCodeBudget().
          */
-        return TableEntry::validate($branchId, $tableNumber, $code);
+        return TableEntry::validateQr($branchId, $tableNumber, $code);
     }
 
     // ══════════ internals ══════════

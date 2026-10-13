@@ -37,7 +37,7 @@
      style="display:none;position:fixed;inset:0;z-index:9990;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:340px;max-height:100%;overflow-y:auto;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;box-shadow:0 18px 45px rgba(59,35,32,0.22);position:relative;text-align:center;">
         <button type="button" id="menuAdClose" aria-label="Close"
-                style="position:absolute;top:10px;right:10px;z-index:1;width:28px;height:28px;border-radius:50%;border:none;background:rgba(59,35,32,0.55);color:#fff;font-size:13px;cursor:pointer;line-height:1;">
+                style="position:absolute;top:2px;right:2px;z-index:1;width:44px;height:44px;border-radius:50%;border:none;background:rgba(59,35,32,0.55);color:#fff;font-size:14px;cursor:pointer;line-height:1;">
             <i class="bi bi-x-lg"></i>
         </button>
         @if($menuAd->image)
@@ -45,15 +45,15 @@
                  style="display:block;width:100%;max-height:min(250px,40vh);object-fit:cover;border-radius:16px 16px 0 0;">
         @endif
         <div style="padding:18px 20px 20px;">
-            <h3 id="menuAdTitle" style="margin:0 0 6px;color:#3b2320;font-family:'Fraunces',Georgia,serif;font-size:19px;line-height:1.25;font-weight:700;overflow-wrap:anywhere;">
+            <h3 id="menuAdTitle" style="margin:0 0 6px;color:#3b2320;font-family:'Fraunces',Georgia,serif;font-size:21px;line-height:1.25;font-weight:700;overflow-wrap:anywhere;">
                 {{ $menuAd->title }}
             </h3>
             @if($menuAd->description)
-                <p style="margin:0;color:#8A6A61;font-size:12px;line-height:1.55;overflow-wrap:anywhere;">{{ $menuAd->description }}</p>
+                <p style="margin:0;color:#8A6A61;font-size:14px;line-height:1.55;overflow-wrap:anywhere;">{{ $menuAd->description }}</p>
             @endif
             @if($menuAdLink)
                 <a href="{{ $menuAdLink }}" target="_blank" rel="noopener noreferrer"
-                   style="display:inline-flex;align-items:center;justify-content:center;margin-top:14px;height:36px;padding:0 22px;border-radius:999px;background:#EF8585;color:#fff;border:1px solid #EF8585;font-size:12px;font-weight:700;text-decoration:none;">
+                   style="display:inline-flex;align-items:center;justify-content:center;margin-top:14px;height:36px;padding:0 22px;border-radius:999px;background:#EF8585;color:#fff;border:1px solid #EF8585;font-size:14px;font-weight:700;text-decoration:none;">
                     Learn more
                 </a>
             @endif
@@ -92,8 +92,9 @@
         var idle = document.getElementById('idleTimeoutModal');
         if (idle && !idle.hidden) { close(); return; }
 
-        // Let the welcome popup and any order notice finish first.
-        if (shown('welcomePopup') || shown('orderStatusNotice')) {
+        // Let the welcome popup, any order notice and the reward
+        // pop-up finish first, and the Dine-In rewards pop-up if it is up.
+        if (shown('welcomePopup') || shown('orderStatusNotice') || shown('freeDessertPrompt') || shown('dineInRewardsPopup')) {
             waited += POLL_MS;
             if (waited >= GIVE_UP_MS) { close(); return; }
             setTimeout(attempt, POLL_MS);

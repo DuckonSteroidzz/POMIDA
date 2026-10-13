@@ -93,6 +93,11 @@ class Order extends Model
         'discount_type',
         'voucher_id',
 
+        // The loyalty reward code this order spent (Oct 2026), stored without
+        // dashes — a snapshot for staff screens, kept after a cancellation
+        // hands the reward back. See App\Services\FreeDesserts.
+        'reward_code',
+
         // PWD / Senior discount beneficiary
         'discount_card_id',
         'discount_beneficiary_name',
@@ -167,6 +172,15 @@ class Order extends Model
                 $order,
                 $order->status === 'completed' ? 'order_completed' : 'order_cancelled'
             );
+
+            // A loyalty reward spent on an order that is cancelled before
+            // completion (customer cancel, staff cancel, GCash rejection, or
+            // any later path) goes back to the customer with the same code —
+            // same reasoning as the table release above. Completed orders
+            // keep it used.
+            if ($order->status === 'cancelled') {
+                \App\Services\FreeDesserts::releaseAfterCancel($order);
+            }
         });
     }
 
@@ -241,13 +255,17 @@ class Order extends Model
 
     /**
      * Short, human name for whatever discount this order actually carries
-     * ('PWD', 'Senior Citizen', 'Voucher', or a bare 'Discount' when the type
-     * is unknown but money came off). Empty string when there is no discount.
+     * ('PWD', 'Senior Citizen', 'Voucher', 'Reward RWD-XXXX-XXXX', or a bare
+     * 'Discount' when the type is unknown but money came off). Empty string
+     * when there is no discount.
      *
      * This is the SINGLE source of truth for every screen that names a
      * discount — the admin Active Orders card and its detail modal, the
      * customer's order page and the receipt. Do not re-derive the label
      * anywhere else.
+     *
+     * 'reward' (Oct 2026) is a voucher-type loyalty reward: priced like a
+     * voucher, named with its own code so staff can see which one was spent.
      */
     public function discountLabel(): string
     {
@@ -255,9 +273,15 @@ class Order extends Model
             'pwd' => 'PWD',
             'senior', 'senior_citizen', 'senior citizen' => 'Senior Citizen',
             'voucher' => 'Voucher',
+            self::DISCOUNT_TYPE_REWARD => $this->reward_code
+                ? 'Reward ' . \App\Support\RewardCode::display($this->reward_code)
+                : 'Reward',
             default => $this->discount_amount > 0 ? 'Discount' : '',
         };
     }
+
+    /** orders.discount_type of an order discounted by a voucher-type loyalty reward. */
+    public const DISCOUNT_TYPE_REWARD = 'reward';
 
     /**
      * Every PWD/Senior ID recorded on this order, as a list of

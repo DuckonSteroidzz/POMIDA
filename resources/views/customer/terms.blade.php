@@ -7,7 +7,7 @@
  
     <p class="auth-title text-center">Terms of Service</p>
  
-    <div style="font-size: 0.82rem; color: #444; line-height: 1.75; max-height: 55vh; overflow-y: auto; padding-right: 4px; margin-bottom: 1rem;">
+    <div style="font-size: 0.875rem; color: #444; line-height: 1.75; max-height: 55vh; overflow-y: auto; padding-right: 4px; margin-bottom: 1rem;">
  
         <p>By accessing and using this system, you agree to comply with the following terms and conditions. This web-based POS, order, and inventory management system is intended to facilitate transactions, manage product information, and improve operational efficiency for small businesses.</p>
  
@@ -24,7 +24,7 @@
     {{-- Checkbox --}}
     <div class="form-check mb-3">
         <input class="form-check-input" type="checkbox" id="agreeTermsPage" required>
-        <label class="form-check-label small-text" for="agreeTermsPage">
+        <label class="form-check-label small-text" for="agreeTermsPage" style="font-size:1rem;min-height:44px;padding-top:0.35rem;">
             I confirm that I have read and accept the terms and conditions and privacy policy
         </label>
     </div>
@@ -33,7 +33,7 @@
     <div class="d-flex gap-2">
         <a href="{{ route('customer.register') }}"
             class="btn-dark-main text-center text-decoration-none"
-            style="padding: 0.6rem; border-radius: 8px; font-size: 0.88rem; font-weight: 600; color: white; display: block; flex: 1;">
+            style="padding: 0.6rem; border-radius: 8px; font-size: 1rem; font-weight: 600; color: white; display: block; flex: 1;">
             Cancel
         </a>
         <button type="button" class="btn-main" style="flex: 1;" id="acceptBtn" disabled

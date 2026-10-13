@@ -87,20 +87,20 @@
             place-items: center;
             background: #FDE8DE;
             color: #C0392B;
-            font-size: 1.6rem;
+            font-size: 1.75rem;
         }
 
         .order-confirm-modal h3 {
             color: #8B1A1A;
             font-family: 'Fraunces', serif;
-            font-size: 1.35rem;
+            font-size: 1.5rem;
             font-weight: 900;
             margin: 0;
         }
 
         .order-confirm-modal p {
             color: rgba(59, 35, 32, 0.65);
-            font-size: 0.875rem;
+            font-size: 1rem;
             line-height: 1.5;
             margin: 0.5rem 0 0;
         }
@@ -166,7 +166,7 @@
         }
 
         .order-review-img i {
-            font-size: 0.95rem;
+            font-size: 1rem;
             color: rgba(244, 132, 95, 0.6);
         }
 
@@ -185,7 +185,7 @@
             flex: none;
             min-width: 1.9rem;
             font-weight: 900;
-            font-size: 0.82rem;
+            font-size: 0.875rem;
             color: #C0392B;
             font-variant-numeric: tabular-nums;
         }
@@ -193,7 +193,7 @@
         .order-review-name {
             flex: 1 1 auto;
             font-weight: 700;
-            font-size: 0.86rem;
+            font-size: 1rem;
             color: #5A2920;
             line-height: 1.3;
         }
@@ -201,14 +201,14 @@
         .order-review-line {
             flex: none;
             font-weight: 800;
-            font-size: 0.86rem;
+            font-size: 1rem;
             color: #5A2920;
             font-variant-numeric: tabular-nums;
         }
 
         .order-confirm-modal .order-review-options {
             margin: 0.2rem 0 0 2.35rem;
-            font-size: 0.74rem;
+            font-size: 0.875rem;
             font-weight: 600;
             color: #9C4A2E;
             line-height: 1.35;
@@ -216,7 +216,7 @@
 
         .order-confirm-modal .order-review-unit {
             margin: 0.15rem 0 0 2.35rem;
-            font-size: 0.72rem;
+            font-size: 0.875rem;
             color: #7F5148;
         }
 
@@ -231,7 +231,7 @@
             align-items: center;
             justify-content: space-between;
             gap: 0.75rem;
-            font-size: 0.8rem;
+            font-size: 0.875rem;
             color: #6B4038;
             padding: 0.12rem 0;
             font-variant-numeric: tabular-nums;
@@ -241,7 +241,7 @@
             margin-top: 0.3rem;
             padding-top: 0.4rem;
             border-top: 1px solid #FDE8DE;
-            font-size: 0.95rem;
+            font-size: 1rem;
             font-weight: 900;
             color: #5A2920;
         }
@@ -257,6 +257,7 @@
         }
 
         .order-review-takeout .order-review-row {
+            font-size: 1rem;
             padding: 0.7rem 0.75rem;
             border: 1px solid #FDE8DE;
             border-radius: 0.6rem;
@@ -298,7 +299,7 @@
             min-height: 46px;
             border-radius: 999px;
             padding: 0.75rem 1rem;
-            font-size: 0.875rem;
+            font-size: 1rem;
             font-weight: 700;
             cursor: pointer;
             transition: background-color 0.2s ease, border-color 0.2s ease,
@@ -380,13 +381,16 @@
     <header class="sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @include('customer.partials.header-back', ['href' => route('customer.menu'), 'label' => 'Menu'])
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 @include('customer.partials.desktop-nav')
             </div>
@@ -423,18 +427,13 @@
 
     <main class="mx-auto w-full max-w-6xl px-4 pb-[19rem] pt-4 sm:px-6 sm:pt-6 md:pb-16">
 
-        {{-- Breadcrumb + Back --}}
-        <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div class="flex min-w-0 items-center gap-2 text-xs font-semibold text-peach-deep/55">
-                <a href="{{ route('customer.menu') }}" class="no-underline transition hover:text-peach-red">Menu</a>
-                <i class="bi bi-chevron-right shrink-0 text-[0.6rem]"></i>
-                <span class="truncate text-peach-deep">Cart</span>
-            </div>
-
-            <button type="button" onclick="window.history.back()"
-                class="w-full shrink-0 rounded-full border border-peach-soft bg-white px-5 py-2.5 text-center text-sm font-bold text-peach-red shadow-sm transition hover:bg-peach-soft sm:w-auto">
-                <i class="bi bi-arrow-left"></i> Back
-            </button>
+        {{-- Breadcrumb. The way back is the header back button (to the Menu);
+             the old full-width history.back() button here led nowhere useful
+             for a customer who arrived from a redirect or a fresh tab. --}}
+        <div class="mb-4 flex min-w-0 items-center gap-2 text-sm font-semibold text-peach-deep/55">
+            <a href="{{ route('customer.menu') }}" class="-mx-2 -my-3.5 inline-block px-2 py-3.5 no-underline transition hover:text-peach-red">Menu</a>
+            <i class="bi bi-chevron-right shrink-0 text-[0.8125rem]"></i>
+            <span class="truncate text-peach-deep">Cart</span>
         </div>
 
         <div class="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(0,1fr)] lg:gap-8 lg:items-start">
@@ -524,15 +523,15 @@
                                 <h2 class="min-w-0 font-display text-base font-bold leading-snug text-peach-deep sm:text-lg">
                                     {{ $item['name'] }}
                                     @if($lineSizeIssue !== null)
-                                    <span class="mt-1 block text-[0.68rem] font-black uppercase tracking-wide text-peach-red">
+                                    <span class="mt-1 block text-[0.8125rem] font-black uppercase tracking-wide text-peach-red">
                                         <i class="bi bi-x-circle"></i> {{ $lineSizeIssue }}
                                     </span>
                                     @elseif($lineNoRecipe)
-                                    <span class="mt-1 block text-[0.68rem] font-black uppercase tracking-wide text-peach-red">
+                                    <span class="mt-1 block text-[0.8125rem] font-black uppercase tracking-wide text-peach-red">
                                         <i class="bi bi-x-circle"></i> Unavailable — no recipe set — remove to check out
                                     </span>
                                     @elseif($lineOutOfStock)
-                                    <span class="mt-1 block text-[0.68rem] font-black uppercase tracking-wide text-peach-red">
+                                    <span class="mt-1 block text-[0.8125rem] font-black uppercase tracking-wide text-peach-red">
                                         <i class="bi bi-x-circle"></i> Out of stock — remove to check out
                                     </span>
                                     @endif
@@ -560,16 +559,16 @@
                             <div class="mt-3 flex flex-wrap items-center gap-2">
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
                                     <button type="button" onclick="cartChangeQty('{{ $itemId }}', -1)"
-                                        class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                                        class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
                                     <input type="number" inputmode="numeric" min="1" max="999"
                                         value="{{ $item['quantity'] }}"
                                         data-cart-qty="{{ $itemId }}"
                                         aria-label="Quantity for {{ $item['name'] }}"
-                                        class="w-11 rounded-full border-0 bg-transparent px-1 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60"
+                                        class="h-11 w-11 rounded-full border-0 bg-transparent px-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60"
                                         oninput="cartTypeQty('{{ $itemId }}', this)"
                                         onchange="cartCommitQty('{{ $itemId }}', this)">
                                     <button type="button" onclick="cartChangeQty('{{ $itemId }}', 1)"
-                                        class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
+                                        class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                                 </div>
 
                                 {{-- Remove this item outright.
@@ -584,7 +583,7 @@
                                     @csrf
                                     @method('DELETE')
                                     <button type="submit"
-                                        class="inline-flex items-center gap-1.5 rounded-full border border-peach-soft bg-white px-3 py-1.5 text-xs font-bold text-peach-deep/60 transition hover:border-peach-red hover:text-peach-red"
+                                        class="inline-flex min-h-11 items-center gap-1.5 rounded-full border border-peach-soft bg-white px-3 py-1.5 text-sm font-bold text-peach-deep/60 transition hover:border-peach-red hover:text-peach-red"
                                         aria-label="Remove {{ $item['name'] }} from cart">
                                         <i class="bi bi-trash3" aria-hidden="true"></i>
                                         Remove
@@ -595,6 +594,7 @@
                     </div>
                 </article>
                 @endforeach
+
                 @else
                 <div class="card-surface grid w-full place-items-center gap-2 px-5 py-12 text-center sm:px-6 sm:py-14">
                     <i class="bi bi-cart-x text-4xl text-peach/60"></i>
@@ -678,21 +678,42 @@
                             <div class="relative min-w-0 flex-1">
                                 <i class="bi bi-ticket-perforated pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-sm text-peach-deep/35"
                                    aria-hidden="true"></i>
-                                <input type="text" id="voucherInput" aria-label="Voucher or claim code" autocomplete="off"
-                                    placeholder="Enter voucher code"
-                                    class="w-full rounded-full border border-peach-soft bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-peach-deep/35 focus:border-peach focus:ring-4 focus:ring-peach/20">
+                                <input type="text" id="voucherInput" aria-label="Voucher, claim or reward code" autocomplete="off"
+                                    placeholder="Voucher or reward code"
+                                    class="min-h-11 w-full rounded-full border border-peach-soft bg-white py-2.5 pl-10 pr-4 text-sm outline-none transition placeholder:text-peach-deep/35 focus:border-peach focus:ring-4 focus:ring-peach/20">
                             </div>
                             <button type="button" onclick="applyVoucher()"
-                                class="shrink-0 rounded-full border border-peach-soft bg-white px-4 py-2.5 text-sm font-bold text-peach-red transition hover:bg-peach-soft">Apply</button>
+                                class="min-h-11 shrink-0 rounded-full border border-peach-soft bg-white px-4 py-2.5 text-sm font-bold text-peach-red transition hover:bg-peach-soft">Apply</button>
                         </div>
                         {{-- Painted by setVoucherMessage() in the same alert
                              shape showDiscountCardMessage() already uses for the
                              PWD/Senior card, so the two refusals on this page
                              look like one system. --}}
                         <div id="voucherMsg" class="mt-1.5 hidden"></div>
+
+                        {{-- LOYALTY REWARD (Oct 2026). A menu-item reward code
+                             applied in the box above shows here, with its own
+                             Remove button, and travels in #reward_code_hidden —
+                             so a voucher can still go in the box beside it.
+                             Painted by setRewardItem(). Replaces the old free
+                             dessert chooser: the item comes from the reward
+                             itself, and checkout re-decides everything from the
+                             code alone. --}}
+                        <div id="rewardItemChip" class="mt-2 hidden items-center gap-3 rounded-2xl border border-green-200 bg-green-50 px-3 py-2" data-testid="reward-item-chip">
+                            <i class="bi bi-gift-fill shrink-0 text-lg text-green-700" aria-hidden="true"></i>
+                            <span class="min-w-0 flex-1">
+                                <span class="block text-sm font-bold text-peach-deep">Reward: <span data-reward-item-label></span></span>
+                                <span class="block text-xs text-peach-deep/60">Free, 1 serving · code <span data-reward-item-code></span></span>
+                            </span>
+                            <button type="button" onclick="removeRewardItem()" aria-label="Remove reward"
+                                class="grid h-11 w-11 shrink-0 place-items-center rounded-full text-peach-red transition hover:bg-white">
+                                <i class="bi bi-x-lg" aria-hidden="true"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <input type="hidden" name="voucher_code_confirmed" id="voucher_code_hidden" value="">
+                    <input type="hidden" name="reward_code" id="reward_code_hidden" value="">
                     <input type="hidden" name="discount_amount" id="discountAmount" value="0">
 
                     {{-- DISCOUNT CARD --}}
@@ -755,7 +776,7 @@
                                     <span class="text-xs font-bold text-peach-deep/65" id="discountIdsHeading">
                                         IDs in your group
                                     </span>
-                                    <span class="text-[0.68rem] text-peach-deep/45" id="discountIdCount"></span>
+                                    <span class="text-xs text-peach-deep/45" id="discountIdCount"></span>
                                 </div>
 
                                 <div id="discountIdRows" class="space-y-2.5" role="group" aria-labelledby="discountIdsHeading"></div>
@@ -764,7 +785,7 @@
                                     <div class="flex items-end gap-2" data-discount-id-row>
                                         <div class="grid min-w-0 flex-1 grid-cols-2 gap-2">
                                             <label class="block min-w-0">
-                                                <span class="mb-1 block text-[0.68rem] font-bold text-peach-deep/55">ID Number</span>
+                                                <span class="mb-1 block text-xs font-bold text-peach-deep/55">ID Number</span>
                                                 <span class="relative block">
                                                     <input
                                                         type="text"
@@ -776,12 +797,12 @@
                                                     <button type="button" data-clear-field
                                                         class="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-peach-deep/40 transition hover:bg-peach-soft hover:text-peach-deep"
                                                         aria-label="Clear ID number">
-                                                        <i class="bi bi-x-lg text-[0.62rem]" aria-hidden="true"></i>
+                                                        <i class="bi bi-x-lg text-[0.8125rem]" aria-hidden="true"></i>
                                                     </button>
                                                 </span>
                                             </label>
                                             <label class="block min-w-0">
-                                                <span class="mb-1 block text-[0.68rem] font-bold text-peach-deep/55">Full name</span>
+                                                <span class="mb-1 block text-xs font-bold text-peach-deep/55">Full name</span>
                                                 <span class="relative block">
                                                     <input
                                                         type="text"
@@ -793,7 +814,7 @@
                                                     <button type="button" data-clear-field
                                                         class="absolute right-1.5 top-1/2 grid h-6 w-6 -translate-y-1/2 place-items-center rounded-full text-peach-deep/40 transition hover:bg-peach-soft hover:text-peach-deep"
                                                         aria-label="Clear full name">
-                                                        <i class="bi bi-x-lg text-[0.62rem]" aria-hidden="true"></i>
+                                                        <i class="bi bi-x-lg text-[0.8125rem]" aria-hidden="true"></i>
                                                     </button>
                                                 </span>
                                             </label>
@@ -833,7 +854,7 @@
 
                                 <input type="hidden" name="discount_applied" id="discountApplied" value="">
 
-                                <p class="mt-1 text-[0.68rem] text-peach-deep/50">
+                                <p class="mt-1 text-xs text-peach-deep/50">
                                     One person per row. Press Apply when every row is filled in.
                                     The discount is applied once per order, however many IDs you list.
                                     Please have the ID(s) with you — staff will check them.
@@ -854,12 +875,17 @@
                             <span class="text-sm text-peach-deep/60">Subtotal</span>
                             <span class="text-sm font-bold text-peach-deep" id="summarySubtotal">₱{{ number_format($total, 2) }}</span>
                         </div>
+                        {{-- The applied reward item, painted by setRewardItem(). Not part of Subtotal. --}}
+                        <div class="flex items-center justify-between gap-3" id="rewardItemSummaryRow" style="display:none;">
+                            <span class="min-w-0 text-sm text-peach-deep/60">Reward: <span class="font-semibold text-peach-deep" data-reward-item-label></span></span>
+                            <span class="shrink-0 text-sm font-bold text-green-700">₱0.00</span>
+                        </div>
                         <div class="flex items-center justify-between gap-3" id="discountRow" style="display:none;">
                             <span class="text-sm text-peach-deep/60">Discount</span>
                             <span class="text-sm font-bold text-green-600" id="discountDisplay">-₱0.00</span>
                         </div>
                         <div class="mt-1 flex items-center justify-between gap-3 border-t border-peach-soft pt-2.5">
-                            <span class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45">Total</span>
+                            <span class="text-[0.8125rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45">Total</span>
                             <span class="font-display text-xl font-black text-peach-deep sm:text-2xl" id="finalTotal">₱{{ number_format($total, 2) }}</span>
                         </div>
                     </div>
@@ -908,7 +934,7 @@
                     <span class="block text-sm font-bold text-peach-deep">
                         {{ $cashOrderType === 'dine_in' ? 'Cash' : 'Cash on Pick Up (COP)' }}
                     </span>
-                    <span class="block text-[0.68rem] text-peach-deep/50">
+                    <span class="block text-xs text-peach-deep/50">
                         {{ $cashOrderType === 'dine_in' ? 'Pay at your table' : 'Pay when you collect your order' }}
                     </span>
                 </span>
@@ -930,7 +956,7 @@
                     <span class="block text-sm font-bold text-peach-deep">
                         GCash
                     </span>
-                    <span class="block text-[0.68rem] text-peach-deep/50">
+                    <span class="block text-xs text-peach-deep/50">
                         Pay using GCash
                     </span>
                 </span>
@@ -943,6 +969,16 @@
         Please select a payment method.
     </div>
 </div>
+                    {{-- Guests only: what an account adds (config/loyalty.php). --}}
+                    @if(! Auth::guard('customer')->check() && ($signupTeaser = \App\Services\Loyalty::guestTeaser()))
+                    <div class="mt-4 rounded-2xl border border-peach-soft bg-peach-soft/40 px-3 py-3" data-testid="guest-signup-teaser">
+                        <p class="text-sm font-medium text-peach-deep/80"><i class="bi bi-stars text-peach-red"></i> {{ $signupTeaser }}</p>
+                        <a href="{{ route('customer.register') }}" class="mt-1 inline-flex min-h-11 items-center gap-1.5 py-1 text-sm font-bold leading-relaxed text-peach-red underline decoration-from-font underline-offset-4">
+                            Create an account <i class="bi bi-arrow-right"></i>
+                        </a>
+                    </div>
+                    @endif
+
                     <div class="mt-4 flex items-center gap-2.5">
                         <a href="{{ route('customer.menu') }}"
                             class="shrink-0 rounded-full border border-peach-soft bg-white px-5 py-3 text-sm font-bold text-peach-red no-underline transition hover:bg-peach-soft">Menu</a>
@@ -1021,6 +1057,14 @@
                             </div>
                         </li>
                     @endforeach
+                    {{-- The applied reward item, painted by setRewardItem(). --}}
+                    <li class="order-review-item" id="reviewRewardItem" style="display:none;">
+                        <div class="order-review-item-main">
+                            <span class="order-review-qty">1&times;</span>
+                            <span class="order-review-name">LOYALTY REWARD: <span data-reward-item-label></span></span>
+                            <span class="order-review-line">₱0.00</span>
+                        </div>
+                    </li>
                 </ul>
 
                 {{-- Take Out is a Dine-In-only choice: a Pick-Up order is already
@@ -1495,15 +1539,38 @@
              */
             if (!@json(isset($cart) && count($cart) > 0)) {
                 localStorage.removeItem('peachy_voucher');
+                localStorage.removeItem('peachy_reward');
                 return;
             }
 
             var savedVoucher = localStorage.getItem('peachy_voucher');
+            var reapplied = Promise.resolve();
             if (savedVoucher && document.getElementById('voucherInput')) {
                 document.getElementById('voucherInput').value = savedVoucher;
-                applyVoucher();
+                reapplied = applyVoucher() || reapplied;
             }
+
+            reapplyRewardCodes(reapplied, savedVoucher);
         });
+
+        /*
+         * Loyalty reward codes (Oct 2026), after the stored voucher: the
+         * reward item this cart had, then the code "Use now" just sent from
+         * Vouchers & Rewards — one at a time, so the code the customer just
+         * chose is the one that wins if two would compete for the same slot.
+         * Each goes through the same server check as a typed code.
+         */
+        function reapplyRewardCodes(after, savedVoucher) {
+            if (!document.getElementById('voucherInput')) return;
+
+            [localStorage.getItem('peachy_reward'), @json($applyRewardCode ?? null)]
+                .filter(function (code, i, all) {
+                    return !!code && all.indexOf(code) === i && !sameCode(code, savedVoucher);
+                })
+                .reduce(function (previous, code) {
+                    return previous.then(function () { return applyCode(code); });
+                }, after);
+        }
 
         /**
          * The one place that paints the voucher box's message.
@@ -1576,6 +1643,7 @@
 
             if (!code) {
                 document.getElementById('voucher_code_hidden').value = '';
+                voucherSlotIsReward = false;
 
                 // Any PWD/Senior card that is still selected keeps its
                 // discount — the summary is re-decided rather than blanked.
@@ -1588,9 +1656,93 @@
                 return;
             }
 
-            localStorage.setItem('peachy_voucher', code);
+            return applyCode(code);
+        }
 
-            fetch('/customer/apply-voucher', {
+        /*
+        |----------------------------------------------------------------------
+        | LOYALTY REWARD CODES (Oct 2026)
+        |----------------------------------------------------------------------
+        |
+        | The box takes three kinds of code, and the server says which it was:
+        |
+        |   voucher          a voucher or claim code -> the voucher slot, as before
+        |   reward_discount  a voucher-type reward    -> the same voucher slot
+        |                    (it IS the order's one discount code)
+        |   reward_item      a menu-item reward       -> its own slot,
+        |                    #reward_code_hidden, shown as the chip under the
+        |                    box, so a voucher can still go in the box beside it
+        |
+        | One reward per order, so applying a reward replaces any other reward
+        | already in either slot. Display only: checkout re-decides everything
+        | from the codes alone (OrderController::placeOrder).
+        */
+        var voucherSlotIsReward = false;
+
+        function looksLikeRewardCode(code) {
+            var bare = String(code || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+            return bare.length === 11 && bare.indexOf('RWD') === 0;
+        }
+
+        function sameCode(a, b) {
+            return String(a || '').toUpperCase().replace(/[^A-Z0-9]/g, '')
+                === String(b || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+        }
+
+        function setRewardItem(code, name) {
+            var hidden = document.getElementById('reward_code_hidden');
+            if (hidden) hidden.value = code || '';
+
+            document.querySelectorAll('[data-reward-item-label]').forEach(function (el) {
+                el.textContent = name || '';
+            });
+            document.querySelectorAll('[data-reward-item-code]').forEach(function (el) {
+                el.textContent = code || '';
+            });
+
+            var chip = document.getElementById('rewardItemChip');
+            if (chip) {
+                chip.classList.toggle('hidden', !code);
+                chip.classList.toggle('flex', !!code);
+            }
+
+            ['rewardItemSummaryRow', 'reviewRewardItem'].forEach(function (id) {
+                var row = document.getElementById(id);
+                if (row) row.style.display = code ? '' : 'none';
+            });
+
+            if (code) {
+                localStorage.setItem('peachy_reward', code);
+            } else {
+                localStorage.removeItem('peachy_reward');
+            }
+        }
+
+        function removeRewardItem() {
+            setRewardItem('', '');
+            setVoucherMessage('Reward removed from this order. It stays in Vouchers & Rewards.', 'neutral');
+        }
+
+        function clearVoucherSlot() {
+            document.getElementById('voucher_code_hidden').value = '';
+            voucherSlotIsReward = false;
+            appliedVoucherDiscount = null;
+            refreshDiscountSummary();
+            localStorage.removeItem('peachy_voucher');
+        }
+
+        function applyCode(code) {
+            code = String(code || '').trim().toUpperCase();
+            var isReward = looksLikeRewardCode(code);
+            var field = document.getElementById('voucherInput');
+
+            if (field) field.value = code;
+
+            // A voucher is remembered before the check, exactly as before; a
+            // reward code only once the server has said which slot it is for.
+            if (!isReward) localStorage.setItem('peachy_voucher', code);
+
+            return fetch('/customer/apply-voucher', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -1605,9 +1757,31 @@
                     return res.json();
                 })
                 .then(function(data) {
+                    if (data.success && data.kind === 'reward_item') {
+                        // One reward per order: a reward discount in the
+                        // voucher slot gives way. A plain voucher stays.
+                        if (voucherSlotIsReward) clearVoucherSlot();
+
+                        setRewardItem(data.code, data.item_name);
+                        if (field) field.value = '';
+                        setVoucherMessage(data.message, 'success');
+                        return;
+                    }
+
                     if (data.success) {
-                        setVoucherMessage('Voucher applied.', 'success');
-                        document.getElementById('voucher_code_hidden').value = code;
+                        if (data.kind === 'reward_discount') {
+                            // One reward per order, and it is this order's one
+                            // discount code.
+                            if (document.getElementById('reward_code_hidden').value) setRewardItem('', '');
+                            voucherSlotIsReward = true;
+                            localStorage.setItem('peachy_voucher', data.code || code);
+                            setVoucherMessage(data.message, 'success');
+                        } else {
+                            voucherSlotIsReward = false;
+                            setVoucherMessage('Voucher applied.', 'success');
+                        }
+
+                        document.getElementById('voucher_code_hidden').value = data.code || code;
 
                         /*
                          * Record the voucher's own value, then let
@@ -1618,9 +1792,25 @@
                          */
                         appliedVoucherDiscount = data.discount;
                         refreshDiscountSummary();
+                    } else if (isReward) {
+                        // A refused reward code only takes out a slot that
+                        // was holding THAT code (say, a reward that was used
+                        // or expired since this cart last saw it). A voucher
+                        // already applied beside it stays.
+                        setVoucherMessage(data.message, 'error');
+                        if (field) field.value = '';
+
+                        if (sameCode(document.getElementById('reward_code_hidden').value, code)) {
+                            setRewardItem('', '');
+                        }
+
+                        if (sameCode(document.getElementById('voucher_code_hidden').value, code)) {
+                            clearVoucherSlot();
+                        }
                     } else {
                         setVoucherMessage(data.message, 'error');
                         document.getElementById('voucher_code_hidden').value = '';
+                        voucherSlotIsReward = false;
 
                         /*
                          * RESET THE FIELD. The rejected code used to be left

@@ -624,6 +624,10 @@
                 </div>
             </div>
 
+            {{-- (The "Free dessert reward" checkbox was removed in the Streak
+                 Rewards pass, Oct 2026: the owner picks the ONE reward item
+                 under Vouchers & Game → Streak Rewards instead.) --}}
+
             {{-- ══════════ SIZES (Menu Item Sizes, Phase 1) ══════════
                  Regular and Large only — the names are fixed labels, never a
                  text box, and the server/database refuse anything else. Right

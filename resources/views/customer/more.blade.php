@@ -46,7 +46,7 @@
                     <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
                     <span class="min-w-0">
                         <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
+                        <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
                     </span>
                 </a>
 
@@ -68,6 +68,18 @@
             </p>
         </div>
 
+        {{-- Help & Instructions: first thing on More, for every customer type. --}}
+        <a href="{{ route('customer.help') }}" class="card-surface group mb-4 flex min-h-14 items-center gap-3 border-peach p-4 no-underline transition hover:-translate-y-0.5">
+            <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-peach-red text-white">
+                <i class="bi bi-question-circle"></i>
+            </span>
+            <span class="min-w-0 flex-1">
+                <span class="block font-display text-lg font-bold text-peach-deep">Help</span>
+                <span class="block text-xs text-peach-deep/50">How to order, pay, use vouchers, or ask for help</span>
+            </span>
+            <i class="bi bi-chevron-right text-peach-red/50"></i>
+        </a>
+
         @if(!$isLoggedIn)
             {{-- Guest account access --}}
             <section class="card-surface overflow-hidden">
@@ -78,8 +90,8 @@
                         </span>
                         <div class="min-w-0">
                             <h2 class="font-display text-xl font-bold text-peach-deep">Get more from your orders</h2>
-                            <p class="mt-1 text-sm leading-relaxed text-peach-deep/60">
-                                Create an account or log in to keep your order history and earn voucher points.
+                            <p class="mt-1 text-sm leading-relaxed text-peach-deep/70">
+                                Create an account or log in to track your order history, earn voucher points, and unlock rewards by playing games and maintaining daily streaks!
                             </p>
                         </div>
                     </div>
@@ -144,8 +156,8 @@
                         <i class="bi bi-ticket-perforated"></i>
                     </span>
                     <span class="min-w-0 flex-1">
-                        <span class="block font-display font-bold text-peach-deep">Vouchers &amp; Points</span>
-                        <span class="block text-xs text-peach-deep/50">{{ number_format((int)($customer->points ?? 0)) }} points</span>
+                        <span class="block font-display font-bold text-peach-deep">Vouchers &amp; Rewards</span>
+                        <span class="block text-xs text-peach-deep/50">{{ number_format($customer->wheelPoints()) }} points</span>
                     </span>
                     <i class="bi bi-chevron-right text-peach-red/50"></i>
                 </a>
@@ -228,7 +240,7 @@
                 <div class="flex items-start gap-3 rounded-xl border border-peach-soft bg-peach-cream p-3">
                     <i class="bi bi-geo-alt mt-0.5 text-peach-red"></i>
                     <div class="min-w-0">
-                        <p class="text-[0.68rem] font-black uppercase tracking-[0.12em] text-peach-deep/45">Store</p>
+                        <p class="text-[0.8125rem] font-black uppercase tracking-[0.12em] text-peach-deep/45">Store</p>
                         <p class="mt-0.5 text-sm font-bold text-peach-deep">{{ $storeInfo['business_name'] ?? 'Peachy Cakes & Deli Cafe' }}</p>
                         @if(!empty($storeInfo['address']))
                             <p class="mt-0.5 text-xs text-peach-deep/55">{{ $storeInfo['address'] }}</p>
@@ -240,7 +252,7 @@
                 <a href="tel:{{ preg_replace('/[^0-9+]/', '', $storeInfo['contact_number']) }}" class="flex items-center gap-3 rounded-xl border border-peach-soft bg-white p-3 no-underline transition hover:bg-peach-soft/40">
                     <i class="bi bi-telephone text-peach-red"></i>
                     <span class="min-w-0 flex-1">
-                        <span class="block text-[0.68rem] font-black uppercase tracking-[0.12em] text-peach-deep/45">Phone</span>
+                        <span class="block text-[0.8125rem] font-black uppercase tracking-[0.12em] text-peach-deep/45">Phone</span>
                         <span class="block text-sm font-bold text-peach-deep">{{ $storeInfo['contact_number'] }}</span>
                     </span>
                     <i class="bi bi-chevron-right text-peach-red/40"></i>
@@ -251,7 +263,7 @@
                 <a href="mailto:{{ $storeInfo['email'] }}" class="flex items-center gap-3 rounded-xl border border-peach-soft bg-white p-3 no-underline transition hover:bg-peach-soft/40">
                     <i class="bi bi-envelope text-peach-red"></i>
                     <span class="min-w-0 flex-1">
-                        <span class="block text-[0.68rem] font-black uppercase tracking-[0.12em] text-peach-deep/45">Email</span>
+                        <span class="block text-[0.8125rem] font-black uppercase tracking-[0.12em] text-peach-deep/45">Email</span>
                         <span class="block break-all text-sm font-bold text-peach-deep">{{ $storeInfo['email'] }}</span>
                     </span>
                     <i class="bi bi-chevron-right text-peach-red/40"></i>

@@ -167,7 +167,7 @@
         .eyebrow {
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.65rem;
+            font-size: 0.8125rem;
             font-weight: 700;
 
             letter-spacing: 0.3em;
@@ -212,7 +212,7 @@
 
             margin: 1.25rem auto 0;
 
-            font-size: 0.95rem;
+            font-size: 1rem;
 
             line-height: 1.7;
 
@@ -251,7 +251,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.95rem;
+            font-size: 1rem;
             font-weight: 700;
 
             letter-spacing: 0.04em;
@@ -312,12 +312,12 @@
 
         .code-toggle {
             display: inline-block;
-            margin-top: 1.1rem;
+            margin-top: 0.225rem;
             background: none;
             border: 0;
-            padding: 0;
+            padding: 0.875rem 0.25rem; margin-bottom: -0.875rem;
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 0.82rem;
+            font-size: 1rem;
             font-weight: 600;
             color: var(--muted);
             text-decoration: underline;
@@ -338,7 +338,7 @@
         }
 
         label[for="welcomeTableCodeInput"] {
-            font-size: 0.72rem;
+            font-size: 0.875rem;
             font-weight: 700;
             letter-spacing: 0.06em;
             text-transform: uppercase;
@@ -355,7 +355,7 @@
             border-radius: 0.75rem;
             background: #fff;
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 1.05rem;
+            font-size: 1.1563rem;
             font-weight: 700;
             letter-spacing: 0.14em;
             text-transform: uppercase;
@@ -377,7 +377,7 @@
             background: var(--deep-red);
             color: #fff;
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            font-size: 0.88rem;
+            font-size: 1rem;
             font-weight: 700;
             cursor: pointer;
         }
@@ -393,7 +393,7 @@
             background: #FDECEA;
             border: 1px solid rgba(192, 57, 43, 0.35);
             color: #8B1A1A;
-            font-size: 0.76rem;
+            font-size: 0.875rem;
             line-height: 1.4;
             text-align: left;
         }
@@ -418,15 +418,15 @@
             }
 
             .brand-title {
-                font-size: 2.25rem;
+                font-size: 2.4688rem;
             }
 
             .brand-title span {
-                font-size: 1.45rem;
+                font-size: 1.5938rem;
             }
 
             .description {
-                font-size: 0.9rem;
+                font-size: 1rem;
             }
 
             .action-button {
@@ -551,16 +551,20 @@
                 class="code-panel"
                 @if(!session('error')) hidden @endif
             >
-                <label for="welcomeTableCodeInput">Table code</label>
+                <label for="welcomeTableCodeInput">Table code (4 characters)</label>
 
+                {{-- maxlength follows App\Services\TableEntry::CODE_LENGTH; the
+                     server normalises (trim, uppercase) regardless. --}}
                 <input
                     id="welcomeTableCodeInput"
                     type="text"
                     inputmode="text"
                     autocomplete="off"
                     autocapitalize="characters"
+                    autocorrect="off"
                     spellcheck="false"
-                    maxlength="10"
+                    enterkeyhint="go"
+                    maxlength="{{ \App\Services\TableEntry::CODE_LENGTH }}"
                     value="{{ old('table_code') }}"
                 >
 
@@ -569,7 +573,7 @@
                 </button>
 
                 @if(session('error'))
-                    <p class="welcome-code-error" role="alert">
+                    <p id="welcomeCodeError" class="welcome-code-error" role="alert">
                         {{ session('error') }}
                     </p>
                 @else
@@ -601,15 +605,26 @@
             }
         });
 
+        const WELCOME_CODE_LENGTH = {{ \App\Services\TableEntry::CODE_LENGTH }};
+
+        // Show what the server will see: trimmed, uppercase, no spaces.
+        welcomeTableCodeInput.addEventListener('input', () => {
+            const cleaned = welcomeTableCodeInput.value.toUpperCase().replace(/\s+/g, '');
+            if (cleaned !== welcomeTableCodeInput.value) welcomeTableCodeInput.value = cleaned;
+        });
+
         function submitWelcomeCode() {
             const value = welcomeTableCodeInput.value.trim();
 
-            // Only an obvious empty submission is caught here. Everything else
-            // — format, whether it exists, whether the branch is open — is
-            // decided server-side by App\Services\TableEntry.
-            if (value === '') {
+            // Only an empty or too-short submission is caught here, so a
+            // half-typed code does not cost one of the customer's few tries.
+            // Everything else — whether it exists, whether the branch is open
+            // — is decided server-side by App\Services\TableEntry.
+            if (value.length < WELCOME_CODE_LENGTH) {
                 if (welcomeCodeError) {
-                    welcomeCodeError.textContent = 'Please enter the code printed on your table.';
+                    welcomeCodeError.textContent = value === ''
+                        ? 'Please enter the code printed on your table.'
+                        : 'The table code has ' + WELCOME_CODE_LENGTH + ' characters.';
                     welcomeCodeError.hidden = false;
                 }
                 welcomeTableCodeInput.focus();

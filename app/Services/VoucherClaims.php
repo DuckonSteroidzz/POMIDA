@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Models\User;
 use App\Models\UserVoucher;
 use App\Models\Voucher;
+use App\Support\ShopDay;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Collection;
 
@@ -150,8 +151,10 @@ class VoucherClaims
             'issued_by'     => $issuedBy,
             'voucher_id'    => $voucher->id,
             'claim_code'    => self::generateCode(),
-            'acquired_date' => today()->toDateString(),
-            'valid_from'    => $validFrom ?? today()->toDateString(),
+            // The SHOP's date, not UTC's: a prize won at 7:00 AM Manila is
+            // valid from that Manila day — see App\Support\ShopDay.
+            'acquired_date' => ShopDay::todayString(),
+            'valid_from'    => $validFrom ?? ShopDay::todayString(),
             'is_used'       => false,
         ]);
     }
@@ -168,7 +171,7 @@ class VoucherClaims
      */
     public static function mintForCounter(Voucher $voucher, int $issuedBy): UserVoucher
     {
-        return self::mintForGuest($voucher, today()->toDateString(), $issuedBy);
+        return self::mintForGuest($voucher, ShopDay::todayString(), $issuedBy);
     }
 
     /**

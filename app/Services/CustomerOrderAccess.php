@@ -197,6 +197,38 @@ class CustomerOrderAccess
     }
 
     /**
+     * May the current visitor rate the FREE DESSERT on this order (Oct 2026)?
+     * Owned (same rule as everything else here), completed, and carrying a
+     * free dessert line, and not rated yet. Independent of the meal rating.
+     *
+     * @return array{ok: bool, order?: Order, line?: \App\Models\OrderItem, error?: string, status?: int}
+     */
+    public static function resolveDessertRatableOrder(int $id): array
+    {
+        $order = self::resolveOwnedOrder($id);
+
+        if (!$order) {
+            return ['ok' => false, 'error' => 'That order could not be found.', 'status' => 404];
+        }
+
+        if ($order->status !== 'completed') {
+            return ['ok' => false, 'error' => 'You can rate your reward once the order is completed.', 'status' => 422];
+        }
+
+        $line = $order->items()->where('is_free_dessert', true)->first();
+
+        if (!$line) {
+            return ['ok' => false, 'error' => 'This order has no reward item to rate.', 'status' => 422];
+        }
+
+        if (\App\Models\FreeDessertRating::where('order_id', $order->id)->exists()) {
+            return ['ok' => false, 'error' => 'You have already rated this reward.', 'status' => 409];
+        }
+
+        return ['ok' => true, 'order' => $order, 'line' => $line];
+    }
+
+    /**
      * The rating already recorded for an order the visitor owns, if any.
      * Returns null both when there is no rating and when the visitor has no
      * claim to the order — callers must not distinguish the two.

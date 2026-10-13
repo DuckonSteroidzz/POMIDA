@@ -536,6 +536,7 @@ class SupervisorRoleFoundationTest extends TestCase
             '/admin/customization',
             '/admin/customization/customer',
             '/admin/game/toggle',
+            '/admin/streak/toggle',
             '/admin/account/gcash-qr',
         ] as $path) {
             $this->actingAs($supervisor, 'admin')

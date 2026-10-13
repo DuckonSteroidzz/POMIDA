@@ -53,6 +53,11 @@ trait HandlesEmailVerification
         if (! $user->hasVerifiedEmail()) {
             $user->markEmailAsVerified();
             event(new Verified($user));
+
+            // The one-time welcome bonus (config/loyalty.php). Only on the
+            // transition: a second click on the link lands outside this `if`,
+            // and the ledger's unique key would refuse a repeat anyway.
+            \App\Services\Loyalty::welcome($user);
         }
 
         // The "check your email" page's memory of this address is finished with.

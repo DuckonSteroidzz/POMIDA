@@ -10,6 +10,7 @@ use App\Models\Voucher;
 use App\Services\VoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
+use App\Support\ShopDay;
 use Tests\TestCase;
 
 /**
@@ -84,7 +85,7 @@ class AdminIssueVoucherCodeTest extends TestCase
             'minimum_order'   => 0,
             'points_required' => 5,
             'is_active'       => true,
-            'valid_from'      => today()->subDay()->toDateString(),
+            'valid_from'      => ShopDay::today()->subDay()->toDateString(),
             'expires_at'      => now()->addMonth(),
         ], $attrs));
     }
@@ -214,7 +215,7 @@ class AdminIssueVoucherCodeTest extends TestCase
         $claim   = VoucherClaims::resolveByCode($code);
 
         $this->assertSame(
-            today()->toDateString(),
+            ShopDay::today()->toDateString(),
             $claim->valid_from->toDateString(),
             'a counter-issued code should open today, not tomorrow'
         );
@@ -253,6 +254,8 @@ class AdminIssueVoucherCodeTest extends TestCase
             'inactive'      => [['is_active' => false], 'inactive'],
             'expired'       => [['expires_at' => now()->subDay()], 'expired'],
             'at cap'        => [['max_uses' => 3, 'used_count' => 3], 'usage limit'],
+            // Plain today(): a data provider runs before the app (and its
+            // config) boots, and a week ahead is "not yet" on any clock.
             'not yet valid' => [['valid_from' => today()->addWeek()->toDateString()], 'does not open until'],
         ];
     }

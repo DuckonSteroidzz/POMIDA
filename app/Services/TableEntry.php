@@ -4,8 +4,13 @@ namespace App\Services;
 
 use App\Models\Branch;
 use App\Models\RestaurantTable;
+use App\Providers\RateLimitServiceProvider;
+use Closure;
 use Illuminate\Database\QueryException;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * TableEntry — the ONE function every dine-in door validates through, plus the
@@ -39,7 +44,7 @@ use Illuminate\Support\Facades\DB;
  * ─────────────────────────────────────────────────────────────────────────────
  * Each table now carries one code that never expires and is never consumed by
  * use, printed on the acrylic standee next to its QR. That is what the business
- * needs: a customer whose camera will not focus can type eight characters
+ * needs: a customer whose camera will not focus can type four characters
  * instead of finding a staff member, every single time, forever.
  *
  * Be honest about the other half of that. A permanent code is a PERMANENT
@@ -60,6 +65,9 @@ use Illuminate\Support\Facades\DB;
  *     cannot accumulate ghost tables.
  *   - Session creation is RATE LIMITED (the `table-session` limiter), so the
  *     code cannot be used to spawn sessions in a loop.
+ *   - Code GUESSING has its own, much tighter budget (throughCodeBudget()),
+ *     shared by every door that checks a code, and no door's answer says
+ *     whether a code was real (see validateQr() and resolveCode()).
  *   - An admin can REGENERATE one table's code (rotateCode below). That is the
  *     escape hatch: the moment a code is being abused it is replaced, the old
  *     one stops working immediately, and only that table is reprinted.
@@ -77,34 +85,89 @@ class TableEntry
     public const ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 
     /**
-     * Eight characters — see the migration that creates restaurant_tables for
-     * the full reasoning. In short: a code that can never expire needs to
-     * survive being guessed at over months rather than minutes, and 31^8 is
-     * about 8.5e11 combinations.
+     * Four characters (Oct 2026 — defence panel: eight was too long to type
+     * off a card). 31^4 = 923,521 combinations.
      *
-     * (This used to also need to differ from a second, shorter, staff-issued
-     * code so the two could never collide. That second code is gone — this is
-     * now the only kind of table code — but the length itself is unchanged,
-     * since the guessing-resistance reasoning stands on its own.)
+     * That space is small enough that the length is no longer the protection
+     * on its own: the failed-code budget below is. Eight characters (8.5e11)
+     * made guessing hopeless at any rate; four makes it hopeless only at the
+     * rate the budget allows. Do not raise the budget without redoing the
+     * arithmetic beside MAX_FAILED_PER_IP.
      */
-    public const CODE_LENGTH = 8;
+    public const CODE_LENGTH = 4;
+
+    /**
+     * The length every code had before the Oct 2026 change, and therefore the
+     * length of every code printed on a card before the reprint.
+     *
+     * Recognised ONLY to answer "this card is out of date" (ERR_CARD_OUTDATED)
+     * instead of a bare "not valid". The decision is made from the string's
+     * SHAPE alone — never from previous_code — so it tells a guesser nothing a
+     * glance at the code's length would not. An eight-character code that is
+     * still somebody's CURRENT code (the minutes between deploying this and
+     * running the migration) is matched like any other code and keeps working.
+     */
+    public const LEGACY_CODE_LENGTH = 8;
 
     /** Longest table number the schema and the entry path accept. */
     public const MAX_TABLE_LENGTH = 10;
 
+    /** Fresh draws allocateCode() tries before giving up on a full space. */
+    public const ALLOCATE_ATTEMPTS = 50;
+
+    /** Writes retried when the UNIQUE index on code refuses one (a race). */
+    private const WRITE_ATTEMPTS = 5;
+
     /**
-     * Attempts allowed per IP per minute on the customer-facing typed-code
-     * submission (POST /customer/dineinqr with table_code).
+     * THE FAILED-CODE BUDGET — the control that makes four characters safe.
      *
-     * This is now the only throttle standing between a guesser and the door —
-     * there is no second, shorter-lived code to fall back on any more, so this
-     * number carries the full weight of making guessing pointless rather than
-     * merely slow. Ten a minute against an 8-character, 31-symbol alphabet
-     * (8.5e11 combinations) means an attacker gains nothing from the ceiling
-     * being low; it exists to stop a script iterating quickly, not to make a
-     * human guesser's odds meaningfully different.
+     * Every door that checks a code (typed code, Change table, the QR URL, the
+     * old in-page scanner) spends the SAME two counters, and only on a failure
+     * that could have been a guess. While either counter is full every door
+     * refuses before looking at the code, a correct one included, otherwise
+     * the budget would protect nothing. A success does NOT reset the counters:
+     * it used to, which let anyone holding one real code wipe the café's count
+     * after every few guesses.
+     *
+     * Per device (the customer account, else the browser session — see
+     * RateLimitServiceProvider::visitorKey()): 5 failures per 10 minutes. A
+     * real customer mistypes once or twice; five lets them fumble and still
+     * stops one phone looping.
+     *
+     * Per IP: 30 failures per hour. This is the one a script meets, because it
+     * can throw cookies away but not its address. Every phone on the shop
+     * wi-fi shares one IP, so this is sized for a whole café's typos in an
+     * hour, not one person's.
+     *
+     * The arithmetic, against the full 923,521-code space:
+     *   - Typed code (any table's code wins): with T registered tables one
+     *     guess succeeds with probability T / 923,521. At 30 guesses an hour
+     *     from one address and T = 13 (today), the expected wait for a first
+     *     hit is 923,521 / (13 × 30) ≈ 2,370 hours ≈ 99 days of non-stop
+     *     guessing; at T = 50, about 26 days.
+     *   - QR URL (one known table): 923,521 / 2 / 30 ≈ 15,400 hours ≈ 640
+     *     days to a 50% chance.
+     * Many addresses at once (a botnet) divide those numbers by the number of
+     * addresses; that residual risk is why rotateCode() exists, and the log
+     * line in recordFailedCode() is how staff would notice.
+     *
+     * The trade-off, stated plainly: someone INSIDE the café can spend the
+     * café's hourly budget on purpose, which stops new dine-in entries from
+     * that wi-fi for up to an hour (counter orders and seated customers are
+     * unaffected). That is the price of a per-IP limit and the reason the
+     * window is an hour, not a day.
      */
-    public const MAX_ATTEMPTS = 10;
+    public const MAX_FAILED_PER_DEVICE = 5;
+    public const DEVICE_WINDOW_SECONDS = 600;
+    public const MAX_FAILED_PER_IP = 30;
+    public const IP_WINDOW_SECONDS = 3600;
+
+    /**
+     * Seam for tests only: a callable returning the next candidate code, so
+     * the collision-retry loop in allocateCode() can be driven
+     * deterministically. Null in production — random_int() is used.
+     */
+    private static ?Closure $codeSource = null;
 
     // ══════════ refusal messages ══════════
     //
@@ -125,13 +188,29 @@ class TableEntry
     public const ERR_TABLE_NOT_FOUND = 'That table could not be found. Please ask our staff to seat you.';
 
     /**
-     * Shown when a QR carries no code, a stale code, or a code that never
-     * matched this table — the "someone photographed the old card" case. It is
-     * not an accusation: an ordinary customer holding a reprinted table's old
-     * card lands here, and the fix is simply to type the code now printed on
-     * the card. The camera doors redirect to the code-entry page with this.
+     * The QR doors' one refusal for anything involving the code: no `k`, a
+     * wrong `k`, a regenerated-away `k`, or a table taken out of service (see
+     * validateQr() for why that last one is folded in). The camera doors
+     * redirect to the code-entry page with this.
      */
-    public const ERR_QR_STALE = 'This QR code is out of date. Please enter the code printed on your table card, or ask our staff for help.';
+    public const ERR_QR_STALE = 'This QR code did not work. Please type the code printed under it, or ask our staff for help.';
+
+    /**
+     * The typed doors' one refusal: a code that matches nothing, AND a real
+     * code whose table is out of service or whose branch is closed. Saying
+     * which would confirm to a guesser that they had hit a real code.
+     */
+    public const ERR_CODE_INVALID = 'That code is not valid. Please check the code printed on your table, or ask our staff for help.';
+
+    /**
+     * An old-format (pre-Oct 2026) code that matches no table, typed or in a
+     * QR. Decided from the code's length and alphabet alone — see
+     * LEGACY_CODE_LENGTH — so it reveals nothing about which codes exist.
+     */
+    public const ERR_CARD_OUTDATED = 'This table card is out of date. Please ask our staff for help — they can give you the new code.';
+
+    /** Any door, while the failed-code budget is spent. */
+    public const ERR_TOO_MANY = 'Too many attempts. Please wait a few minutes, or ask our staff for help.';
 
     /**
      * ══════════════════════════════════════════════════════════════════════
@@ -211,8 +290,17 @@ class TableEntry
          */
         $providedCode = is_scalar($code) ? self::normalise((string) $code) : '';
 
-        if ($table === null || $providedCode === '' || $providedCode !== $table->code) {
-            return self::fail(self::ERR_QR_STALE);
+        if ($table === null || $providedCode === '' || !hash_equals((string) $table->code, $providedCode)) {
+            // An old-format card gets a message that says so. Shape only: the
+            // same answer whether or not any table ever held that code.
+            // A missing `k` or an old-format one cannot be a guess at a
+            // current code, so neither spends the failed-code budget.
+            $legacy = self::isLegacyFormat($providedCode);
+
+            return self::fail(
+                $legacy ? self::ERR_CARD_OUTDATED : self::ERR_QR_STALE,
+                guess: !$legacy && $providedCode !== ''
+            );
         }
 
         return [
@@ -224,39 +312,147 @@ class TableEntry
     }
 
     /**
-     * Door 2: a customer typed the permanent code off the standee.
+     * Doors 1 and 3: both shapes of QR (the phone camera opening the URL, and
+     * the old in-page scanner). validate() decides; this only chooses how much
+     * of the reason a stranger is shown.
+     *
+     * ERR_TABLE_INACTIVE becomes ERR_QR_STALE. validate() checks a table's
+     * service state BEFORE the code, so without this fold a URL with a WRONG
+     * `k` for an out-of-service table answered "not in service" — and a
+     * guesser working through `k` values for such a table would see the
+     * answer change on the right one. Branch-level refusals (closed, missing,
+     * malformed) stay specific: they are decided before the code is looked at
+     * and say nothing about it.
+     *
+     * Seated-session re-validation (TableOccupancy) and a confirmed table
+     * change (TableChange::revalidate) call validate() directly, with the
+     * table's own code: nobody is guessing there, so they keep the precise
+     * message.
+     *
+     * @return array{ok: bool, branch?: Branch, table?: ?RestaurantTable, table_number?: string, error?: string, guess?: bool}
+     */
+    public static function validateQr($branchId, $tableNumber, $code = null): array
+    {
+        $result = self::validate($branchId, $tableNumber, $code);
+
+        if (!$result['ok'] && $result['error'] === self::ERR_TABLE_INACTIVE) {
+            return self::fail(self::ERR_QR_STALE, guess: true);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Door 2: a customer typed the permanent code off the standee (also the
+     * Change table endpoint).
      *
      * Resolves the code to its table, then hands the result to validate() —
      * the same function the scanner and the URL landing use — so a typed code
-     * gets every refusal a scan gets. A code for a branch that has since closed
-     * is refused by validate(), not here.
+     * gets every refusal a scan gets.
      *
-     * Returns null when the string is not the right SHAPE for a permanent code
-     * (wrong length) or does not match any table. The caller (AuthController::
-     * processQr()) folds that into the same one-sentence refusal as a shaped
-     * code that failed validate() — deliberately: telling a customer "that
-     * code does not exist" versus "that code is wrong somehow" would let
-     * someone probe for which codes are real.
+     * Every refusal comes back as the ONE sentence ERR_CODE_INVALID: a string
+     * that matches no table, and equally a REAL code whose table is out of
+     * service or whose branch is closed. A typed code is its own lookup key,
+     * so any more specific answer would confirm "that code exists" to whoever
+     * typed it. The one exception is ERR_CARD_OUTDATED, decided from the
+     * string's shape alone (see LEGACY_CODE_LENGTH).
      *
-     * @return array{ok: bool, branch?: Branch, table?: ?RestaurantTable, table_number?: string, error?: string}|null
+     * @return array{ok: bool, branch?: Branch, table?: ?RestaurantTable, table_number?: string, error?: string, guess?: bool}
      */
-    public static function resolveCode(?string $code): ?array
+    public static function resolveCode(?string $code): array
     {
         $normalised = self::normalise($code);
+        $length = strlen($normalised);
 
-        if (strlen($normalised) !== self::CODE_LENGTH) {
-            return null;
+        // A current code, or an old-format one that is still some table's
+        // current code because the migration has not run yet.
+        if ($length === self::CODE_LENGTH || $length === self::LEGACY_CODE_LENGTH) {
+            $table = RestaurantTable::where('code', $normalised)->first();
+
+            if ($table) {
+                // The same code we just matched is handed to validate()'s own
+                // code check — one rule, one place. It re-confirms rather
+                // than trusts.
+                $result = self::validate($table->branch_id, $table->table_number, $normalised);
+
+                return $result['ok'] ? $result : self::fail(self::ERR_CODE_INVALID, guess: true);
+            }
         }
 
-        $table = RestaurantTable::where('code', $normalised)->first();
-
-        if (!$table) {
-            return null;
+        if (self::isLegacyFormat($normalised)) {
+            return self::fail(self::ERR_CARD_OUTDATED);
         }
 
-        // The same code we just matched is handed to validate()'s own code
-        // check — one rule, one place. It re-confirms rather than trusts.
-        return self::validate($table->branch_id, $table->table_number, $normalised);
+        return self::fail(self::ERR_CODE_INVALID, guess: true);
+    }
+
+    /**
+     * Run one code-checking door through the failed-code budget.
+     *
+     * Every door that checks a code calls this with the check as a closure —
+     * the typed code, Change table, the QR URL and the in-page scanner — so
+     * there is one budget and one place it is enforced. See the constants
+     * block beside MAX_FAILED_PER_IP for the numbers and the arithmetic.
+     *
+     *   - Budget spent: refuse with ERR_TOO_MANY WITHOUT running the check.
+     *   - Check failed with guess = true: spend one from each counter.
+     *   - Check passed, or failed for a reason that is not a guess (an
+     *     old-format card, a closed branch on a QR): spend nothing.
+     *
+     * @param  Closure(): array  $check
+     */
+    public static function throughCodeBudget(Request $request, Closure $check): array
+    {
+        [$deviceKey, $ipKey] = self::budgetKeys($request);
+
+        if (RateLimiter::tooManyAttempts($deviceKey, self::MAX_FAILED_PER_DEVICE)
+            || RateLimiter::tooManyAttempts($ipKey, self::MAX_FAILED_PER_IP)) {
+            return self::fail(self::ERR_TOO_MANY);
+        }
+
+        $result = $check();
+
+        if (!$result['ok'] && ($result['guess'] ?? false)) {
+            RateLimiter::hit($deviceKey, self::DEVICE_WINDOW_SECONDS);
+            RateLimiter::hit($ipKey, self::IP_WINDOW_SECONDS);
+
+            // The moment an address spends its whole hourly budget, say so
+            // once — the signal that someone may be guessing, and that a
+            // table's code may need regenerating.
+            if (RateLimiter::attempts($ipKey) === self::MAX_FAILED_PER_IP) {
+                Log::warning('Table code guessing budget exhausted for an address.', [
+                    'ip' => $request->ip(),
+                ]);
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * The two counters. The per-IP key keeps the name the typed door has
+     * always used ('table-code:' . ip), so existing tooling and tests that
+     * clear it keep clearing the right thing.
+     *
+     * @return array{0: string, 1: string}
+     */
+    public static function budgetKeys(Request $request): array
+    {
+        return [
+            'table-code-device:' . RateLimitServiceProvider::visitorKey($request),
+            'table-code:' . $request->ip(),
+        ];
+    }
+
+    /**
+     * True for a string shaped like a pre-Oct 2026 code: exactly
+     * LEGACY_CODE_LENGTH characters, all from the alphabet. Input is expected
+     * already normalised.
+     */
+    public static function isLegacyFormat(string $normalised): bool
+    {
+        return strlen($normalised) === self::LEGACY_CODE_LENGTH
+            && preg_match('/^[' . self::ALPHABET . ']+$/', $normalised) === 1;
     }
 
     /**
@@ -298,23 +494,35 @@ class TableEntry
             return $existing;
         }
 
-        // The unique index on (branch_id, table_number) is the real guarantee;
-        // this catches two admins pressing Generate for the same new table at
-        // the same instant and returns the row that won rather than a 500.
-        try {
-            return RestaurantTable::create([
-                'branch_id'    => $branchId,
-                'table_number' => $tableNumber,
-                'code'         => self::allocateCode(),
-                'is_active'    => true,
-            ]);
-        } catch (QueryException $e) {
-            if (!self::isDuplicateKey($e)) {
-                throw $e;
-            }
+        // Two unique indexes can refuse this insert. (branch_id, table_number):
+        // two admins pressing Generate for the same new table at the same
+        // instant — return the row that won rather than a 500. code: another
+        // table took the same freshly drawn code between allocateCode()'s
+        // check and this write — rare, but no longer astronomically so at
+        // four characters, so draw again.
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return RestaurantTable::create([
+                    'branch_id'    => $branchId,
+                    'table_number' => $tableNumber,
+                    'code'         => self::allocateCode(),
+                    'is_active'    => true,
+                ]);
+            } catch (QueryException $e) {
+                if (!self::isDuplicateKey($e)) {
+                    throw $e;
+                }
 
-            return self::find($branchId, $tableNumber)
-                ?? throw $e;
+                $winner = self::find($branchId, $tableNumber);
+
+                if ($winner) {
+                    return $winner;
+                }
+
+                if ($attempt >= self::WRITE_ATTEMPTS) {
+                    throw $e;
+                }
+            }
         }
     }
 
@@ -336,18 +544,29 @@ class TableEntry
      */
     public static function rotateCode(RestaurantTable $table, ?int $rotatedBy = null): RestaurantTable
     {
-        return DB::transaction(function () use ($table, $rotatedBy) {
-            $old = $table->code;
+        $old = $table->code;
 
-            $table->forceFill([
-                'previous_code'   => $old,
-                'code'            => self::allocateCode(),
-                'code_rotated_at' => now(),
-                'code_rotated_by' => $rotatedBy,
-            ])->save();
+        // Same write-time collision retry as findOrRegister(): the UNIQUE
+        // index on code refusing the write means another table took the code
+        // just drawn, so draw again rather than 500.
+        for ($attempt = 1; ; $attempt++) {
+            try {
+                return DB::transaction(function () use ($table, $rotatedBy, $old) {
+                    $table->forceFill([
+                        'previous_code'   => $old,
+                        'code'            => self::allocateCode(),
+                        'code_rotated_at' => now(),
+                        'code_rotated_by' => $rotatedBy,
+                    ])->save();
 
-            return $table->refresh();
-        });
+                    return $table->refresh();
+                });
+            } catch (QueryException $e) {
+                if (!self::isDuplicateKey($e) || $attempt >= self::WRITE_ATTEMPTS) {
+                    throw $e;
+                }
+            }
+        }
     }
 
     /**
@@ -369,17 +588,21 @@ class TableEntry
      * Allocate a code no table currently holds.
      *
      * The UNIQUE index on restaurant_tables.code is the actual guarantee; this
-     * loop only spares the caller a duplicate-key error on a collision that,
-     * at 31^8, will not happen.
+     * loop spares the caller a duplicate-key error, and the write-time retry
+     * in findOrRegister()/rotateCode() covers the race between this check and
+     * the write. At four characters a collision is a real event once a
+     * company has thousands of tables, not a theoretical one: with 1,000
+     * tables a single draw collides about one time in 900. Fifty draws all
+     * colliding needs the space to be essentially full.
+     *
+     * random_int() is PHP's cryptographically secure generator. Every code is
+     * drawn independently, so knowing one table's code (or its previous_code)
+     * says nothing about another's.
      */
     public static function allocateCode(): string
     {
-        for ($attempt = 0; $attempt < 50; $attempt++) {
-            $code = '';
-
-            for ($i = 0; $i < self::CODE_LENGTH; $i++) {
-                $code .= self::ALPHABET[random_int(0, strlen(self::ALPHABET) - 1)];
-            }
+        for ($attempt = 0; $attempt < self::ALLOCATE_ATTEMPTS; $attempt++) {
+            $code = self::$codeSource ? (string) (self::$codeSource)() : self::randomCode();
 
             if (!RestaurantTable::where('code', $code)->exists()) {
                 return $code;
@@ -387,6 +610,24 @@ class TableEntry
         }
 
         throw new \RuntimeException('Could not allocate a unique permanent table code.');
+    }
+
+    /** Tests only — see $codeSource. Pass null to restore random_int(). */
+    public static function useCodeSource(?Closure $source): void
+    {
+        self::$codeSource = $source;
+    }
+
+    private static function randomCode(): string
+    {
+        $code = '';
+        $max = strlen(self::ALPHABET) - 1;
+
+        for ($i = 0; $i < self::CODE_LENGTH; $i++) {
+            $code .= self::ALPHABET[random_int(0, $max)];
+        }
+
+        return $code;
     }
 
     /**
@@ -439,9 +680,15 @@ class TableEntry
         return preg_match('/^[A-Z0-9]+$/', $value) === 1 ? $value : null;
     }
 
-    private static function fail(string $message): array
+    /**
+     * $guess marks a refusal that could have been someone guessing a code —
+     * the only kind that spends the failed-code budget (throughCodeBudget()).
+     */
+    private static function fail(string $message, bool $guess = false): array
     {
-        return ['ok' => false, 'error' => $message];
+        return $guess
+            ? ['ok' => false, 'error' => $message, 'guess' => true]
+            : ['ok' => false, 'error' => $message];
     }
 
     private static function isDuplicateKey(QueryException $e): bool

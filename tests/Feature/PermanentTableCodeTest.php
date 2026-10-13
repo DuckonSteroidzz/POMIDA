@@ -299,7 +299,14 @@ class PermanentTableCodeTest extends TestCase
         }
     }
 
-    public function test_a_code_for_a_closed_branch_is_refused_with_the_reason(): void
+    /**
+     * A typed code is its own lookup key, so naming the reason ("branch
+     * closed", "not in service") would confirm the code is real. Since the
+     * Oct 2026 four-character codes the typed door answers every refusal the
+     * same way; the QR door, which checks the branch BEFORE the code, still
+     * names a closed branch (that says nothing about any code).
+     */
+    public function test_a_code_for_a_closed_branch_is_refused_without_confirming_the_code(): void
     {
         $table = $this->table('B2', 2);
 
@@ -307,11 +314,16 @@ class PermanentTableCodeTest extends TestCase
 
         $this->typeCode($table->code)->assertRedirect('/customer/dineinqr');
 
+        $this->assertSame(TableEntry::ERR_CODE_INVALID, session('error'));
+        $this->assertNull(session('table_number'));
+
+        $this->flushSession();
+        $this->scanUrl($table)->assertRedirect('/customer/dineinqr');
         $this->assertSame(TableEntry::ERR_CLOSED_BRANCH, session('error'));
         $this->assertNull(session('table_number'));
     }
 
-    public function test_a_table_taken_out_of_service_is_refused_with_the_reason(): void
+    public function test_a_table_taken_out_of_service_is_refused_without_confirming_the_code(): void
     {
         $table = $this->table('B3');
 
@@ -319,7 +331,7 @@ class PermanentTableCodeTest extends TestCase
 
         $this->typeCode($table->code)->assertRedirect('/customer/dineinqr');
 
-        $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'));
+        $this->assertSame(TableEntry::ERR_CODE_INVALID, session('error'));
         $this->assertNull(session('table_number'));
     }
 
@@ -928,7 +940,7 @@ class PermanentTableCodeTest extends TestCase
         // Each marker is the section's own body copy, not its heading — a
         // heading string ("Occupied Tables") also appears earlier as a CSS
         // comment, which would corrupt the ordering check.
-        $generatePos = strpos($html, 'Generate the printable card for each table');
+        $generatePos = strpos($html, 'Print one QR card per table');
         $occupiedPos = strpos($html, 'Everyone at a table shares one session');
 
         $this->assertNotFalse($generatePos);

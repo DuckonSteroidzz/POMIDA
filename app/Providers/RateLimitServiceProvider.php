@@ -180,6 +180,17 @@ class RateLimitServiceProvider extends ServiceProvider
     public const ADMIN_ISSUE_VOUCHER_CODE_PER_IP = 30;
 
     /**
+     * "Check a reward code" on the Vouchers & Game page (Oct 2026) — owner
+     * and supervisor. Read-only, but every answer says whether a code exists,
+     * so it is capped like a code door: per signed-in account (one manager
+     * cannot run through codes) AND per address (several accounts behind one
+     * shop IP cannot either). A counter checks one code per customer, a few a
+     * minute at most.
+     */
+    public const ADMIN_REWARD_CODE_CHECK_PER_USER = 10;
+    public const ADMIN_REWARD_CODE_CHECK_PER_IP = 30;
+
+    /**
      * First-run admin bootstrap. Keyed on IP because there is, by definition,
      * no account to key on yet.
      *
@@ -331,8 +342,8 @@ class RateLimitServiceProvider extends ServiceProvider
      * party and per address, like table-session: a party moves table once or
      * twice in a visit, so ten a minute is far above any real use, and the
      * room-wide ceiling sits well above a busy café. Guessing a table code is
-     * held separately and more tightly, by the SAME `table-code:` counter the
-     * typed-code door uses (TableEntry::MAX_ATTEMPTS).
+     * held separately and more tightly, by the failed-code budget every code
+     * door shares (TableEntry::throughCodeBudget()).
      */
     public const TABLE_CHANGE_PER_SESSION = 10;
     public const TABLE_CHANGE_PER_IP = 120;
@@ -368,6 +379,15 @@ class RateLimitServiceProvider extends ServiceProvider
     public const CUSTOMER_EMAIL_VERIFY_REQUEST_PER_IP = 3;
     public const CUSTOMER_EMAIL_VERIFY_REQUEST_PER_EMAIL_PER_HOUR = 5;
 
+    /**
+     * POST /customer/free-dessert/prompt — the free dessert pop-up's
+     * "anything to announce?" call (Oct 2026). A page asks on load when a
+     * reward is waiting and twice per order it watches complete, so real use
+     * is a handful a minute; 120 for the same shared-café-address reason as
+     * the notification poll, on its own counter so neither spends the other.
+     */
+    public const CUSTOMER_FREE_DESSERT_PROMPT_PER_IP = 120;
+
     public function boot(): void
     {
         /*
@@ -386,6 +406,15 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('admin-staff-password', self::ADMIN_STAFF_PASSWORD_PER_IP);
         $this->perIp('admin-issue-voucher-code', self::ADMIN_ISSUE_VOUCHER_CODE_PER_IP);
         $this->perIp('admin-bootstrap', self::ADMIN_BOOTSTRAP_PER_IP);
+
+        RateLimiter::for('admin-reward-code-check', function (Request $request) {
+            return [
+                Limit::perMinute(self::ADMIN_REWARD_CODE_CHECK_PER_USER)
+                    ->by('admin-reward-code-check|user:' . ($request->user('admin')?->getAuthIdentifier() ?? 'none')),
+                Limit::perMinute(self::ADMIN_REWARD_CODE_CHECK_PER_IP)
+                    ->by('admin-reward-code-check|ip:' . $request->ip()),
+            ];
+        });
 
         /*
          * Phase 3b F2 — the rest of the raw admin throttles, same treatment.
@@ -422,6 +451,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-account-update', self::CUSTOMER_ACCOUNT_UPDATE_PER_IP);
         $this->perIp('customer-email-verify', self::CUSTOMER_EMAIL_VERIFY_PER_IP);
         $this->perIp('customer-email-verify-resend', self::CUSTOMER_EMAIL_VERIFY_RESEND_PER_IP);
+        $this->perIp('customer-free-dessert-prompt', self::CUSTOMER_FREE_DESSERT_PROMPT_PER_IP);
 
         RateLimiter::for('customer-email-verify-request', function (Request $request) {
             $email = strtolower(trim((string) $request->input('email')));

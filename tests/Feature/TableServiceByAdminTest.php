@@ -322,11 +322,16 @@ class TableServiceByAdminTest extends TestCase
             $table = $this->table($branch);
             $this->deactivate($this->owner(), $table->id)->assertOk();
 
+            // Since the Oct 2026 four-character codes, a stranger-facing door
+            // answers an out-of-service table exactly as it answers a wrong
+            // code (TableEntry::validateQr() / resolveCode()), so the answer
+            // cannot confirm a guessed code. Still refused at every door.
+
             // 1. The phone's own camera app opening the QR's URL.
             $this->on('camera-app');
             app('cache')->store()->flush();
             $this->scanQr($table)->assertRedirect(route('customer.dineinqr'));
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: QR landing");
+            $this->assertSame(TableEntry::ERR_QR_STALE, session('error'), "{$label}: QR landing");
             $this->assertNull(session('table_number'), $label);
 
             // 2. Our in-page camera scanner posting what it decoded.
@@ -336,7 +341,7 @@ class TableServiceByAdminTest extends TestCase
                 'tableData' => $table->qrUrl(),
                 'next'      => 'guest',
             ])->assertRedirect('/customer/dineinqr');
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: scanner");
+            $this->assertSame(TableEntry::ERR_QR_STALE, session('error'), "{$label}: scanner");
 
             // 3. The code typed off the standee.
             $this->on('typed');
@@ -345,7 +350,7 @@ class TableServiceByAdminTest extends TestCase
                 'table_code' => $table->code,
                 'next'       => 'guest',
             ])->assertRedirect('/customer/dineinqr');
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: typed code");
+            $this->assertSame(TableEntry::ERR_CODE_INVALID, session('error'), "{$label}: typed code");
             $this->assertNull(session('table_number'), $label);
 
             $this->assertSame(
@@ -878,7 +883,7 @@ class TableServiceByAdminTest extends TestCase
         foreach ([$this->owner(), $this->portalUser('supervisor', $branch->id)] as $manager) {
             $html = $this->asAdmin($manager)->get('/admin/qr-generator')->assertOk()->getContent();
 
-            $this->assertSame(1, preg_match('/<div class="content-card">\s*<p[^>]*>(.*?)<\/p>/s', $html, $intro), $manager->role);
+            $this->assertSame(1, preg_match('/<div class="content-card">(.*?)<div class="qr-split">/s', $html, $intro), $manager->role);
             $this->assertStringNotContainsString('Deactivate', $intro[1]);
             $this->assertStringNotContainsString('Reactivate', $intro[1]);
             $this->assertStringContainsString('<strong>Regenerate Code</strong>', $intro[1]);

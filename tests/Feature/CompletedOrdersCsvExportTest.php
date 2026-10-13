@@ -32,9 +32,12 @@ class CompletedOrdersCsvExportTest extends TestCase
 
     private const PREFIX = 'CCSV';
 
+    // 'Reward Code' (Oct 2026, Streak Rewards) is appended last, so every
+    // earlier column keeps its position. Empty for an order with no reward.
     private const HEADER = [
         'Order #', 'Date/Time', 'Branch', 'Type', 'Table', 'Items',
         'Subtotal', 'Discount', 'Total', 'Payment Method', 'Payment Status', 'Status',
+        'Reward Code',
     ];
 
     private function admin(): User

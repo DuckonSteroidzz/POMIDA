@@ -42,8 +42,9 @@
             background: #fff;
             color: rgba(139, 26, 26, 0.6);
             border-radius: 999px;
+            min-height: 44px;
             padding: 0.55rem 1.1rem;
-            font-size: 0.82rem;
+            font-size: 1rem;
             font-weight: 700;
             cursor: pointer;
             transition: all 0.18s ease;
@@ -79,7 +80,7 @@
         .step-circle.done::after {
             content: '✓';
             color: #fff;
-            font-size: 0.72rem;
+            font-size: 0.875rem;
             font-weight: 700;
         }
 
@@ -103,7 +104,7 @@
         }
 
         .step-label {
-            font-size: 0.68rem;
+            font-size: 0.875rem;
             font-weight: 600;
             color: rgba(139, 26, 26, 0.4);
             margin-top: 6px;
@@ -126,7 +127,7 @@
         /* Step icon — shown while the step is still upcoming; the ::after
            tick / pulse dot takes over once it is done / active. */
         .step-circle > i {
-            font-size: 0.72rem;
+            font-size: 0.875rem;
             line-height: 1;
             color: rgba(139, 26, 26, 0.35);
         }
@@ -144,7 +145,7 @@
             background: #FFF7F3;
             border: 1px solid #FDE8DE;
             padding: 0.6rem 0.75rem;
-            font-size: 0.78rem;
+            font-size: 0.875rem;
             font-weight: 600;
             line-height: 1.4;
             color: #8B1A1A;
@@ -157,12 +158,12 @@
         }
     </style>
     <style>
-        .rating-needed{display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;padding:.22rem .5rem;border-radius:999px;background:#fff4ef;color:#C0392B;font-size:.62rem;font-weight:800}
-        .history-rating-btn{border:1px solid #F4845F;background:#F4845F;color:#fff;border-radius:8px;padding:.35rem .55rem;font-size:.62rem;font-weight:800;cursor:pointer;white-space:nowrap}
-        .rating-scale-btn{border:1px solid #ead8d2;background:#fff;color:#8A6A61;border-radius:9px;padding:.5rem;font-size:.7rem;font-weight:800;cursor:pointer}
+        .rating-needed{display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;padding:.22rem .5rem;border-radius:999px;background:#fff4ef;color:#C0392B;font-size:0.875rem;font-weight:800}
+        .history-rating-btn{border:1px solid #F4845F;background:#F4845F;color:#fff;border-radius:8px;min-height:44px;padding:.35rem .8rem;font-size:1rem;font-weight:800;cursor:pointer;white-space:nowrap}
+        .rating-scale-btn{border:1px solid #ead8d2;background:#fff;color:#8A6A61;border-radius:9px;padding:.5rem;font-size:0.875rem;font-weight:800;cursor:pointer}
         .rating-scale-btn.active{background:#FDE8DE;border-color:#F4845F;color:#8B1A1A}
         .rating-option.selected{background:#FDE8DE !important;border-color:#F4845F !important}
-        .rating-success{margin-bottom:.8rem;padding:.65rem .75rem;border-radius:10px;background:#E4F2EA;color:#2E7D5B;font-size:.72rem;font-weight:800}
+        .rating-success{margin-bottom:.8rem;padding:.65rem .75rem;border-radius:10px;background:#E4F2EA;color:#2E7D5B;font-size:0.875rem;font-weight:800}
     </style>
     @include('partials.session-guard')
 
@@ -180,7 +181,7 @@
                     <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
                     <span class="min-w-0">
                         <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
+                        <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
                     </span>
                 </a>
 
@@ -271,8 +272,12 @@
 
             @if(count($currentOrders))
 
+            @if(!empty($joinCardOrder))
+                @include('customer.partials.dinein-join-card')
+            @endif
+
             @if(count($currentOrders) > 1)
-            <p class="mb-4 flex items-center gap-2 rounded-2xl border border-peach-soft bg-peach-cream/60 px-4 py-2.5 text-[0.8rem] font-semibold text-peach-deep/70">
+            <p class="mb-4 flex items-center gap-2 rounded-2xl border border-peach-soft bg-peach-cream/60 px-4 py-2.5 text-[0.875rem] font-semibold text-peach-deep/70">
                 <i class="bi bi-layers"></i>
                 You have {{ count($currentOrders) }} orders in progress — newest first.
             </p>
@@ -325,7 +330,7 @@
                              fight instead of shrinking text to fit. --}}
                         <div class="order-number-bar grid grid-cols-1 items-start gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-3">
                             <span class="order-number min-w-0 truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">{{ $currentOrder->order_number }}</span>
-                            <span class="order-type-badge inline-flex shrink-0 items-center gap-1.5 rounded-full bg-peach-soft px-3 py-1.5 text-[0.7rem] font-bold text-peach-red sm:text-xs">
+                            <span class="order-type-badge inline-flex shrink-0 items-center gap-1.5 rounded-full bg-peach-soft px-3 py-1.5 text-[0.8125rem] font-bold text-peach-red sm:text-xs">
                                 <i class="bi {{ $currentOrder->type === 'dine_in' ? 'bi-shop' : 'bi-bag' }}"></i>
                                 {{ $currentOrder->type === 'dine_in' ? 'Dine-in • Table ' . $currentOrder->table_number : 'Pickup' }}
                             </span>
@@ -389,7 +394,7 @@
                                     @endif
                                 </div>
                                 <div class="item-details min-w-0">
-                                    <h6 class="truncate text-sm font-bold text-peach-deep sm:text-[0.95rem]">
+                                    <h6 class="truncate text-sm font-bold text-peach-deep sm:text-[1rem]">
                                         {{-- displayName(): the item_name snapshot, plus the size_name
                                              snapshot for a line sold by size ("… (Large)") — never
                                              a live size lookup, so it survives the size being archived
@@ -402,9 +407,9 @@
                                          reasoning as receipt.blade.php: order_item_options.option_name
                                          is frozen at order time so renaming an add-on later cannot
                                          change what an in-progress order card says was ordered. --}}
-                                    <p class="item-options mt-0.5 truncate text-[0.7rem] font-medium text-peach-red/80">{{ $item->options->map(fn($option) => $option->pivot->option_name ?? $option->name)->implode(', ') }}</p>
+                                    <p class="item-options mt-0.5 truncate text-xs font-medium text-peach-red/80">{{ $item->options->map(fn($option) => $option->pivot->option_name ?? $option->name)->implode(', ') }}</p>
                                     @endif
-                                    <span class="item-price mt-0.5 block text-[0.72rem] text-peach-deep/45">₱{{ number_format($item->item_price, 2) }} each</span>
+                                    <span class="item-price mt-0.5 block text-[0.875rem] text-peach-deep/45">₱{{ number_format($item->item_price, 2) }} each</span>
                                 </div>
                                 <span class="item-subtotal shrink-0 font-display text-sm font-black text-peach-deep sm:text-base">₱{{ number_format($item->subtotal, 2) }}</span>
                             </li>
@@ -466,7 +471,7 @@
                         --}}
                         @if($currentOrder->payment_method === 'gcash' && in_array($currentOrder->payment_status, ['pending', 'awaiting_verification'], true))
                             <a href="{{ route('customer.gcash-payment', $currentOrder->id) }}"
-                               class="relative z-[45] mt-4 inline-flex w-full items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                               class="relative z-[45] mt-4 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                                 <i class="bi bi-qr-code" aria-hidden="true"></i>
                                 {{ $currentOrder->payment_status === 'pending' ? 'Pay via GCash' : 'View GCash Payment Status' }}
                             </a>
@@ -594,11 +599,11 @@
                                 </button>
 
                                 @if($cancelShowDisabled)
-                                    <p data-cancel-reason class="mt-2 text-center text-[0.7rem] font-medium text-peach-deep/45">
+                                    <p data-cancel-reason class="mt-2 text-center text-xs font-medium text-peach-deep/45">
                                         {{ $cancelDisabledReason }}
                                     </p>
                                 @elseif($cancelNeedsRefund)
-                                    <p class="mt-2 text-center text-[0.7rem] font-medium text-peach-deep/45">
+                                    <p class="mt-2 text-center text-xs font-medium text-peach-deep/45">
                                         You marked this as paid — staff will arrange your refund.
                                     </p>
                                 @endif
@@ -611,7 +616,7 @@
                         <i class="bi bi-dice-5"></i> Play Game While You Wait
                     </a>
 
-                    <p class="text-center text-[0.7rem] font-medium text-peach-deep/40">
+                    <p class="text-center text-xs font-medium text-peach-deep/40">
                         <i class="bi bi-arrow-repeat"></i> This page refreshes automatically
                     </p>
                     @endif
@@ -630,7 +635,7 @@
             <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                 <i class="bi bi-bag-check block text-5xl text-peach/40"></i>
                 <p class="mt-3 text-base font-semibold text-peach-deep/55">No active order right now</p>
-                <a href="{{ route('customer.menu') }}" class="mt-4 inline-flex items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                <a href="{{ route('customer.menu') }}" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                     <i class="bi bi-grid"></i> Browse Menu
                 </a>
             </div>
@@ -642,15 +647,18 @@
 <div id="historyTab" @if($initialTab !== 'history') style="display:none;" @endif>
             @if(isset($orderHistory) && count($orderHistory) > 0)
             @php
+            // Grouped by the SHOP's day (Manila), not the app zone's: under
+            // APP_TIMEZONE=UTC an order at 7:30 AM Manila would otherwise
+            // land under "Yesterday".
             $grouped = $orderHistory->groupBy(function($order) {
-            if ($order->created_at->isToday()) return 'Today';
-            if ($order->created_at->isYesterday()) return 'Yesterday';
-            return $order->created_at->format('M d, Y');
+            if (\App\Support\ShopDay::isToday($order->created_at)) return 'Today';
+            if (\App\Support\ShopDay::isYesterday($order->created_at)) return 'Yesterday';
+            return \App\Support\ShopDay::format($order->created_at, 'M d, Y');
             });
             @endphp
 
             @foreach($grouped as $date => $orders)
-            <p class="date-group mb-2.5 mt-5 text-[0.68rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45 first:mt-0">{{ $date }}</p>
+            <p class="date-group mb-2.5 mt-5 text-[0.8125rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45 first:mt-0">{{ $date }}</p>
             <div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
                 @foreach($orders as $order)
                 @php
@@ -665,11 +673,11 @@
                     <div class="history-info min-w-0">
                         <a href="{{ route('customer.receipt', $order->id) }}" class="block no-underline">
                             <span class="history-order-num block truncate text-sm font-bold text-peach-deep">{{ $order->order_number }}</span>
-                            <span class="history-meta block truncate text-[0.7rem] font-medium text-peach-deep/50">{{ $order->items_count }} item(s) • {{ strtoupper($order->status) }}</span>
+                            <span class="history-meta block truncate text-xs font-medium text-peach-deep/50">{{ $order->items_count }} item(s) • {{ strtoupper($order->status) }}</span>
                             @if($order->discount_amount > 0)
-                            <span class="history-discount block truncate text-[0.66rem] font-semibold text-green-600">Discount: -₱{{ number_format($order->discount_amount, 2) }}</span>
+                            <span class="history-discount block truncate text-xs font-semibold text-green-600">Discount: -₱{{ number_format($order->discount_amount, 2) }}</span>
                             @endif
-                            <span class="history-time block text-[0.64rem] text-peach-deep/35">{{ $order->created_at->format('h:i A') }}</span>
+                            <span class="history-time block text-xs text-peach-deep/35">{{ \App\Support\ShopDay::format($order->created_at, 'h:i A') }}</span>
                         </a>
                         @if($canRate && !$orderRating)
                         <span class="rating-needed"><i class="bi bi-star-fill"></i> Meal not rated yet</span>
@@ -678,10 +686,28 @@
                             <i class="bi bi-check-circle-fill"></i> Rated {{ $orderRating->rating }}/5
                         </span>
                         @endif
+
+                        {{-- The free dessert's OWN rating (Oct 2026), separate
+                             from the meal's — see submitDessertRating(). --}}
+                        @if($order->status === 'completed' && $order->has_free_dessert)
+                            @php $dessertRating = ($dessertRatings ?? collect())[$order->id] ?? null; @endphp
+                            @if($dessertRating)
+                            <span class="rating-needed" style="background:#E4F2EA;color:#2E7D5B;" data-testid="dessert-rated">
+                                <i class="bi bi-gift-fill"></i> Reward rated {{ $dessertRating->rating }}/5
+                            </span>
+                            @else
+                            <button type="button"
+                                class="mt-1.5 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-peach bg-white px-3 text-sm font-bold text-peach-red"
+                                data-testid="rate-dessert-btn"
+                                onclick="openDessertRatingModal({{ $order->id }}, @js($order->order_number))">
+                                <i class="bi bi-gift" aria-hidden="true"></i> Rate your reward
+                            </button>
+                            @endif
+                        @endif
                     </div>
                     <div class="history-right shrink-0 text-right">
                         <span class="history-amount block font-display text-base font-black text-peach-deep">₱{{ number_format($order->total, 2) }}</span>
-                        <a href="{{ route('customer.receipt', $order->id) }}" class="history-receipt block text-[0.64rem] font-bold text-peach-red">Receipt →</a>
+                        <a href="{{ route('customer.receipt', $order->id) }}" class="history-receipt flex min-h-11 items-center justify-end text-sm font-bold text-peach-red">Receipt →</a>
                         @if($canRate && !$orderRating)
                         <button type="button" class="history-rating-btn mt-1"
                             onclick="openRatingModal({{ $order->id }}, @js($order->order_number))">
@@ -697,7 +723,7 @@
             <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                 <i class="bi bi-clock-history block text-5xl text-peach/40"></i>
                 <p class="mt-3 text-base font-semibold text-peach-deep/55">No order history yet</p>
-                <a href="{{ route('customer.menu') }}" class="mt-4 inline-flex items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                <a href="{{ route('customer.menu') }}" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                     Start your first order
                 </a>
             </div>
@@ -706,6 +732,20 @@
 @endif
     </main>
 
+    {{-- One-time "play Spin & Win while you wait" prompt. $spinPrompt is null
+         unless App\Support\SpinPrompt decided to show it (and stamped the
+         order so it is never shown again). --}}
+    @if(!empty($spinPrompt))
+        @include('customer.partials.spin-prompt-modal', ['spinPrompt' => $spinPrompt])
+    @endif
+
+    {{-- One-time "You earned a reward!" pop-up (Oct 2026), signed-in
+         customers only. Kept AFTER the Spin prompt so that one opens first;
+         this one waits for it and every other overlay. The order poll below
+         hands it completed orders for the live case. See
+         App\Support\FreeDessertPrompt. --}}
+    @include('customer.partials.free-dessert-prompt')
+
 
     {{-- ================= MEAL RATING MODAL ================= --}}
     <div id="ratingModal" aria-hidden="true"
@@ -713,9 +753,9 @@
         <div role="dialog" aria-modal="true"
              style="width:min(100%,390px);background:#FFFDF9;border-radius:20px;overflow:hidden;box-shadow:0 24px 70px rgba(45,24,20,.28);">
             <div style="padding:1.15rem;background:#FDE8DE;text-align:center;">
-                <div style="font-size:2rem;">⭐</div>
-                <h3 style="margin:.45rem 0 0;color:#8B1A1A;font-size:1.15rem;">How was your meal?</h3>
-                <p id="ratingModalOrder" style="margin:.25rem 0 0;color:#8A6A61;font-size:.7rem;"></p>
+                <div style="font-size:2.1875rem;">⭐</div>
+                <h3 style="margin:.45rem 0 0;color:#8B1A1A;font-size:1.25rem;">How was your meal?</h3>
+                <p id="ratingModalOrder" style="margin:.25rem 0 0;color:#8A6A61;font-size:0.875rem;"></p>
             </div>
             <div style="padding:1.1rem;">
                 <form id="ratingForm" method="POST">
@@ -727,28 +767,122 @@
                         @for($i = 1; $i <= 5; $i++)
                         <button type="button" class="rating-option" data-value="{{ $i }}"
                                 onclick="selectRating({{ $i }})"
-                                style="width:52px;height:52px;border:1px solid #ead8d2;background:#fff;border-radius:14px;cursor:pointer;font-size:1.65rem;">
+                                style="width:52px;height:52px;border:1px solid #ead8d2;background:#fff;border-radius:14px;cursor:pointer;font-size:1.8125rem;">
                             <span class="rating-symbol">⭐</span>
                         </button>
                         @endfor
                     </div>
 
-                    <div id="ratingSelectedText" style="text-align:center;font-size:.7rem;color:#8A6A61;min-height:1rem;">
+                    <div id="ratingSelectedText" style="text-align:center;font-size:0.875rem;color:#8A6A61;min-height:1.25rem;">
                         Choose a rating
                     </div>
 
                     <button type="submit" id="ratingSubmit" disabled
-                            style="width:100%;margin-top:1rem;border:0;border-radius:10px;padding:.7rem;background:#C0392B;color:#fff;font-size:.78rem;font-weight:800;">
+                            style="width:100%;margin-top:1rem;border:0;border-radius:10px;min-height:44px;padding:.7rem;background:#C0392B;color:#fff;font-size:1rem;font-weight:800;">
                         Submit Rating
                     </button>
                     <button type="button" onclick="closeRatingModal()"
-                            style="width:100%;margin-top:.45rem;border:1px solid #ead8d2;border-radius:10px;padding:.65rem;background:#fff;color:#777;font-size:.72rem;font-weight:700;">
+                            style="width:100%;margin-top:.45rem;border:1px solid #ead8d2;border-radius:10px;min-height:44px;padding:.65rem;background:#fff;color:#777;font-size:1rem;font-weight:700;">
                         Not now
                     </button>
                 </form>
             </div>
         </div>
     </div>
+
+    {{-- ================= FREE DESSERT RATING MODAL (Oct 2026) =================
+         Its own stars and its own comment, posted to
+         customer.orders.dessert-rating and stored apart from the meal rating.
+         Phone sizing: text-sm (16px) and up, 48px star buttons, 44px+ buttons,
+         and a panel no wider than the screen at 360px. --}}
+    @if(Auth::guard('customer')->check())
+    <div id="dessertRatingModal" aria-hidden="true" data-testid="dessert-rating-modal"
+         class="fixed inset-0 z-[5000] hidden items-center justify-center bg-[rgba(45,24,20,.55)] p-4">
+        <div role="dialog" aria-modal="true" aria-labelledby="dessertRatingTitle"
+             class="w-full max-w-[390px] overflow-hidden rounded-[20px] bg-peach-cream shadow-2xl">
+            <div class="bg-peach-soft px-4 py-4 text-center">
+                <i class="bi bi-cake2-fill text-3xl text-peach-red" aria-hidden="true"></i>
+                <h3 id="dessertRatingTitle" class="mt-1 font-display text-xl font-bold text-peach-deep">How was your reward?</h3>
+                <p id="dessertRatingOrder" class="mt-0.5 text-sm text-peach-deep/70"></p>
+            </div>
+            <form id="dessertRatingForm" method="POST" class="px-4 py-4">
+                @csrf
+                <input type="hidden" name="rating" id="dessertRatingValue" value="">
+
+                <div class="flex justify-center gap-1.5" role="group" aria-label="Reward rating, 1 to 5 stars">
+                    @for($i = 1; $i <= 5; $i++)
+                    <button type="button" data-dessert-star="{{ $i }}" onclick="selectDessertRating({{ $i }})"
+                        aria-label="{{ $i }} {{ $i === 1 ? 'star' : 'stars' }}"
+                        class="grid h-12 w-12 place-items-center rounded-2xl border border-[#ead8d2] bg-white text-2xl">⭐</button>
+                    @endfor
+                </div>
+                <p id="dessertRatingText" class="mt-2 min-h-6 text-center text-sm text-peach-deep/70">Choose a rating</p>
+
+                <label for="dessertRatingComment" class="mt-1 flex min-h-11 items-center text-sm font-bold text-peach-deep">Comment (optional)</label>
+                <textarea id="dessertRatingComment" name="comment" rows="3" maxlength="500"
+                    placeholder="Tell us what you thought of your reward item"
+                    class="w-full rounded-xl border border-peach-soft bg-white px-3 py-2.5 text-sm text-peach-deep outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"></textarea>
+                <p class="text-xs text-peach-deep/60">Up to 500 characters. This is about your reward item only, not the rest of your meal.</p>
+
+                <button type="submit" id="dessertRatingSubmit" disabled
+                    class="mt-3 min-h-11 w-full rounded-xl bg-peach-red px-4 text-sm font-bold text-white disabled:bg-peach-deep/30">
+                    Submit reward rating
+                </button>
+                <button type="button" onclick="closeDessertRatingModal()"
+                    class="mt-2 min-h-11 w-full rounded-xl border border-[#ead8d2] bg-white px-4 text-sm font-bold text-peach-deep/70">
+                    Not now
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        function openDessertRatingModal(orderId, orderNumber) {
+            var modal = document.getElementById('dessertRatingModal');
+            var form = document.getElementById('dessertRatingForm');
+            if (!modal || !form) return;
+
+            form.action = "{{ url('/customer/orders') }}/" + orderId + "/dessert-rating";
+            document.getElementById('dessertRatingOrder').textContent = 'Order #' + orderNumber;
+            document.getElementById('dessertRatingValue').value = '';
+            document.getElementById('dessertRatingComment').value = '';
+            document.getElementById('dessertRatingSubmit').disabled = true;
+            document.getElementById('dessertRatingText').textContent = 'Choose a rating';
+            document.querySelectorAll('[data-dessert-star]').forEach(function (b) {
+                b.classList.remove('bg-peach-soft', 'border-peach');
+            });
+
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            modal.setAttribute('aria-hidden', 'false');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeDessertRatingModal() {
+            var modal = document.getElementById('dessertRatingModal');
+            if (!modal) return;
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            modal.setAttribute('aria-hidden', 'true');
+            document.body.style.overflow = '';
+        }
+
+        function selectDessertRating(value) {
+            document.getElementById('dessertRatingValue').value = value;
+            document.getElementById('dessertRatingSubmit').disabled = false;
+            document.getElementById('dessertRatingText').textContent = value + ' / 5 stars';
+            document.querySelectorAll('[data-dessert-star]').forEach(function (b) {
+                var on = Number(b.getAttribute('data-dessert-star')) <= value;
+                b.classList.toggle('bg-peach-soft', on);
+                b.classList.toggle('border-peach', on);
+            });
+        }
+
+        document.getElementById('dessertRatingModal')?.addEventListener('click', function (event) {
+            if (event.target === this) closeDessertRatingModal();
+        });
+    </script>
+    @endif
 
     <script>
         let selectedRatingScale = 'stars';
@@ -1187,24 +1321,24 @@
      style="display:none;position:fixed;inset:0;z-index:10001;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:330px;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;padding:22px 20px 20px;text-align:center;box-shadow:0 18px 45px rgba(59,35,32,0.22);">
         <div id="discountVerificationIcon"
-             style="width:50px;height:50px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#FDE8DE;color:#C0392B;font-size:21px;">
+             style="width:50px;height:50px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#FDE8DE;color:#C0392B;font-size:23px;">
             <i class="bi bi-person-vcard"></i>
         </div>
         <h3 id="discountVerificationTitle"
-            style="margin:0 0 9px;color:#8F2118;font-family:'Fraunces',Georgia,serif;font-size:20px;line-height:1.2;font-weight:700;">
+            style="margin:0 0 9px;color:#8F2118;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
             Checking Your Discount Card
         </h3>
         <p id="discountVerificationMessage"
-           style="max-width:285px;margin:0 auto;color:#8A6A61;font-size:11px;line-height:1.55;">
+           style="max-width:285px;margin:0 auto;color:#8A6A61;font-size:13px;line-height:1.55;">
             Please wait while our staff verifies your PWD or Senior Citizen discount card.
         </p>
         <div id="discountVerificationActions" style="display:none;gap:8px;margin-top:16px;">
             <button type="button" onclick="continueAfterDiscountDecision()"
-                    style="flex:1;height:38px;border-radius:999px;background:#C0392B;color:#fff;border:1px solid #C0392B;font-size:11px;font-weight:700;cursor:pointer;">
+                    style="flex:1;height:38px;border-radius:999px;background:#C0392B;color:#fff;border:1px solid #C0392B;font-size:13px;font-weight:700;cursor:pointer;">
                 Continue Transaction
             </button>
             <button type="button" onclick="cancelAfterDiscountDecision()"
-                    style="flex:1;height:38px;border-radius:999px;background:#FFFDF9;color:#C0392B;border:1px solid #F3BDAE;font-size:11px;font-weight:700;cursor:pointer;">
+                    style="flex:1;height:38px;border-radius:999px;background:#FFFDF9;color:#C0392B;border:1px solid #F3BDAE;font-size:13px;font-weight:700;cursor:pointer;">
                 Cancel Order
             </button>
         </div>
@@ -1216,15 +1350,15 @@
      style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:316px;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;padding:22px 20px 20px;text-align:center;box-shadow:0 18px 45px rgba(59,35,32,0.22);">
         <div id="orderStatusIcon"
-             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#E4F2EA;color:#2E7D5B;font-size:20px;">
+             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#E4F2EA;color:#2E7D5B;font-size:22px;">
             <i class="bi bi-check-circle"></i>
         </div>
         <h3 id="orderStatusTitle"
-            style="margin:0 0 9px;color:#2E7D5B;font-family:'Fraunces',Georgia,serif;font-size:20px;line-height:1.2;font-weight:700;">
+            style="margin:0 0 9px;color:#2E7D5B;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
             Order Completed
         </h3>
         <p id="orderStatusMessage"
-           style="max-width:275px;margin:0 auto;color:#8A6A61;font-size:10px;line-height:1.5;">
+           style="max-width:275px;margin:0 auto;color:#8A6A61;font-size:13px;line-height:1.5;">
             Your order has been completed.
         </p>
             {{-- In-place rating. The customer can rate right here without
@@ -1232,7 +1366,7 @@
                  guest has, since guests have no Order History list at all.
                  It posts to the same endpoint the Order History modal uses. --}}
             <div id="popupRatingBlock" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid #F2DDD4;">
-                <p id="popupRatingPrompt" style="margin:0 0 8px;color:#6B4038;font-size:10px;font-weight:700;">
+                <p id="popupRatingPrompt" style="margin:0 0 8px;color:#6B4038;font-size:13px;font-weight:700;">
                     How was your meal?
                 </p>
 
@@ -1242,7 +1376,7 @@
                                 class="popup-rating-star"
                                 data-value="{{ $i }}"
                                 aria-label="{{ $i }} out of 5"
-                                style="width:34px;height:34px;border:1px solid #ead8d2;background:#fff;border-radius:9px;cursor:pointer;font-size:15px;line-height:1;padding:0;opacity:.45;">
+                                style="width:34px;height:34px;border:1px solid #ead8d2;background:#fff;border-radius:9px;cursor:pointer;font-size:16px;line-height:1;padding:0;opacity:.45;">
                             ⭐
                         </button>
                     @endfor
@@ -1252,22 +1386,22 @@
                         id="popupRatingSubmit"
                         onclick="submitPopupRating()"
                         disabled
-                        style="width:100%;margin-top:10px;height:34px;border:0;border-radius:999px;background:#C0392B;color:#fff;font-size:10px;font-weight:700;cursor:pointer;opacity:.5;">
+                        style="width:100%;margin-top:10px;height:34px;border:0;border-radius:999px;background:#C0392B;color:#fff;font-size:13px;font-weight:700;cursor:pointer;opacity:.5;">
                     Submit Rating
                 </button>
 
-                <p id="popupRatingMessage" style="margin:8px 0 0;font-size:10px;font-weight:700;line-height:1.4;"></p>
+                <p id="popupRatingMessage" style="margin:8px 0 0;font-size:13px;font-weight:700;line-height:1.4;"></p>
             </div>
 
             <div id="completedOrderActions" style="display:none;gap:8px;margin-top:16px;">
                 <a id="viewCompletedReceipt"
                    href="#"
-                   style="flex:1;height:36px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;background:#2E7D5B;color:#fff;border:1px solid #2E7D5B;font-size:10px;font-weight:700;text-decoration:none;">
+                   style="flex:1;height:36px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;background:#2E7D5B;color:#fff;border:1px solid #2E7D5B;font-size:13px;font-weight:700;text-decoration:none;">
                     <i class="bi bi-receipt"></i> View Receipt
                 </a>
                 <button type="button"
                         onclick="closeOrderStatusNotice()"
-                        style="flex:0 0 auto;height:36px;padding:0 15px;border-radius:999px;background:#fff;color:#8B1A1A;border:1px solid #F2DDD4;font-size:10px;font-weight:700;cursor:pointer;">
+                        style="flex:0 0 auto;height:36px;padding:0 15px;border-radius:999px;background:#fff;color:#8B1A1A;border:1px solid #F2DDD4;font-size:13px;font-weight:700;cursor:pointer;">
                     Close
                 </button>
             </div>
@@ -1275,7 +1409,7 @@
             <div id="cancelledOrderActions" style="display:none;margin-top:16px;">
                 <button type="button"
                         onclick="closeOrderStatusNotice()"
-                        style="width:100%;height:36px;border-radius:999px;background:#C0392B;color:#fff;border:1px solid #C0392B;font-size:10px;font-weight:700;cursor:pointer;">
+                        style="width:100%;height:36px;border-radius:999px;background:#C0392B;color:#fff;border:1px solid #C0392B;font-size:13px;font-weight:700;cursor:pointer;">
                     OK
                 </button>
             </div>
@@ -1302,6 +1436,18 @@
     // for why asking about a STATUS FILTER instead of these specific ids would
     // miss the exact moment an order finishes.
     let trackedOrderIds = @json(collect($pollableOrderIds ?? $currentOrders->pluck('id'))->values());
+
+    // The orders that were still in flight when this page loaded. When a poll
+    // sees one of them complete, the reward pop-up (Oct 2026) asks the
+    // server whether that completion earned a reward. An order that was
+    // already finished at load is covered by the pop-up's own check on load.
+    const inFlightAtLoad = @json($currentOrders->pluck('id')->map(fn ($id) => (int) $id)->values());
+
+    function announceFreeDessertFor(orderId) {
+        if (window.PomidaFreeDessertPrompt && inFlightAtLoad.includes(Number(orderId))) {
+            window.PomidaFreeDessertPrompt.orderCompleted(orderId);
+        }
+    }
 
     function notificationKey(orderId, status) {
         return 'peachy_order_status_notified_v2_' + orderId + '_' + status;
@@ -1647,7 +1793,7 @@
                 <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                     <i class="bi bi-bag-check block text-5xl text-peach/40"></i>
                     <p class="mt-3 text-base font-semibold text-peach-deep/55">No active order right now</p>
-                    <a href="{{ route('customer.menu') }}" class="mt-4 inline-flex items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                    <a href="{{ route('customer.menu') }}" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                         <i class="bi bi-grid"></i> Browse Menu
                     </a>
                 </div>
@@ -1707,7 +1853,7 @@
         if (!reasonEl) {
             reasonEl = document.createElement('p');
             reasonEl.setAttribute('data-cancel-reason', '');
-            reasonEl.className = 'mt-2 text-center text-[0.7rem] font-medium text-peach-deep/45';
+            reasonEl.className = 'mt-2 text-center text-xs font-medium text-peach-deep/45';
             form.appendChild(reasonEl);
         }
         reasonEl.textContent = cancelReasonFor(status);
@@ -1755,6 +1901,7 @@
          * consumer ignored it.
          */
         if (status === 'completed' || status === 'cancelled') {
+            if (status === 'completed') announceFreeDessertFor(orderId);
             removeFinishedOrderCard(orderId);
             return;
         }

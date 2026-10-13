@@ -8,6 +8,7 @@ use App\Models\UserVoucher;
 use App\Models\Voucher;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use App\Support\ShopDay;
 use Tests\TestCase;
 
 /**
@@ -476,7 +477,7 @@ class VoucherValidFromTest extends TestCase
             ->json();
 
         $this->assertNotNull($body['voucher'] ?? null, "a {$orderType} win minted no voucher");
-        $this->assertSame(today()->toDateString(), $body['voucher']['valid_from']);
+        $this->assertSame(ShopDay::today()->toDateString(), $body['voucher']['valid_from']);
         $this->assertStringNotContainsStringIgnoringCase('tomorrow', $body['voucher']['message'] ?? '');
     }
 

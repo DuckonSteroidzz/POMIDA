@@ -8,6 +8,7 @@ use App\Models\Voucher;
 use App\Services\VoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\RateLimiter;
+use App\Support\ShopDay;
 use Tests\TestCase;
 
 /**
@@ -75,8 +76,8 @@ class VoucherClaimStateTest extends TestCase
         return UserVoucher::create(array_merge([
             'user_id'       => $user->id,
             'voucher_id'    => $voucher->id,
-            'acquired_date' => today()->toDateString(),
-            'valid_from'    => today()->toDateString(),
+            'acquired_date' => ShopDay::today()->toDateString(),
+            'valid_from'    => ShopDay::today()->toDateString(),
             'is_used'       => false,
         ], $attrs));
     }
@@ -108,9 +109,9 @@ class VoucherClaimStateTest extends TestCase
     {
         return match ($kind) {
             'not_yet_valid' => $this->claim(
-                $this->wheelVoucher(['valid_from' => today()->subDays(3)->toDateString()]),
+                $this->wheelVoucher(['valid_from' => ShopDay::today()->subDays(3)->toDateString()]),
                 $user,
-                ['valid_from' => today()->addDay()->toDateString()]
+                ['valid_from' => ShopDay::today()->addDay()->toDateString()]
             ),
             'deactivated' => $this->claim($this->wheelVoucher(['is_active' => false]), $user),
             'expired'     => $this->claim($this->wheelVoucher(['expires_at' => now()->subDay()]), $user),
@@ -166,8 +167,8 @@ class VoucherClaimStateTest extends TestCase
         // Exactly the reported shape: the SHARED column is long past, so the old
         // page logic said "Valid now", while THIS customer's own window opens
         // tomorrow and the server refuses.
-        $voucher = $this->wheelVoucher(['valid_from' => today()->subDays(10)->toDateString()]);
-        $claim   = $this->claim($voucher, $user, ['valid_from' => today()->addDay()->toDateString()]);
+        $voucher = $this->wheelVoucher(['valid_from' => ShopDay::today()->subDays(10)->toDateString()]);
+        $claim   = $this->claim($voucher, $user, ['valid_from' => ShopDay::today()->addDay()->toDateString()]);
 
         $this->assertSame('not_yet_valid', $claim->statusKey());
         $this->assertStringContainsString('not yet valid', strtolower($claim->blockingReason()));
@@ -274,7 +275,7 @@ class VoucherClaimStateTest extends TestCase
 
         $open = $this->wheelVoucher([
             'points_required' => 0,
-            'valid_from'      => today()->subDay()->toDateString(),
+            'valid_from'      => ShopDay::today()->subDay()->toDateString(),
         ]);
 
         $this->assertNull($open->availabilityErrorFor($user));
@@ -282,7 +283,7 @@ class VoucherClaimStateTest extends TestCase
 
         $future = $this->wheelVoucher([
             'points_required' => 0,
-            'valid_from'      => today()->addDay()->toDateString(),
+            'valid_from'      => ShopDay::today()->addDay()->toDateString(),
         ]);
 
         $this->assertStringContainsString('not yet valid', strtolower($future->availabilityErrorFor($user)));

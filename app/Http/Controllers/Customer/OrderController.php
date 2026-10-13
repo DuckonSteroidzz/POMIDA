@@ -120,6 +120,20 @@ class OrderController extends Controller
             'discount_applied'       => 'nullable|boolean',
 
             /*
+             * A menu-item loyalty reward's code (Oct 2026), put here by the
+             * cart's code box. Only a code: never an item, a price or a
+             * quantity — the item comes from the reward's own snapshot, the
+             * line is always 1 at 0.00, and the code works only for the
+             * signed-in customer it belongs to. A voucher-type reward code
+             * arrives in voucher_code_confirmed instead, like a voucher; the
+             * server sorts them out either way. See the LOYALTY REWARD block
+             * below and App\Services\FreeDesserts. (The old
+             * free_dessert_menu_item_id chooser field is gone; a stale page
+             * still posting it is ignored.)
+             */
+            'reward_code' => 'nullable|string|max:40',
+
+            /*
              * No 'discount_beneficiary_image' rule any more (September 2026):
              * checkout no longer collects a photo of the ID. A file still
              * posted under that name is ignored — never validated, never
@@ -497,6 +511,111 @@ class OrderController extends Controller
         }
 
         /*
+         * LOYALTY REWARD CODE (Oct 2026) — App\Services\FreeDesserts.
+         *
+         * A reward code can arrive in either box field: reward_code (a
+         * menu-item reward, as the cart puts it) or voucher_code_confirmed (a
+         * voucher-type reward, typed like a voucher). The server does not
+         * trust the client's sorting — it resolves every reward code posted
+         * and decides by the reward's own type:
+         *
+         *  - only the signed-in, qualifying owner's code resolves; a guest's,
+         *    a stranger's and a nonexistent code all get "Invalid voucher
+         *    code." (nothing tells a guesser that a code exists);
+         *  - ONE reward per order, and a voucher-type reward is a discount
+         *    code, so it never rides alongside a voucher (one code per order);
+         *  - a menu-item reward is checked here with the paid lines, so it is
+         *    measured by both stock gates — aggregated with the cart, so a
+         *    paid slice and a free slice of the same cake need two servings.
+         *    It is deliberately NOT in $itemsData or $total: the subtotal, the
+         *    voucher minimum, and the voucher and PWD/Senior discounts below
+         *    are all computed from the paid lines only;
+         *  - a voucher-type reward is priced after the voucher block below,
+         *    like a voucher (branch, minimum, the same never-stack comparison
+         *    with PWD/Senior).
+         *
+         * The reward itself is locked, re-checked and spent inside the order
+         * transaction.
+         */
+        $rewardToSpend = null;
+        $rewardField = 'reward_code';
+        $rewardItemLine = null;
+
+        $postedVoucherCode = trim((string) $request->input('voucher_code_confirmed'));
+        $voucherFieldHoldsReward = \App\Support\RewardCode::looksLike($postedVoucherCode)
+            && ! \App\Models\Voucher::where('code', strtoupper($postedVoucherCode))->exists();
+
+        $rewardCodesPosted = array_filter([
+            'voucher_code_confirmed' => $voucherFieldHoldsReward ? $postedVoucherCode : null,
+            'reward_code'            => trim((string) $request->input('reward_code')) ?: null,
+        ]);
+
+        $rewardsNamed = [];
+
+        foreach ($rewardCodesPosted as $field => $typed) {
+            $named = \App\Services\FreeDesserts::findForCustomer(Auth::guard('customer')->user(), $typed);
+
+            if (! $named) {
+                return back()->withErrors([$field => 'Invalid voucher code.'])->withInput();
+            }
+
+            $rewardsNamed[$named->id] = [$named, $field];
+        }
+
+        if (count($rewardsNamed) > 1) {
+            return back()->withErrors([
+                'reward_code' => 'Only one reward can be used per order. Please remove one of the reward codes and try again.',
+            ])->withInput();
+        }
+
+        if ($rewardsNamed) {
+            [$rewardToSpend, $rewardField] = reset($rewardsNamed);
+
+            if (($rewardError = $rewardToSpend->usabilityError()) !== null) {
+                return back()->withErrors([
+                    $rewardField => $rewardError . ' Your order was not placed — please remove the reward code and try again.',
+                ])->withInput();
+            }
+
+            // Only at the branch that issued it — item and voucher rewards
+            // alike (FreeDessertReward::branchErrorFor). Checked here, before
+            // anything about the item or the discount, so the customer is told
+            // where it CAN be used rather than that something is unavailable.
+            if (($rewardError = $rewardToSpend->branchErrorFor((int) $branchId)) !== null) {
+                return back()->withErrors([$rewardField => $rewardError])->withInput();
+            }
+
+            if ($rewardToSpend->isItemReward()) {
+                $rewardItemLine = \App\Services\FreeDesserts::itemLineFor($rewardToSpend, (int) $branchId);
+
+                if (! $rewardItemLine) {
+                    return back()->withErrors([
+                        $rewardField => 'Your reward (' . $rewardToSpend->description() . ') is not available at this branch right now. '
+                            . 'Your order was not placed — please remove the reward code and try again. The reward stays in Vouchers & Rewards.',
+                    ])->withInput();
+                }
+
+                $rewardStockLine = [
+                    'menu_item' => $rewardItemLine['menu_item'],
+                    'quantity' => 1,
+                    'selected_option_ids' => [],
+                ];
+
+                if ($rewardItemLine['size'] !== null) {
+                    $rewardStockLine['size'] = $rewardItemLine['size'];
+                }
+
+                $stockLines[] = $rewardStockLine;
+            } elseif (! $voucherFieldHoldsReward && $postedVoucherCode !== '') {
+                // A voucher-type reward named in the reward field AND a voucher
+                // in the voucher field: two discount codes on one order.
+                return back()->withErrors([
+                    'voucher_code_confirmed' => 'Only one voucher or reward discount can be used per order. Please remove one and try again.',
+                ])->withInput();
+            }
+        }
+
+        /*
          * Early, unlocked stock gate — purely so the customer is turned back
          * before the discount/voucher work below runs, and so they see EVERY
          * short item at once rather than fixing them one refusal at a time.
@@ -531,7 +650,9 @@ class OrderController extends Controller
          * also mirrored into the two legacy beneficiary columns.
          */
         $discountBeneficiaries = [];
-        $voucherCode = trim((string) $request->input('voucher_code_confirmed'));
+        // A reward code typed in the voucher box is not a voucher: it was
+        // taken by the LOYALTY REWARD block above.
+        $voucherCode = $voucherFieldHoldsReward ? '' : $postedVoucherCode;
         $voucherId = null;
         $voucherClaim = null;
         $discountStatus = 'approved';
@@ -836,6 +957,45 @@ class OrderController extends Controller
             }
         }
 
+        /*
+         * A VOUCHER-TYPE LOYALTY REWARD (Oct 2026), priced exactly like the
+         * voucher above: its branch, its minimum against the paid subtotal,
+         * its discount, and the same never-stack comparison with PWD/Senior
+         * (Order::voucherBeatsCard — the card wins a tie). A reward that
+         * loses is not spent: $rewardToSpend is cleared, so the transaction
+         * below never touches it and the customer keeps it for another day.
+         * It cannot meet a voucher here — the block above refused that.
+         */
+        if ($rewardToSpend !== null && $rewardToSpend->isVoucherReward()) {
+            $rewardError = $rewardToSpend->redemptionErrorFor($total, (int) $branchId);
+
+            if ($rewardError !== null) {
+                return back()->withErrors([$rewardField => $rewardError])->withInput();
+            }
+
+            $rewardDiscountAmount = $rewardToSpend->discountFor($total);
+
+            if (\App\Models\Order::voucherBeatsCard($rewardDiscountAmount, $cardDiscountAmount)) {
+                $discountAmount = $rewardDiscountAmount;
+                $discountType = \App\Models\Order::DISCOUNT_TYPE_REWARD;
+                $voucherId = null;
+                $voucherClaim = null;
+                $discountStatus = 'approved';
+
+                // The card lost: no trace of it on the order (same reason as
+                // the voucher branch above).
+                if ($cardDiscountAmount !== null) {
+                    $discountCardId = null;
+                    $discountBeneficiaryName = null;
+                    $discountBeneficiaryCardNumber = null;
+                    $discountIdImage = null;
+                    $discountBeneficiaries = [];
+                }
+            } else {
+                $rewardToSpend = null;
+            }
+        }
+
         // Round the discount ONCE, then derive the total from that rounded
         // figure. Rounding the discount and the total independently drifted by a
         // centavo whenever the raw discount landed on a half-centavo, so the
@@ -867,7 +1027,9 @@ class OrderController extends Controller
                 $discountBeneficiaries,
                 $voucherId,
                 $voucherClaim,
-                $discountStatus
+                $discountStatus,
+                $rewardToSpend,
+                $rewardItemLine
             ) {
                 /*
                  * AUTHORITATIVE stock gate. Must be the first statement in the
@@ -887,6 +1049,23 @@ class OrderController extends Controller
                     throw new StockUnavailableException($lockedShortfalls);
                 }
 
+                // The loyalty reward, locked FOR UPDATE and re-checked: a
+                // second checkout spending the same code waits here, then
+                // finds it used and rolls back with nothing written.
+                $spentReward = null;
+
+                if ($rewardToSpend !== null) {
+                    $spentReward = \App\Services\FreeDesserts::lockForSpend(
+                        Auth::guard('customer')->user(),
+                        (int) $rewardToSpend->id,
+                        (int) $branchId
+                    );
+
+                    if (! $spentReward) {
+                        throw new \RuntimeException('Your reward code has already been used or has expired. Your order was not placed — please remove the reward code and try again.');
+                    }
+                }
+
                 $order = Order::create([
                     'user_id' => Auth::guard('customer')->id(),
                     'branch_id' => $branchId,
@@ -900,6 +1079,7 @@ class OrderController extends Controller
                     'discount_type' => $discountType,
                     'discount_card_id' => $discountCardId,
                     'voucher_id' => $voucherId,
+                    'reward_code' => $spentReward?->code,
                     'discount_beneficiary_name' => $discountBeneficiaryName,
                     'discount_beneficiary_card_number' => $discountBeneficiaryCardNumber,
                     'discount_id_image' => $discountIdImage,
@@ -955,6 +1135,40 @@ class OrderController extends Controller
                 }
 
                 /*
+                 * A menu-item reward's line: always quantity 1 at 0.00, never
+                 * part of subtotal/total, flagged (is_free_dessert) so staff,
+                 * receipts and the reward rating can tell it apart ("LOYALTY
+                 * REWARD: <item>", OrderItem::displayName). Deducted at
+                 * completion like any line, and its size recipe frozen like
+                 * any sized line. A voucher-type reward has no line: its
+                 * discount is already on the order above.
+                 */
+                if ($spentReward !== null) {
+                    $rewardLine = null;
+
+                    if ($rewardItemLine !== null) {
+                        $rewardLine = OrderItem::create([
+                            'order_id' => $order->id,
+                            'menu_item_id' => $rewardItemLine['menu_item']->id,
+                            'menu_item_size_id' => $rewardItemLine['size']?->id,
+                            'item_name' => $rewardItemLine['menu_item']->name,
+                            'size_name' => $rewardItemLine['size']?->name,
+                            'quantity' => 1,
+                            'item_price' => 0,
+                            'subtotal' => 0,
+                            'is_free_dessert' => true,
+                        ]);
+
+                        if ($rewardItemLine['size'] !== null) {
+                            app(InventoryDeductionService::class)
+                                ->freezeSizeRecipe($rewardLine, $rewardItemLine['menu_item'], $rewardItemLine['size']);
+                        }
+                    }
+
+                    \App\Services\FreeDesserts::markUsed($spentReward, $order, $rewardLine);
+                }
+
+                /*
                  * Spend the voucher, inside the same transaction that creates
                  * the order — if anything above rolls back, it stays unspent.
                  *
@@ -971,7 +1185,7 @@ class OrderController extends Controller
             });
 
             // Clear cart
-            session()->forget(['cart', 'voucher_code']);
+            session()->forget(['cart', 'voucher_code', 'apply_reward_code']);
 
             // The order transaction has committed by this point, so the counter
             // can safely be told about it. Manual/walk-in orders never reach
@@ -1497,8 +1711,16 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
                 session('branch_id') ?: $currentOrders->first()?->branch_id
             );
 
+            // One-time "play while you wait" modal; see App\Support\SpinPrompt.
+            $spinPrompt = \App\Support\SpinPrompt::forOrders($currentOrders);
+
+            // Dine-In guests: "Want a stamp for this order?" card, inline on
+            // the page (never a modal, so the Spin prompt is not blocked).
+            // See App\Support\DineInJoin.
+            $joinCardOrder = \App\Support\DineInJoin::cardOrder($currentOrders);
+
             return view('customer.orders', compact(
-                'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'pollableOrderIds', 'storeContact'
+                'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt', 'joinCardOrder'
             ));
         }
 
@@ -1515,10 +1737,18 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
             'discountCard',
             'voucher',
         ])->withCount('items')
+            // Free dessert line on the order (Oct 2026): drives the separate
+            // "Rate your reward" control.
+            ->withExists(['items as has_free_dessert' => fn ($q) => $q->where('is_free_dessert', true)])
             ->where('user_id', Auth::guard('customer')->id())
             ->whereIn('status', ['completed', 'cancelled'])
             ->latest()
             ->get();
+
+        $dessertRatings = \App\Models\FreeDessertRating::whereIn(
+            'order_id',
+            $orderHistory->where('has_free_dessert', true)->pluck('id')
+        )->get()->keyBy('order_id');
 
         /*
          * Keyed on order_id, not user_id. A rating belongs to an ORDER — that
@@ -1543,8 +1773,11 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
                 ?: Auth::guard('customer')->user()?->branch_id
         );
 
+        // One-time "play while you wait" modal; see App\Support\SpinPrompt.
+        $spinPrompt = \App\Support\SpinPrompt::forOrders($currentOrders);
+
         return view('customer.orders', compact(
-            'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'pollableOrderIds', 'storeContact'
+            'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'dessertRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt'
         ));
     }
 
@@ -1590,6 +1823,64 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
         }
 
         return redirect()->back()->with('rating_success', 'Thanks for rating your meal!');
+    }
+
+    /**
+     * The customer's separate rating + comment for the FREE DESSERT on a
+     * completed order (Oct 2026). Stored in free_dessert_ratings, never in
+     * order_ratings, so the meal and the dessert are judged independently.
+     * Nothing is awarded for it.
+     */
+    public function submitDessertRating(Request $request, int $id)
+    {
+        $validated = $request->validate([
+            'rating'  => 'required|integer|min:1|max:5',
+            'comment' => 'nullable|string|max:500',
+        ], [
+            'rating.required' => 'Please choose a rating for your reward.',
+            'comment.max'     => 'Please keep your comment under 500 characters.',
+        ]);
+
+        $check = \App\Services\CustomerOrderAccess::resolveDessertRatableOrder($id);
+
+        if (!$check['ok']) {
+            if (($check['status'] ?? 422) === 404) {
+                abort(404);
+            }
+
+            if ($this->wantsJson($request)) {
+                return response()->json(['ok' => false, 'message' => $check['error']], $check['status'] ?? 422);
+            }
+
+            return redirect()->back()->withErrors(['dessert_rating' => $check['error']]);
+        }
+
+        $comment = trim((string) ($validated['comment'] ?? ''));
+
+        try {
+            \App\Models\FreeDessertRating::create([
+                'order_id'      => $check['order']->id,
+                'order_item_id' => $check['line']->id,
+                'user_id'       => Auth::guard('customer')->id(),
+                'rating'        => $validated['rating'],
+                'comment'       => $comment === '' ? null : $comment,
+            ]);
+        } catch (\Illuminate\Database\QueryException $e) {
+            // A double submit lost to UNIQUE(order_id): already rated, not a 500.
+            if ((int) ($e->errorInfo[1] ?? 0) !== 1062) {
+                throw $e;
+            }
+
+            return $this->wantsJson($request)
+                ? response()->json(['ok' => false, 'message' => 'You have already rated this reward.'], 409)
+                : redirect()->back()->withErrors(['dessert_rating' => 'You have already rated this reward.']);
+        }
+
+        if ($this->wantsJson($request)) {
+            return response()->json(['ok' => true, 'message' => 'Thanks for rating your reward!']);
+        }
+
+        return redirect()->back()->with('rating_success', 'Thanks for rating your reward!');
     }
 
     /**

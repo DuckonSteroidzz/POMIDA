@@ -103,7 +103,7 @@
     .voucher-page-gap { color: #C4B6AE; padding: 0 0.15rem; }
 </style>
 
-<p class="page-title">{{ $isAdmin ? 'Vouchers & Game' : 'Vouchers' }}</p>
+<p class="page-title">{{ $isAdmin ? 'Vouchers & Spin Wheel' : 'Vouchers' }}</p>
 
 @unless($canAuthorVouchers)
 <p style="font-size:0.82rem;color:#888;margin:-0.5rem 0 1rem;">
@@ -355,7 +355,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                     <td style="padding:0.6rem;text-align:center;">
                         @if($voucher->expires_at)
                         {{ $voucher->expires_at->format('M d, Y') }}
-                        @if($voucher->expires_at->isPast())
+                        @if($voucher->isExpired())
                         <span style="background:#C0392B;color:white;padding:0.1rem 0.4rem;border-radius:10px;font-size:0.65rem;font-weight:600;margin-left:0.3rem;">Expired</span>
                         @endif
                         @else

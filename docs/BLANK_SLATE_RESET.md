@@ -164,6 +164,13 @@ DELETE FROM table_sessions;
 DELETE FROM table_access_codes;
 DELETE FROM notifications;
 
+--    Loyalty (Oct 2026). free_dessert_ratings already cascaded with the
+--    orders; the rewards only SET NULL their order, and the ledger is keyed
+--    by user, so both survive step 1. Clear them with the order history.
+DELETE FROM free_dessert_rewards;
+DELETE FROM loyalty_awards;
+UPDATE users SET bonus_points = 0;
+
 -- 3. Voucher claims. Keep or clear the `vouchers` rows per §3.
 DELETE FROM user_vouchers;
 DELETE FROM discount_cards;

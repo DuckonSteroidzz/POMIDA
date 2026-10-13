@@ -21,6 +21,9 @@ class OrderItem extends Model
         'item_price',
         'quantity',
         'subtotal',
+        // The one line given free from the stamp card (Oct 2026); its
+        // item_price and subtotal are 0. See App\Services\FreeDesserts.
+        'is_free_dessert',
         'special_instructions',
         'ingredient_cost',
         'ingredient_cost_estimated',
@@ -29,6 +32,7 @@ class OrderItem extends Model
     protected $casts = [
         'item_price' => 'decimal:2',
         'subtotal' => 'decimal:2',
+        'is_free_dessert' => 'boolean',
         'ingredient_cost' => 'decimal:2',
         // True when ingredient_cost was not recorded at the time of sale but
         // frozen from the recipe when the menu item was permanently deleted.
@@ -106,13 +110,22 @@ class OrderItem extends Model
      * The name every receipt and order list prints: "Iced Latte (Large)" for
      * a sized line, the plain item_name for any other — so an unsized line
      * reads exactly as it always has. Built from the two snapshots only.
+     *
+     * The ₱0 loyalty reward line (Oct 2026; is_free_dessert, named from when
+     * the only reward was a dessert) reads "LOYALTY REWARD: <item>", so the
+     * staff board, both receipts, the completed-orders list, its print and
+     * its CSV — all of which print this — say so without each copying the rule.
      */
     public function displayName(): string
     {
-        return $this->size_name !== null
+        $name = $this->size_name !== null
             ? $this->item_name . ' (' . $this->size_name . ')'
             : (string) $this->item_name;
+
+        return $this->is_free_dessert ? self::REWARD_LABEL . ': ' . $name : $name;
     }
+
+    public const REWARD_LABEL = 'LOYALTY REWARD';
 
     /**
      * The size recipe frozen when this line was placed — what completion

@@ -108,13 +108,16 @@
     <header class="sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @include('customer.partials.header-back', ['href' => (isset($item) && $item->category_id) ? route('customer.items', $item->category_id) : route('customer.menu'), 'label' => (isset($item) ? $item->category?->name : null) ?? 'Menu'])
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 @include('customer.partials.desktop-nav')
             </div>
@@ -147,9 +150,14 @@
 
         {{-- Breadcrumb --}}
         <div class="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-2 text-xs font-semibold text-peach-deep/55">
-                <a href="{{ route('customer.menu') }}" class="no-underline transition hover:text-peach-red">Menu</a>
-                <i class="bi bi-chevron-right shrink-0 text-[0.6rem]"></i>
+            <div class="flex min-w-0 items-center gap-2 text-sm font-semibold text-peach-deep/55">
+                <a href="{{ route('customer.menu') }}" class="-mx-2 -my-3.5 inline-block px-2 py-3.5 no-underline transition hover:text-peach-red">Menu</a>
+                <i class="bi bi-chevron-right shrink-0 text-[0.8125rem]"></i>
+                {{-- The category level, so the trail matches the way back. --}}
+                @if(isset($item) && $item->category)
+                <a href="{{ route('customer.items', $item->category_id) }}" class="-mx-2 -my-3.5 inline-block shrink-0 px-2 py-3.5 no-underline transition hover:text-peach-red">{{ $item->category->name }}</a>
+                <i class="bi bi-chevron-right shrink-0 text-[0.8125rem]"></i>
+                @endif
                 <span class="truncate text-peach-deep">{{ isset($item) ? $item->name : 'Item' }}</span>
                 </div>
             </div>
@@ -295,7 +303,7 @@
                                 <h2 class="font-display text-lg font-bold text-peach-deep">Choose a size</h2>
                                 <p class="text-xs text-peach-deep/50">Each size has its own price.</p>
                             </div>
-                            <span class="shrink-0 rounded-full border border-peach-soft px-3 py-1 text-[0.68rem] font-bold text-peach-red">Required</span>
+                            <span class="shrink-0 rounded-full border border-peach-soft px-3 py-1 text-xs font-bold text-peach-red">Required</span>
                         </div>
 
                         <div class="grid gap-2.5 sm:grid-cols-2">
@@ -311,9 +319,9 @@
                                     <span class="min-w-0 flex-1">
                                         <span class="block truncate text-sm font-semibold text-peach-deep">{{ $choice['name'] }}</span>
                                         @if(! $choice['orderable'])
-                                        <span class="block text-[0.66rem] font-black uppercase tracking-wide text-peach-red">{{ $choice['label'] }}</span>
+                                        <span class="block text-[0.8125rem] font-black uppercase tracking-wide text-peach-red">{{ $choice['label'] }}</span>
                                         @elseif($choice['low_stock'])
-                                        <span class="block text-[0.66rem] font-bold text-amber-600">{{ $choice['remaining'] }} stocks left — order soon!</span>
+                                        <span class="block text-xs font-bold text-amber-600">{{ $choice['remaining'] }} stocks left — order soon!</span>
                                         @endif
                                     </span>
                                     <span class="shrink-0 text-xs font-bold text-peach-red">₱{{ number_format($choice['price'], 2) }}</span>
@@ -341,7 +349,7 @@
                                 <h2 class="font-display text-lg font-bold text-peach-deep">Customize</h2>
                                 <p class="text-xs text-peach-deep/50">Optional add-ons for your order.</p>
                             </div>
-                            <span class="shrink-0 rounded-full border border-peach-soft px-3 py-1 text-[0.68rem] font-bold text-peach-red">Optional</span>
+                            <span class="shrink-0 rounded-full border border-peach-soft px-3 py-1 text-xs font-bold text-peach-red">Optional</span>
                         </div>
 
                         <div class="grid gap-2.5 sm:grid-cols-2">
@@ -350,7 +358,7 @@
                                 <input type="checkbox" name="options[]" value="{{ $option->id }}" id="option{{ $option->id }}"
                                     class="option-input sr-only" data-price="{{ $option->additional_price }}">
                                 <label for="option{{ $option->id }}" class="option-chip option-chip-hover option-chip-label">
-                                    <span class="option-tick grid h-5 w-5 shrink-0 place-items-center rounded-md border border-peach-soft bg-peach-cream text-[0.65rem] transition">
+                                    <span class="option-tick grid h-5 w-5 shrink-0 place-items-center rounded-md border border-peach-soft bg-peach-cream text-[0.8125rem] transition">
                                         <i class="bi bi-check-lg opacity-0 transition"></i>
                                     </span>
                                     <span class="min-w-0 flex-1 truncate text-sm font-semibold text-peach-deep">{{ $option->name }}</span>
@@ -370,18 +378,18 @@
                     <section class="card-surface hidden p-4 sm:p-6 md:block">
                         <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
                             <div class="min-w-0">
-                                <p class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45">Total</p>
+                                <p class="text-[0.8125rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45">Total</p>
                                 <p class="font-display text-2xl font-black text-peach-deep" id="totalPriceDesktop">
                                     ₱{{ number_format($itemUnitPrice, 2) }}
                                 </p>
                             </div>
                             <div class="flex shrink-0 items-center gap-2.5">
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
-                                    <button type="button" onclick="changeQuantity(-1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                                    <button type="button" onclick="changeQuantity(-1)" class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
                                     <input type="number" id="quantityDesktop" inputmode="numeric" min="1" max="99" value="1"
                                         aria-label="Quantity"
-                                        class="qty-input w-10 rounded-full border-0 bg-transparent px-1 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
-                                    <button type="button" onclick="changeQuantity(1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
+                                        class="qty-input h-11 w-11 rounded-full border-0 bg-transparent px-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
+                                    <button type="button" onclick="changeQuantity(1)" class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                                 </div>
                                 <button type="submit" @disabled($itemOutOfStock)
                                     class="inline-flex items-center gap-2 rounded-full bg-peach-red px-6 py-3 text-sm font-bold text-white transition hover:bg-peach-deep disabled:cursor-not-allowed disabled:bg-peach-deep/30 disabled:hover:bg-peach-deep/30">
@@ -394,21 +402,25 @@
                 </div>
             </div>
 
-            {{-- ============ MOBILE STICKY ACTION BAR ============ --}}
-            <div class="fixed inset-x-0 bottom-[3.75rem] z-40 border-t border-peach-soft bg-white/95 px-4 py-3 backdrop-blur md:hidden">
+            {{-- ============ MOBILE STICKY ACTION BAR ============
+                 Sits flush on top of the shared bottom nav: 4rem is the nav's
+                 height (64.5px measured at 360 and 390 wide), plus the same
+                 safe-area inset the nav pads itself with. Re-measure if the
+                 nav's height ever changes. --}}
+            <div class="fixed inset-x-0 bottom-[calc(4rem+env(safe-area-inset-bottom))] z-40 border-t border-peach-soft bg-white/95 px-4 py-3 backdrop-blur md:hidden">
                 <div class="mx-auto flex max-w-md items-center gap-3">
                     <div class="min-w-0">
-                        <p class="text-[0.6rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Total</p>
+                        <p class="text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Total</p>
                         <p class="font-display text-lg font-black leading-tight text-peach-deep" id="totalPriceMobile">
                             ₱{{ number_format($itemUnitPrice, 2) }}
                         </p>
                     </div>
                     <div class="ml-auto flex shrink-0 items-center rounded-full border border-peach-soft bg-white p-1">
-                        <button type="button" onclick="changeQuantity(-1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
+                        <button type="button" onclick="changeQuantity(-1)" class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
                         <input type="number" id="quantityMobile" inputmode="numeric" min="1" max="99" value="1"
                             aria-label="Quantity"
-                            class="qty-input w-9 rounded-full border-0 bg-transparent px-0.5 py-1 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
-                        <button type="button" onclick="changeQuantity(1)" class="grid h-10 w-10 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
+                            class="qty-input h-11 w-11 rounded-full border-0 bg-transparent px-0.5 text-center text-sm font-bold text-peach-deep outline-none focus:bg-peach-soft/60">
+                        <button type="button" onclick="changeQuantity(1)" class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Increase quantity">+</button>
                     </div>
                     <button type="submit" @disabled($itemOutOfStock)
                         class="shrink-0 inline-flex items-center gap-2 rounded-full bg-peach-red px-5 py-3 text-sm font-bold text-white transition hover:bg-peach-deep disabled:cursor-not-allowed disabled:bg-peach-deep/30 disabled:hover:bg-peach-deep/30">
@@ -420,26 +432,11 @@
         </form>
     </main>
 
-    {{-- ================= BOTTOM NAV (mobile) ================= --}}
-    <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-peach-soft bg-white/95 backdrop-blur md:hidden">
-        <div class="mx-auto grid max-w-md {{ $orderType === 'dine_in' ? 'grid-cols-4' : 'grid-cols-3' }}">
-            <a href="{{ route('customer.orders') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-receipt text-lg"></i><span>Orders</span>
-            </a>
-            <a href="{{ route('customer.menu') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-red no-underline">
-                <i class="bi bi-grid text-lg"></i><span>Menu</span>
-            </a>
-            <a href="{{ route('customer.more') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-three-dots text-lg"></i><span>More</span>
-            </a>
-            @if($orderType === 'dine_in')
-            <a href="#" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-question-circle text-lg"></i>
-                <span>Help</span>
-            </a>
-            @endif
-        </div>
-    </nav>
+    {{-- ================= BOTTOM NAV (mobile) =================
+         The shared bar, so the tabs keep the same order on every page.
+         This page used to carry its own copy (Orders · Menu · More, plus a
+         dead Help tab for dine-in) with the tabs in different places. --}}
+    @include('customer.partials.navbar')
 
     <script>
         // Live total preview only — the server still computes the authoritative price.

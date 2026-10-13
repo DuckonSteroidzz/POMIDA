@@ -102,7 +102,13 @@ class GameSwitchSingleRowTest extends TestCase
      */
     private function whatEveryReaderSays(): array
     {
-        $label = $this->actingAs($this->owner(), 'admin')->get('/admin/vouchers')->assertOk()->getContent();
+        $html = $this->actingAs($this->owner(), 'admin')->get('/admin/vouchers')->assertOk()->getContent();
+
+        // The Spin Wheel card only: since Oct 2026 the Streak Calendar card
+        // under it has a button with the same ✓ Enabled / ✗ Disabled labels.
+        $start = strpos($html, 'Spin Wheel Game');
+        $this->assertNotFalse($start, 'the Spin Wheel card is missing from the Vouchers page');
+        $label = substr($html, $start, strpos($html, '</form>', $start) - $start);
 
         $order = Order::create([
             'order_number'   => 'GSR-' . substr(uniqid(), -8),

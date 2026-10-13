@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Vouchers - Peachy</title>
+    <title>Vouchers &amp; Rewards - Peachy</title>
 
     @include('partials.icon-stability')
     <link href="/vendor/bootstrap-icons.css" rel="stylesheet">
@@ -106,14 +106,17 @@
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
 
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'More'])
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+    
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 @include('customer.partials.desktop-nav')
             </div>
@@ -126,12 +129,19 @@
         {{-- Page title --}}
         <div class="rise rise-1 mb-5 grid gap-1 sm:mb-6">
             <h1 class="font-display text-2xl font-black leading-tight tracking-tight text-peach-deep sm:text-3xl">
-                My Vouchers
+                Vouchers &amp; Rewards
             </h1>
             <p class="mt-1 text-sm text-peach-deep/55">
                 Every slice of savings, kept right here. Tap a code to copy it at checkout.
             </p>
         </div>
+
+        @if(session('error'))
+        <div class="mb-4 flex items-start gap-2 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700" role="alert">
+            <i class="bi bi-exclamation-circle mt-0.5 shrink-0" aria-hidden="true"></i>
+            <span>{{ session('error') }}</span>
+        </div>
+        @endif
 
         {{-- Points hint --}}
         <div class="rise rise-2 mb-5 overflow-hidden rounded-2xl border border-peach-soft bg-white p-4 shadow-[0_1px_2px_rgb(139_26_26_/_0.04),0_8px_24px_-18px_rgb(139_26_26_/_0.35)] sm:p-5">
@@ -141,15 +151,149 @@
                 </span>
                 <div class="min-w-0 flex-1">
                     <p class="font-display text-lg font-black tracking-tight text-peach-deep sm:text-xl">
-                        You have <span class="text-peach-red">{{ optional(Auth::guard('customer')->user())->points ?? 0 }}</span> pts
+                        You have <span class="text-peach-red">{{ Auth::guard('customer')->user()?->wheelPoints() ?? 0 }}</span> pts
                     </p>
                     <p class="text-xs font-medium text-peach-deep/60">Spin the wheel to earn more vouchers — luck loves a sweet tooth.</p>
                 </div>
-                <a href="{{ route('customer.game') }}" class="inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                <a href="{{ route('customer.game') }}" class="inline-flex min-h-11 items-center gap-2 rounded-full bg-peach-red px-4 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                     <i class="bi bi-dice-5"></i> Spin
                 </a>
             </div>
         </div>
+
+        {{-- ================= REWARDS (Oct 2026) =================
+             Every stamp card reward with its own code, FROM EVERY BRANCH
+             (App\Services\FreeDesserts::rewardsFor), each labeled with the
+             branch that issued it — the only branch it can be used at:
+             ready ones first, with Copy and "Use now"; then any on an open
+             order; then used and expired. Listed even while the owner's
+             switch is off (only the usable ones then), because a reward
+             already earned can always be used. "Use now" posts
+             customer.rewards.use, which hands the code to the cart's code
+             box — the same path as typing it — and is offered only when the
+             customer is ordering from the reward's branch ($rewardBranch);
+             otherwise the card says where to use it. The "You earned a
+             reward!" pop-up lands on #rewards. --}}
+        @php $loyaltyRewards = $loyaltyRewards ?? collect(); @endphp
+        @if($loyaltyRewards->isNotEmpty() || ($freeDessert['enabled'] ?? false))
+        <section id="rewards" class="rise rise-2 mb-6 scroll-mt-24" aria-labelledby="rewardsTitle" data-testid="loyalty-rewards">
+            <h2 id="rewardsTitle" class="mb-3 font-display text-xl font-black tracking-tight text-peach-deep">My rewards</h2>
+
+            @if($loyaltyRewards->isEmpty())
+                <p class="card-surface p-4 text-sm font-medium text-peach-deep/70" data-testid="loyalty-rewards-empty">
+                    No rewards yet. Fill your stamp card below to earn one.
+                </p>
+            @else
+                <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="list">
+                    @foreach($loyaltyRewards as $reward)
+                        @php
+                            $rewardKey = $reward->statusKey();
+                            $rewardReady = $rewardKey === \App\Models\FreeDessertReward::KEY_READY;
+                            $rewardUsableHere = $reward->branchErrorFor(isset($rewardBranch) ? $rewardBranch?->id : null) === null;
+                            $rewardBadge = match ($rewardKey) {
+                                \App\Models\FreeDessertReward::KEY_READY    => 'bg-peach-red text-white',
+                                \App\Models\FreeDessertReward::KEY_ON_ORDER => 'bg-amber-100 text-amber-800',
+                                \App\Models\FreeDessertReward::KEY_NOT_SET  => 'bg-peach-sand text-peach-deep/70',
+                                default                                     => 'bg-peach-deep/10 text-peach-deep/60',
+                            };
+                        @endphp
+                        <li class="flex flex-col overflow-hidden rounded-[1.25rem] bg-white shadow-[0_1px_2px_rgb(139_26_26_/_0.04),0_18px_40px_-26px_rgb(139_26_26_/_0.40)] {{ $rewardReady ? 'ring-1 ring-peach-red/30' : 'opacity-80' }}"
+                            data-testid="loyalty-reward" data-reward-status="{{ $rewardKey }}">
+                            <div class="h-1.5 w-full {{ $rewardReady ? 'bg-gradient-to-r from-peach-red via-peach-blush to-peach' : 'bg-peach-deep/15' }}"></div>
+
+                            <div class="flex flex-1 flex-col gap-2 p-4 sm:p-5">
+                                <div class="flex flex-wrap items-start justify-between gap-2">
+                                    <div class="flex min-w-0 items-center gap-3">
+                                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-2xl text-xl {{ $rewardReady ? 'bg-gradient-to-br from-peach-red to-peach-blush text-white' : 'bg-peach-soft text-peach-red' }}" aria-hidden="true">
+                                            <i class="bi {{ $reward->isVoucherReward() ? 'bi-ticket-perforated-fill' : 'bi-gift-fill' }}"></i>
+                                        </span>
+                                        <div class="min-w-0">
+                                            <p class="text-xs font-black uppercase tracking-[0.14em] text-peach-red/70">Loyalty reward</p>
+                                            <p class="font-display text-lg font-black leading-snug text-peach-deep" data-testid="loyalty-reward-what">{{ $reward->description() }}</p>
+                                        </div>
+                                    </div>
+                                    <span class="inline-flex shrink-0 items-center rounded-full px-2.5 py-1 text-xs font-black uppercase tracking-wider {{ $rewardBadge }}" data-testid="loyalty-reward-status">
+                                        {{ $reward->statusLabel() }}
+                                    </span>
+                                </div>
+
+                                <p class="inline-flex items-center gap-1.5 text-sm font-bold text-peach-deep/80" data-testid="loyalty-reward-branch">
+                                    <i class="bi bi-shop text-peach-red" aria-hidden="true"></i>
+                                    {{ $reward->branch_id === null ? 'Any branch' : 'Only at ' . $reward->branchName() }}
+                                </p>
+
+                                <p class="text-sm text-peach-deep/70" data-testid="loyalty-reward-expiry">
+                                    @switch($rewardKey)
+                                        @case(\App\Models\FreeDessertReward::KEY_READY)
+                                            @if($reward->expires_at)
+                                                Use by {{ \App\Support\ShopDay::format($reward->expires_at, 'M j, Y') }}.
+                                            @else
+                                                It does not expire.
+                                            @endif
+                                            @break
+                                        @case(\App\Models\FreeDessertReward::KEY_ON_ORDER)
+                                            On order {{ $reward->order?->order_number }}. If that order is cancelled, the reward comes back with the same code.
+                                            @break
+                                        @case(\App\Models\FreeDessertReward::KEY_USED)
+                                            Used{{ $reward->used_at ? ' on ' . \App\Support\ShopDay::format($reward->used_at, 'M j, Y') : '' }}{{ $reward->order ? ', order ' . $reward->order->order_number : '' }}.
+                                            @break
+                                        @case(\App\Models\FreeDessertReward::KEY_EXPIRED)
+                                            Expired {{ $reward->expires_at ? \App\Support\ShopDay::format($reward->expires_at, 'M j, Y') : '' }}.
+                                            @break
+                                        @default
+                                            We are still setting this reward up. It will be ready to use soon.
+                                    @endswitch
+                                </p>
+                            </div>
+
+                            <div class="px-5"><div class="perf-line"></div></div>
+
+                            <div class="grid gap-3 bg-peach-cream/70 px-4 py-4 sm:px-5">
+                                <div class="min-w-0">
+                                    <p class="text-xs font-black uppercase tracking-[0.18em] text-peach-deep/40">Your reward code</p>
+                                    <p class="font-display text-2xl font-black tracking-[0.12em] [overflow-wrap:anywhere] {{ $rewardReady ? 'text-peach-red' : 'text-peach-deep/40 line-through' }}" data-testid="loyalty-reward-code">{{ $reward->displayCode() }}</p>
+                                    @if($rewardReady)
+                                        <p class="mt-0.5 text-xs font-semibold text-peach-deep/55">Works once, on your account only.</p>
+                                    @endif
+                                </div>
+
+                                @if($rewardReady)
+                                    <div class="grid grid-cols-2 gap-2">
+                                        <button type="button" class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-full border border-peach-soft bg-white px-3 py-2 text-sm font-bold text-peach-red transition hover:bg-peach-soft active:scale-95"
+                                            onclick="copyVoucher(@js($reward->displayCode()), this)">
+                                            <i class="bi bi-clipboard" aria-hidden="true"></i> Copy
+                                        </button>
+                                        @if($rewardUsableHere)
+                                        <form method="POST" action="{{ route('customer.rewards.use', $reward->id) }}" class="contents">
+                                            @csrf
+                                            <button type="submit" class="inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-full bg-peach-red px-3 py-2 text-sm font-bold text-white transition hover:bg-peach-deep active:scale-95" data-testid="loyalty-reward-use">
+                                                <i class="bi bi-bag-check" aria-hidden="true"></i> Use now
+                                            </button>
+                                        </form>
+                                        @else
+                                        <p class="flex min-h-11 items-center justify-center rounded-full bg-peach-soft/70 px-3 py-2 text-center text-xs font-bold text-peach-deep/75" data-testid="loyalty-reward-elsewhere">
+                                            Order from {{ $reward->branchName() }} to use it
+                                        </p>
+                                        @endif
+                                    </div>
+                                @endif
+                            </div>
+                        </li>
+                    @endforeach
+                </ul>
+                <p class="mt-2 text-xs text-peach-deep/60">Tap <strong>Use now</strong>, or type the code in the voucher box at checkout. One reward per order.</p>
+            @endif
+        </section>
+        @endif
+
+        {{-- The stamp card: the same partial as the Account page. --}}
+        @if($freeDessert['enabled'] ?? false)
+        <div class="rise rise-2 mb-5">
+            @include('customer.partials.free-dessert-stamp-card', ['rewardListHere' => true])
+        </div>
+        @endif
+
+        <h2 class="mb-3 font-display text-xl font-black tracking-tight text-peach-deep">My vouchers</h2>
 
         @if(isset($userVouchers) && count($userVouchers) > 0)
         {{-- Voucher grid --}}
@@ -210,7 +354,7 @@
                         default         => ['bi-slash-circle', 'Unavailable', 'bg-peach-deep/10 text-peach-deep/55'],
                     };
                 @endphp
-                <span class="absolute right-3 top-4 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[0.6rem] font-black uppercase tracking-wider {{ $badge[2] }}">
+                <span class="absolute right-3 top-4 inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[0.8125rem] font-black uppercase tracking-wider {{ $badge[2] }}">
                     <i class="bi {{ $badge[0] }}"></i> {{ $badge[1] }}
                 </span>
 
@@ -222,15 +366,15 @@
                             {{ $iconEmoji }}
                         </span>
                         <div class="min-w-0">
-                            <p class="font-display text-2xl font-black leading-none tracking-tight text-peach-deep sm:text-[1.7rem]">{{ $discountText }}</p>
-                            <p class="mt-1 text-[0.7rem] font-bold uppercase tracking-[0.14em] text-peach-red/70">Peachy Voucher</p>
+                            <p class="font-display text-2xl font-black leading-none tracking-tight text-peach-deep sm:text-[1.875rem]">{{ $discountText }}</p>
+                            <p class="mt-1 text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-red/70">Peachy Voucher</p>
                         </div>
                     </div>
 
                     <p class="text-sm font-medium leading-snug text-peach-deep/70">{{ $voucher->description ?? 'Peachy Voucher' }}</p>
 
                     {{-- Meta lines with dotted leaders --}}
-                    <div class="mt-auto space-y-2 pt-1 text-[0.78rem]">
+                    <div class="mt-auto space-y-2 pt-1 text-[0.875rem]">
                         <div class="flex items-baseline gap-2">
                             <span class="font-bold text-peach-deep/45">Min. order</span>
                             <span class="leader"></span>
@@ -253,7 +397,7 @@
                                 Now
                                 @endif
                                 @if($voucher->expires_at)
-                                – {{ $voucher->expires_at->format('M d, Y') }}
+                                – {{ \App\Support\ShopDay::formatExpiry($voucher->expires_at) }}
                                 @else
                                 – <span class="text-green-600">No expiry</span>
                                 @endif
@@ -265,7 +409,7 @@
                          voucher. Without it the card said "Soon" or nothing at
                          all, and the refusal only surfaced at the cart. --}}
                     @if($blockedBecause && !$isUsed)
-                    <p class="mt-1 flex items-start gap-1.5 rounded-xl bg-peach-soft/60 px-3 py-2 text-[0.72rem] font-semibold leading-snug text-peach-deep/70">
+                    <p class="mt-1 flex items-start gap-1.5 rounded-xl bg-peach-soft/60 px-3 py-2 text-[0.875rem] font-semibold leading-snug text-peach-deep/70">
                         <i class="bi bi-info-circle mt-0.5 shrink-0"></i>
                         <span>{{ $blockedBecause }}</span>
                     </p>
@@ -297,7 +441,7 @@
                 @endphp
                 <div class="flex items-center justify-between gap-3 bg-peach-cream/70 px-5 py-4">
                     <div class="min-w-0">
-                        <p class="text-[0.58rem] font-black uppercase tracking-[0.18em] text-peach-deep/40">
+                        <p class="text-[0.8125rem] font-black uppercase tracking-[0.18em] text-peach-deep/40">
                             {{ $uv->claim_code ? 'Your claim code' : 'Code' }}
                         </p>
                         <span class="block truncate font-display text-base font-black tracking-[0.18em] text-peach-red
@@ -305,7 +449,7 @@
                             {{ $displayCode }}
                         </span>
                         @if($uv->claim_code && !$isUsed)
-                        <p class="mt-0.5 text-[0.62rem] font-semibold leading-snug text-peach-deep/45">
+                        <p class="mt-0.5 text-xs font-semibold leading-snug text-peach-deep/45">
                             Anyone can use this code once — you can pass it on.
                         </p>
                         @endif
@@ -313,7 +457,7 @@
                     {{-- Copy is offered only when the server would actually
                          accept the code right now. --}}
                     @if($isReady)
-                    <button class="inline-flex shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-peach-red px-3.5 py-2 text-xs font-bold text-white no-underline transition hover:bg-peach-deep active:scale-95"
+                    <button class="inline-flex min-h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-full bg-peach-red px-4 py-2 text-sm font-bold text-white no-underline transition hover:bg-peach-deep active:scale-95"
                         onclick="copyVoucher('{{ $displayCode }}', this)">
                         <i class="bi bi-clipboard"></i> Copy
                     </button>
@@ -341,35 +485,10 @@
         @endif
     </main>
 
-    {{-- ================= BOTTOM NAV (mobile) ================= --}}
-    <nav class="fixed inset-x-0 bottom-0 z-40 border-t border-peach-soft bg-white/95 backdrop-blur md:hidden">
-        <div class="mx-auto grid max-w-md grid-cols-4">
-
-            <a href="{{ route('customer.orders') }}"
-               class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-receipt text-lg"></i>
-                <span>Orders</span>
-            </a>
-
-            <a href="{{ route('customer.menu') }}"
-               class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-grid text-lg"></i>
-                <span>Menu</span>
-            </a>
-
-            <a href="{{ route('customer.game') }}"
-               class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-dice-5 text-lg"></i>
-                <span>Spin &amp; Win</span>
-            </a>
-
-            <a href="{{ route('customer.more') }}"
-               class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-red no-underline">
-                <i class="bi bi-three-dots text-lg"></i>
-                <span>More</span>
-            </a>
-        </div>
-    </nav>
+    {{-- ================= BOTTOM NAV (mobile) =================
+         The shared bar, so the tabs keep the same order on every page
+         (More is lit: Vouchers & Rewards lives under More). --}}
+    @include('customer.partials.navbar')
 
     <script>
         function copyVoucher(code, btn) {

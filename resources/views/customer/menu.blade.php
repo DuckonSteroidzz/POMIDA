@@ -45,13 +45,16 @@
     <header class="sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @isset($items) @include('customer.partials.header-back', ['href' => route('customer.menu'), 'label' => 'Menu']) @endisset
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 @include('customer.partials.desktop-nav')
             </div>
@@ -86,6 +89,37 @@
                     Cancel
                 </button>
             </div>
+
+            {{-- Category jump strip — category (items) view only. It lives in
+                 the sticky header so a customer deep in a long list can switch
+                 category in one tap instead of going back to the grid. Same
+                 list, same order as the Main Menu grid (see showItems()). --}}
+            @isset($items)
+            @if(isset($categories) && $categories->count() > 1)
+            <nav data-category-jump aria-label="Menu categories"
+                 class="no-scrollbar relative -mx-4 flex gap-2 overflow-x-auto px-4 pb-3 sm:mx-0 sm:px-0 sm:pb-4">
+                @foreach($categories as $jumpCategory)
+                    @php $isCurrentCategory = isset($category) && (int) $category->id === (int) $jumpCategory->id; @endphp
+                    <a href="{{ route('customer.items', $jumpCategory->id) }}"
+                       @if($isCurrentCategory) aria-current="page" @endif
+                       class="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap rounded-full border-2 px-4 text-sm font-bold no-underline transition {{ $isCurrentCategory ? 'border-peach-red bg-peach-red text-white' : 'border-peach-soft bg-white text-peach-red hover:border-peach' }}">
+                        {{ $jumpCategory->name }}
+                    </a>
+                @endforeach
+            </nav>
+            <script>
+                // Bring the current category's chip into view inside the strip
+                // (scrollLeft only — never scrolls the page itself).
+                (function () {
+                    var strip = document.querySelector('[data-category-jump]');
+                    var current = strip && strip.querySelector('[aria-current="page"]');
+                    if (current) {
+                        strip.scrollLeft = current.offsetLeft - (strip.clientWidth - current.offsetWidth) / 2;
+                    }
+                })();
+            </script>
+            @endif
+            @endisset
         </div>
     </header>
 
@@ -174,7 +208,7 @@
                         <i class="bi bi-building"></i>
                     </span>
                     <select name="branch_id" onchange="this.form.submit()"
-                        class="w-full min-w-0 rounded-xl border border-peach-soft bg-peach-cream px-3 py-2.5 text-sm font-semibold text-peach-deep outline-none transition focus:border-peach focus:ring-4 focus:ring-peach/20">
+                        class="min-h-11 w-full min-w-0 truncate rounded-xl border border-peach-soft bg-peach-cream px-3 py-2.5 text-sm font-semibold text-peach-deep outline-none transition focus:border-peach focus:ring-4 focus:ring-peach/20">
                         <option value="">-- Select Pick-up Branch --</option>
                         @foreach(isset($branches) ? $branches : \App\Models\Branch::where('is_active',true)->orderBy('id')->get() as $branch)
                         <option value="{{ $branch->id }}" {{ $selectedBranchId == $branch->id ? 'selected' : '' }}>
@@ -204,17 +238,14 @@
              (categories) view now, as the header pill. --}}
         <section>
             <div class="mb-4">
-                {{-- Count badge + Back button sit directly above the category
-                     title. Count and title are per-category dynamic. --}}
+                {{-- Count badge sits directly above the category title. The way
+                     back to the categories is the header back button, and the
+                     sticky category strip in the header jumps straight to
+                     another category. --}}
                 <div class="mb-2 flex flex-wrap items-center gap-2">
                     <span class="inline-flex h-10 shrink-0 items-center rounded-full bg-peach-soft px-3 text-xs font-bold text-peach-red">
                         {{ count($items) }} {{ count($items) === 1 ? 'item' : 'items' }}
                     </span>
-
-                    <a href="{{ route('customer.menu') }}"
-                        class="inline-flex h-10 shrink-0 items-center gap-2 rounded-full border border-peach-soft bg-white px-4 text-sm font-semibold text-peach-red no-underline transition hover:bg-peach-soft">
-                        <i class="bi bi-arrow-left"></i> Back to Categories
-                    </a>
                 </div>
 
                 <h1 class="min-w-0 truncate font-display text-2xl font-black tracking-tight text-peach-deep sm:text-3xl">
@@ -225,10 +256,10 @@
             {{-- Subcategory Tabs --}}
             @if(isset($subcategories) && $subcategories->count() > 0)
             <div class="no-scrollbar -mx-4 mb-5 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
-                <button class="subcategory-tab is-active shrink-0 whitespace-nowrap rounded-full border-2 border-peach-red bg-peach-red px-4 py-2 text-xs font-bold text-white transition"
+                <button class="subcategory-tab is-active min-h-11 shrink-0 whitespace-nowrap rounded-full border-2 border-peach-red bg-peach-red px-4 py-2 text-sm font-bold text-white transition"
                     onclick="filterSubcategory(this, 'all')">All</button>
                 @foreach($subcategories as $sub)
-                <button class="subcategory-tab shrink-0 whitespace-nowrap rounded-full border-2 border-peach-soft bg-white px-4 py-2 text-xs font-bold text-peach-red transition hover:border-peach"
+                <button class="subcategory-tab min-h-11 shrink-0 whitespace-nowrap rounded-full border-2 border-peach-soft bg-white px-4 py-2 text-sm font-bold text-peach-red transition hover:border-peach"
                     onclick="filterSubcategory(this, '{{ $sub->id }}')">{{ $sub->name }}</button>
                 @endforeach
             </div>
@@ -265,11 +296,11 @@
                         @endif
                         @if($itemUnavailable)
                         <span class="pointer-events-none absolute inset-0 bg-white/45"></span>
-                        <span class="absolute left-2 top-2 rounded-full bg-peach-deep/90 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
+                        <span class="absolute left-2 top-2 rounded-full bg-peach-deep/90 px-2.5 py-1 text-[0.8125rem] font-black uppercase tracking-wide text-white shadow-sm">
                             {{ $itemUnavailableLabel }}
                         </span>
                         @elseif($itemLowStock)
-                        <span class="absolute left-2 top-2 rounded-full bg-amber-500/95 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
+                        <span class="absolute left-2 top-2 rounded-full bg-amber-500/95 px-2.5 py-1 text-[0.8125rem] font-black uppercase tracking-wide text-white shadow-sm">
                             @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left @else Low Stock @endif
                         </span>
                         @endif
@@ -278,14 +309,14 @@
                         <p class="line-clamp-2 text-sm font-bold leading-snug text-peach-deep">{{ $item->name }}</p>
                         <p class="mt-auto font-display text-base font-black text-peach-red">
                             @if($cardState['sized'])
-                            <span class="text-[0.68rem] font-bold text-peach-deep/50">From</span>
+                            <span class="text-xs font-bold text-peach-deep/50">From</span>
                             @endif
                             ₱{{ number_format($item->price, 2) }}
                         </p>
                         @if($itemUnavailable)
-                        <p class="text-[0.66rem] font-bold text-peach-red">{{ $cardState['detail'] }}</p>
+                        <p class="text-xs font-bold text-peach-red">{{ $cardState['detail'] }}</p>
                         @elseif($itemLowStock)
-                        <p class="text-[0.66rem] font-bold text-amber-600">
+                        <p class="text-xs font-bold text-amber-600">
                             @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left! @else Low stock! @endif
                         </p>
                         @endif
@@ -424,11 +455,11 @@
                                         @endif
                                         @if($itemUnavailable)
                                         <span class="pointer-events-none absolute inset-0 bg-white/45"></span>
-                                        <span class="absolute left-2 top-2 rounded-full bg-peach-deep/90 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
+                                        <span class="absolute left-2 top-2 rounded-full bg-peach-deep/90 px-2.5 py-1 text-[0.8125rem] font-black uppercase tracking-wide text-white shadow-sm">
                                             {{ $itemUnavailableLabel }}
                                         </span>
                                         @elseif($itemLowStock)
-                                        <span class="absolute left-2 top-2 rounded-full bg-amber-500/95 px-2.5 py-1 text-[0.62rem] font-black uppercase tracking-wide text-white shadow-sm">
+                                        <span class="absolute left-2 top-2 rounded-full bg-amber-500/95 px-2.5 py-1 text-[0.8125rem] font-black uppercase tracking-wide text-white shadow-sm">
                                             @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left @else Low Stock @endif
                                         </span>
                                         @endif
@@ -440,7 +471,7 @@
                                         </p>
 
                                         @if($item->category)
-                                            <p class="text-[0.68rem] text-peach-deep/45">
+                                            <p class="text-xs text-peach-deep/45">
                                                 {{ $item->category->name }}
                                                 @if($item->subcategory)
                                                     • {{ $item->subcategory->name }}
@@ -450,15 +481,15 @@
 
                                         <p class="mt-auto font-display text-base font-black text-peach-red">
                                             @if($cardState['sized'])
-                                            <span class="text-[0.68rem] font-bold text-peach-deep/50">From</span>
+                                            <span class="text-xs font-bold text-peach-deep/50">From</span>
                                             @endif
                                             ₱{{ number_format($item->price, 2) }}
                                         </p>
 
                                         @if($itemUnavailable)
-                                        <p class="text-[0.66rem] font-bold text-peach-red">{{ $cardState['detail'] }}</p>
+                                        <p class="text-xs font-bold text-peach-red">{{ $cardState['detail'] }}</p>
                                         @elseif($itemLowStock)
-                                        <p class="text-[0.66rem] font-bold text-amber-600">
+                                        <p class="text-xs font-bold text-amber-600">
                                             @if($itemRemainingServings !== null) {{ $itemRemainingServings }} stocks left! @else Low stock! @endif
                                         </p>
                                         @endif
@@ -712,26 +743,35 @@
 @include('customer.partials.welcome-popup')
 @include('customer.partials.idle-timeout')
 @include('customer.partials.menu-ad-popup')
+{{-- Dine-In guests' one-time rewards pop-up (Oct 2026). $dineInJoinPopup is
+     set by AuthController::showMenu() for an eligible guest, once per table
+     session, and is absent on the other pages that reuse this view. It waits
+     for every overlay above and below. See App\Support\DineInJoin. --}}
+@include('customer.partials.dinein-rewards-popup', ['dineInJoinPopup' => $dineInJoinPopup ?? null])
+{{-- One-time "You earned a reward!" pop-up (Oct 2026), signed-in
+     customers only; waits for the welcome popup and every other overlay,
+     and the menu ad waits for it. See App\Support\FreeDessertPrompt. --}}
+@include('customer.partials.free-dessert-prompt')
 
 {{-- ================= ORDER STATUS NOTIFICATION ================= --}}
 <div id="orderStatusNotice"
      style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:316px;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;padding:22px 20px 20px;text-align:center;box-shadow:0 18px 45px rgba(59,35,32,0.22);">
         <div id="orderStatusIcon"
-             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#E4F2EA;color:#2E7D5B;font-size:20px;">
+             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#E4F2EA;color:#2E7D5B;font-size:22px;">
             <i class="bi bi-check-circle"></i>
         </div>
         <h3 id="orderStatusTitle"
-            style="margin:0 0 9px;color:#2E7D5B;font-family:'Fraunces',Georgia,serif;font-size:20px;line-height:1.2;font-weight:700;">
+            style="margin:0 0 9px;color:#2E7D5B;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
             Order Completed
         </h3>
         <p id="orderStatusMessage"
-           style="max-width:275px;margin:0 auto;color:#8A6A61;font-size:10px;line-height:1.5;">
+           style="max-width:275px;margin:0 auto;color:#8A6A61;font-size:13px;line-height:1.5;">
             Your order has been completed.
         </p>
         <div style="display:flex;gap:8px;margin-top:16px;">
             <button type="button" onclick="closeOrderStatusNotice()"
-                    style="flex:1;height:36px;border-radius:999px;background:#2E7D5B;color:#fff;border:1px solid #2E7D5B;font-size:10px;font-weight:700;cursor:pointer;">
+                    style="flex:1;height:36px;border-radius:999px;background:#2E7D5B;color:#fff;border:1px solid #2E7D5B;font-size:13px;font-weight:700;cursor:pointer;">
                 OK
             </button>
         </div>
@@ -743,6 +783,11 @@
     let trackedOrderId = @json(session('customer_order_id') ?: session('guest_order_id'));
     let statusPollTimer = null;
     let requestInProgress = false;
+
+    // Last status this page saw per order, so the reward pop-up is
+    // asked only when an order completes WHILE the page is open; one already
+    // completed at load is covered by the pop-up's own check on load.
+    const lastSeenStatus = {};
 
     function notificationKey(orderId, status) {
         return 'peachy_order_status_notified_v2_' + orderId + '_' + status;
@@ -827,6 +872,14 @@
             if (!data.has_order) return;
 
             trackedOrderId = data.order_id;
+
+            const previousStatus = lastSeenStatus[data.order_id];
+            lastSeenStatus[data.order_id] = data.status;
+
+            if (data.status === 'completed' && previousStatus && previousStatus !== 'completed' &&
+                window.PomidaFreeDessertPrompt) {
+                window.PomidaFreeDessertPrompt.orderCompleted(data.order_id);
+            }
 
             if ((data.status === 'completed' || data.status === 'cancelled') &&
                 !alreadyNotified(data.order_id, data.status)) {

@@ -114,24 +114,27 @@
         <div class="mx-auto w-full max-w-5xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
 
-                <a
-                    href="{{ route('customer.orders') }}"
-                    class="flex min-w-0 items-center gap-3 no-underline"
-                >
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">
-                        🍑
-                    </span>
-
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">
-                            Peachy
+                <div class="flex min-w-0 items-center gap-2">
+                    @include('customer.partials.header-back', ['href' => route('customer.orders'), 'label' => 'Orders'])
+                    <a
+                        href="{{ route('customer.orders') }}"
+                        class="flex min-w-0 items-center gap-3 no-underline"
+                    >
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">
+                            🍑
                         </span>
-
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">
-                            Cakes &amp; Deli Cafe
+    
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">
+                                Peachy
+                            </span>
+    
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">
+                                Cakes &amp; Deli Cafe
+                            </span>
                         </span>
-                    </span>
-                </a>
+                    </a>
+                </div>
 
                 {{-- Header actions in ONE wrapper, same rule as every other
                      customer header (see the CALLER REQUIREMENT comment in
@@ -144,13 +147,8 @@
                          order status change matters most. --}}
                     @include('customer.partials.notification-bell')
 
-                    <a
-                        href="{{ route('customer.orders') }}"
-                        class="inline-flex shrink-0 items-center gap-2 rounded-full border border-peach-soft bg-white px-3 py-2 text-sm font-bold text-peach-deep no-underline transition hover:border-peach hover:text-peach-red sm:px-4"
-                    >
-                        <i class="bi bi-arrow-left"></i>
-                        <span class="hidden sm:inline">Orders</span>
-                    </a>
+                    {{-- The way back to Orders is the shared header back button
+                         at the left now, in the same place as every inner page. --}}
                 </div>
 
             </div>
@@ -164,7 +162,7 @@
         {{-- Page heading --}}
         <div class="rise rise-1 mx-auto mb-6 max-w-2xl text-center">
 
-            <p class="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-peach-red/70">
+            <p class="text-[0.8125rem] font-bold uppercase tracking-[0.22em] text-peach-red/70">
                 GCash Payment
             </p>
 
@@ -292,7 +290,7 @@
     </div>
 @endif
 
-<p class="mt-3 text-center text-[0.7rem] font-medium leading-relaxed text-peach-deep/45">
+<p class="mt-3 text-center text-xs font-medium leading-relaxed text-peach-deep/45">
     Scan the QR code above using the GCash app.
 </p>
 
@@ -332,7 +330,7 @@
 
                     <div class="border-b border-peach-soft bg-peach-cream px-5 py-4 sm:px-6">
 
-                        <p class="text-[0.68rem] font-bold uppercase tracking-[0.18em] text-peach-red/70">
+                        <p class="text-[0.8125rem] font-bold uppercase tracking-[0.18em] text-peach-red/70">
                             Amount to Pay
                         </p>
 
@@ -342,7 +340,7 @@
                                 ₱{{ number_format($order->total, 2) }}
                             </span>
 
-                            <span class="rounded-full bg-peach-soft px-2.5 py-1 text-[0.68rem] font-black text-peach-red">
+                            <span class="rounded-full bg-peach-soft px-2.5 py-1 text-xs font-black text-peach-red">
                                 GCash
                             </span>
 
@@ -536,7 +534,7 @@
 
                                 </form>
 
-                                <p class="mt-3 text-[0.68rem] leading-relaxed text-peach-deep/40">
+                                <p class="mt-3 text-xs leading-relaxed text-peach-deep/40">
                                     Your payment will be reviewed by our staff.
                                 </p>
 
@@ -698,7 +696,7 @@
                         text-align:center;
                     ">
                         <div style="
-                            font-size:1.5rem;
+                            font-size:1.6563rem;
                             margin-bottom:0.35rem;
                         ">
                             <i class="bi ${isApproved
@@ -708,7 +706,7 @@
 
                         <div style="
                             font-family:Georgia,serif;
-                            font-size:1.15rem;
+                            font-size:1.25rem;
                             font-weight:800;
                             margin-bottom:0.25rem;
                         ">
@@ -716,7 +714,7 @@
                         </div>
 
                         <div style="
-                            font-size:0.78rem;
+                            font-size:0.875rem;
                             opacity:0.8;
                             line-height:1.5;
                         ">
@@ -727,7 +725,7 @@
                             id="gcashCountdown"
                             style="
                                 margin-top:0.7rem;
-                                font-size:0.72rem;
+                                font-size:0.875rem;
                                 font-weight:700;
                             "
                         >

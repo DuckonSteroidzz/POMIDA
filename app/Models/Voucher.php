@@ -3,6 +3,7 @@
 namespace App\Models;
 
 use App\Services\VoucherClaims;
+use App\Support\ShopDay;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -45,10 +46,26 @@ class Voucher extends Model
         return $this->belongsTo(Branch::class);
     }
 
+    /**
+     * Whether expires_at has passed. A date entered on the admin form is
+     * valid through the end of that date in the SHOP's time zone, not until
+     * 8:00 AM Manila (UTC midnight) — see App\Support\ShopDay::hasExpired().
+     */
+    public function isExpired(): bool
+    {
+        return ShopDay::hasExpired($this->expires_at);
+    }
+
+    /** The query form of ! isExpired(), for listing vouchers that can still be used. */
+    public function scopeNotExpired($query)
+    {
+        return ShopDay::whereNotExpired($query, $this->qualifyColumn('expires_at'));
+    }
+
     public function isValid(): bool
     {
         if (!$this->is_active) return false;
-        if ($this->expires_at && $this->expires_at->isPast()) return false;
+        if ($this->isExpired()) return false;
         if ($this->max_uses > 0 && $this->used_count >= $this->max_uses) return false;
         return true;
     }
@@ -57,9 +74,8 @@ class Voucher extends Model
     public function isRedeemableToday(): bool
     {
         if (!$this->isValid()) return false;
-        if (!$this->valid_from) return true;
         // Hindi pwede gamitin sa araw na nakuha (valid_from = tomorrow or later)
-        return today()->greaterThanOrEqualTo($this->valid_from);
+        return ShopDay::hasStarted($this->valid_from);
     }
 
     /*
@@ -209,7 +225,7 @@ class Voucher extends Model
             return 'This voucher is inactive, so no new codes can be issued for it.';
         }
 
-        if ($this->expires_at && $this->expires_at->isPast()) {
+        if ($this->isExpired()) {
             return 'This voucher has expired, so no new codes can be issued for it.';
         }
 
@@ -219,7 +235,7 @@ class Voucher extends Model
                 . '), so no new codes can be issued for it.';
         }
 
-        if ($this->valid_from && today()->lessThan($this->valid_from)) {
+        if (! ShopDay::hasStarted($this->valid_from)) {
             return 'This voucher does not open until '
                 . $this->valid_from->format('M d, Y')
                 . ', so no new codes can be issued for it yet.';
@@ -257,7 +273,7 @@ class Voucher extends Model
             return 'This voucher is no longer available.';
         }
 
-        if ($this->expires_at && $this->expires_at->isPast()) {
+        if ($this->isExpired()) {
             return 'This voucher has expired.';
         }
 
@@ -368,14 +384,14 @@ class Voucher extends Model
                 return 'You have already used this voucher.';
             }
 
-            if ($claim->valid_from && today()->lessThan($claim->valid_from)) {
+            if (! ShopDay::hasStarted($claim->valid_from)) {
                 return 'Voucher is not yet valid. Available starting '
                     . $claim->valid_from->format('M d, Y') . '.';
             }
         } else {
             // Public promo code: one shared window really does apply to
             // every customer, so the shared column is correct here.
-            if ($this->valid_from && today()->lessThan($this->valid_from)) {
+            if (! ShopDay::hasStarted($this->valid_from)) {
                 return 'Voucher is not yet valid. Available starting '
                     . $this->valid_from->format('M d, Y') . '.';
             }

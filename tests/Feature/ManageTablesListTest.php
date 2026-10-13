@@ -1020,8 +1020,10 @@ class ManageTablesListTest extends TestCase
             // The phone camera opening the QR's URL.
             $this->on('camera');
             app('cache')->store()->flush();
+            // Refused with the same answer as a wrong code (no enumeration —
+            // see TableEntry::validateQr() / resolveCode()).
             $this->scanQr($gone)->assertRedirect(route('customer.dineinqr'));
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: QR scan");
+            $this->assertSame(TableEntry::ERR_QR_STALE, session('error'), "{$label}: QR scan");
 
             // The code typed off the standee.
             $this->on('typed');
@@ -1030,7 +1032,7 @@ class ManageTablesListTest extends TestCase
                 'table_code' => $gone->code,
                 'next'       => 'guest',
             ])->assertRedirect('/customer/dineinqr');
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: typed code");
+            $this->assertSame(TableEntry::ERR_CODE_INVALID, session('error'), "{$label}: typed code");
 
             $this->assertNull(TableOccupancy::activeFor($gone->branch_id, $gone->table_number), "{$label}: a refused door still seated somebody");
         }
@@ -1151,13 +1153,14 @@ class ManageTablesListTest extends TestCase
             app('cache')->store()->flush();
             $this->get('/customer/menu?branch_id=' . $branch->id . '&table=' . $typo . '&k=' . $typoCode)
                 ->assertRedirect(route('customer.dineinqr'));
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: QR");
+            // Same answer as a wrong code — no enumeration.
+            $this->assertSame(TableEntry::ERR_QR_STALE, session('error'), "{$label}: QR");
 
             $this->on('customer-typed');
             app('cache')->store()->flush();
             $this->from('/customer/dineinqr')->post('/customer/dineinqr', ['table_code' => $typoCode, 'next' => 'guest'])
                 ->assertRedirect('/customer/dineinqr');
-            $this->assertSame(TableEntry::ERR_TABLE_INACTIVE, session('error'), "{$label}: typed code");
+            $this->assertSame(TableEntry::ERR_CODE_INVALID, session('error'), "{$label}: typed code");
             $this->assertNull(TableOccupancy::activeFor($branch->id, $typo), $label);
 
             // 5. Nothing was deleted, and the table that was MEANT is untouched and still works.

@@ -45,7 +45,7 @@
             &nbsp;&bull;&nbsp; Status: {{ ucfirst(request('status')) }}
         @endif
     </p>
-    <p style="margin:0;font-size:0.8rem;color:#555;">Generated: {{ now()->format('M d, Y g:i A') }}</p>
+    <p style="margin:0;font-size:0.8rem;color:#555;">Generated: {{ \App\Support\ShopDay::format(now(), 'M d, Y g:i A') }}</p>
     {{-- "Print Filtered" no longer prints this page at all (see printFiltered()
          below) — it opens admin.completed-orders.print instead, which is the
          only unbounded query now that this list is paginated. This note is
@@ -142,7 +142,7 @@
                     <td class="no-print co-col-check" data-label="">
                         <input type="checkbox" class="row-check" onchange="updateCount()">
                     </td>
-                    <td data-label="Date" class="co-date">{{ ($order->completed_at ?? $order->created_at)->format('M d, Y h:i A') }}</td>
+                    <td data-label="Date" class="co-date">{{ \App\Support\ShopDay::format($order->completed_at ?? $order->created_at, 'M d, Y h:i A') }}</td>
                     <td data-label="Order #" class="co-order-no">{{ $order->order_number }}</td>
                     <td data-label="Type" class="co-ta-center">
                         {{-- A Dine-In order flagged Take Out reads as the table
@@ -198,6 +198,19 @@
                             <span class="co-muted">({{ $orderRating->rating }}/5)</span>
                         @else
                             <span class="co-muted">Not rated yet</span>
+                        @endif
+
+                        {{-- The loyalty reward item's own rating + comment (Oct 2026). --}}
+                        @php $dessertRating = ($dessertRatings ?? collect())[$order->id] ?? null; @endphp
+                        @if($dessertRating)
+                            <span class="co-dessert-rating" data-testid="admin-dessert-rating" style="display:block;margin-top:0.3rem;font-size:0.75rem;text-align:left;">
+                                <strong>Reward item:</strong>
+                                <span title="{{ $dessertRating->rating }}/5">{{ str_repeat('★', $dessertRating->rating) }}{{ str_repeat('☆', 5 - $dessertRating->rating) }}</span>
+                                ({{ $dessertRating->rating }}/5)
+                                @if($dessertRating->comment)
+                                    <span style="display:block;color:#4B5563;font-style:italic;overflow-wrap:anywhere;">“{{ $dessertRating->comment }}”</span>
+                                @endif
+                            </span>
                         @endif
                     </td>
                     <td class="no-print co-ta-center" data-label="">

@@ -857,6 +857,20 @@
                 <span>Vouchers</span>
             </a>
 
+            {{-- Streak Rewards — its own page (Oct 2026), placed right
+                 under Vouchers since it used to live on that page. Same
+                 tier as the manager section below (admin + supervisor, their
+                 own branch only), but kept here rather than in that block so
+                 it stays next to Vouchers. Same row geometry as every other
+                 link — no extra indent. --}}
+            @if($adminUser && $adminUser->isManager())
+                <a href="{{ route('admin.streak-rewards') }}"
+                    class="nav-link-item {{ request()->routeIs('admin.streak-rewards') ? 'active' : '' }}">
+                    <i class="bi bi-gift"></i>
+                    <span>Streak Rewards</span>
+                </a>
+            @endif
+
             {{-- Summary — ALL THREE roles.
 
                  "View Summary/Reports" is Y | Y | LIMITED, and LIMITED means

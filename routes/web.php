@@ -6,7 +6,9 @@ use App\Http\Controllers\Admin\AdminAuthController;
 use App\Http\Controllers\Admin\AdminController;
 use App\Http\Controllers\Customer\OrderController;
 use App\Http\Controllers\Customer\TableChangeController;
+use App\Http\Controllers\Customer\FreeDessertPromptController;
 use App\Http\Controllers\Admin\SettingsController;
+use App\Http\Controllers\Admin\StreakRewardController;
 use App\Http\Controllers\Customer\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 
@@ -80,6 +82,21 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
 
     Route::get('/terms', [AuthController::class, 'showTerms'])
         ->name('terms');
+
+    // Dine-In guest "Sign up / Log in to get a stamp for this order" buttons.
+    // Takes no order id: the order comes from this session only (see
+    // App\Support\DineInJoin). It writes nothing but this session's intent,
+    // so it carries no limiter of its own; login and register keep theirs.
+    Route::get('/join/{mode}', [AuthController::class, 'startDineInJoin'])
+        ->whereIn('mode', [\App\Support\DineInJoin::MODE_SIGNUP, \App\Support\DineInJoin::MODE_LOGIN])
+        ->name('dinein-join');
+
+    // The Dine-In rewards pop-up reports that it really opened, which is what
+    // uses up its once-per-table-session showing. No input; a no-op for anyone
+    // it is not shown to. Same per-IP ceiling as the table-session clock.
+    Route::post('/dinein-popup-seen', [AuthController::class, 'dineInPopupSeen'])
+        ->middleware('throttle:customer-table-clock')
+        ->name('dinein-popup-seen');
 
 
     // ══════════ EMAIL VERIFICATION (Laravel MustVerifyEmail) ══════════
@@ -349,6 +366,29 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
         ->middleware(['throttle.friendly', 'throttle:order-rating-read'])
         ->name('orders.rating.show');
 
+    // The free dessert's OWN rating + comment (Oct 2026), separate from the
+    // meal rating above. Same ownership rule and the same throttle bucket as
+    // the meal rating; nothing is awarded for submitting it.
+    Route::post('/orders/{id}/dessert-rating', [OrderController::class, 'submitDessertRating'])
+        ->whereNumber('id')
+        ->middleware(['throttle.friendly', 'throttle:order-rating'])
+        ->name('orders.dessert-rating');
+
+    // The one-time "You earned a reward!" pop-up (Oct 2026) on the
+    // Orders and Menu pages — see App\Support\FreeDessertPrompt. The POST is
+    // asked by the pop-up's script when its turn comes and marks the
+    // signed-in customer's waiting rewards as announced (once, server-side);
+    // its own per-IP counter, like the other background customer calls. The
+    // GET is kept for links already sent and goes to Vouchers & Rewards (the
+    // pop-up's button now links there directly). Neither takes anything from
+    // the request.
+    Route::post('/free-dessert/prompt', [FreeDessertPromptController::class, 'announce'])
+        ->middleware('throttle:customer-free-dessert-prompt')
+        ->name('free-dessert.prompt');
+
+    Route::get('/free-dessert/claim', [FreeDessertPromptController::class, 'claim'])
+        ->name('free-dessert.claim');
+
     Route::get('/receipt/{id}', [OrderController::class, 'showReceipt'])
         ->whereNumber('id')
         ->name('receipt');
@@ -393,6 +433,11 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
 
     Route::get('/more', [AuthController::class, 'showMore'])
         ->name('more');
+
+    // Help & Instructions — static how-to copy for every customer type, plus
+    // the dine-in "ask staff for assistance" form that posts to help-request.
+    Route::get('/help', [AuthController::class, 'showHelp'])
+        ->name('help');
 
     Route::get('/account', [AuthController::class, 'showAccount'])
         ->name('account');
@@ -442,8 +487,19 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
         ->middleware('throttle:customer-add-points')
         ->name('add-points');
 
+    // More → Vouchers & Rewards: wheel vouchers, the stamp card and every
+    // loyalty reward with its code.
     Route::get('/vouchers', [AuthController::class, 'showVouchers'])
         ->name('vouchers');
+
+    // "Use now" on a reward (Oct 2026): checks the reward is the signed-in
+    // customer's own and usable, then hands its code to the cart's code box
+    // (or the menu, when the cart is empty). Spends nothing — checkout does.
+    // On the apply-voucher limiter, the code box's own.
+    Route::post('/rewards/{reward}/use', [AuthController::class, 'useReward'])
+        ->whereNumber('reward')
+        ->middleware(['throttle.friendly', 'throttle:apply-voucher'])
+        ->name('rewards.use');
 
 
     // ══════════ BRANCH ══════════
@@ -1399,6 +1455,42 @@ Route::prefix('admin')
                 ->whereNumber('id')
                 ->name('vouchers.toggle');
 
+            // Streak Rewards — its own admin page (Oct 2026), split out of
+            // Vouchers & Game so an owner editing a promotion does not also
+            // have to wade through the stamp-card settings. Same tier as the
+            // routes below it: owner (any branch, and "All branches") or a
+            // supervisor (their own branch only, via targetBranch()).
+            Route::get('/streak-rewards', [StreakRewardController::class, 'index'])
+                ->name('streak-rewards');
+
+            // "Check a reward code" (Oct 2026) — READ-ONLY lookup of one
+            // loyalty reward code; it never redeems anything. Owner and
+            // supervisor, not staff: App\Services\RewardCodeCheck shows a
+            // supervisor the details of codes issued by their own branch only
+            // (any other answers "This code belongs to another branch.").
+            // Throttled per user AND per IP, because every answer says
+            // whether a code exists.
+            Route::post('/streak/rewards/check', [StreakRewardController::class, 'check'])
+                ->middleware('throttle:admin-reward-code-check')
+                ->name('streak.rewards.check');
+
+            // Streak Rewards settings, PER BRANCH (Oct 2026): days needed,
+            // the reward (one voucher's terms or one menu item), how long it
+            // stays valid, and each branch's on/off. Owner: any branch and the
+            // company default. Supervisor: their own branch only — this group
+            // lets them in, and StreakRewardController::targetBranch() refuses
+            // (403) any other branch_id and the company default. The owner's
+            // master switch stays in the role:admin group below. See
+            // App\Services\StreakRewardSettings.
+            Route::post('/streak/rewards', [StreakRewardController::class, 'update'])
+                ->name('streak.rewards.update');
+
+            Route::post('/streak/rewards/use-default', [StreakRewardController::class, 'useDefault'])
+                ->name('streak.rewards.default');
+
+            Route::post('/streak/branch/toggle', [StreakRewardController::class, 'toggle'])
+                ->name('streak.branch.toggle');
+
 
             // ══════════ ADS ══════════
             //
@@ -1594,6 +1686,13 @@ Route::prefix('admin')
 
             Route::post('/game/toggle', [AdminController::class, 'toggleGame'])
                 ->name('game.toggle');
+
+            // Same tier as the Spin Wheel switch: a customer-facing feature
+            // switched on or off for the whole system. The MASTER switch: off
+            // turns the stamp card off at every branch, whatever each
+            // branch's own switch says. See Setting::streakCalendarEnabled().
+            Route::post('/streak/toggle', [AdminController::class, 'toggleStreakCalendar'])
+                ->name('streak.toggle');
 
 
             // ══════════ BRANCHES ══════════

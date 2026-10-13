@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use App\Services\TableChange;
 use App\Services\TableEntry;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\RateLimiter;
 
 /**
  * The "Table N · Change table" control on the Dine-In menu and cart.
@@ -39,31 +38,16 @@ class TableChangeController extends Controller
         }
 
         /*
-         * The SAME guessing budget as the typed-code door in
-         * AuthController::processQr(), on the same key — a second door with its
-         * own budget would double what a guesser gets per minute.
+         * The SAME failed-code budget as every other code door — a second door
+         * with its own budget would multiply what a guesser gets. First-entry
+         * validation, unchanged: resolveCode() hands the code's table to
+         * TableEntry::validate(), and answers every refusal with one sentence.
          */
-        $throttleKey = 'table-code:' . $request->ip();
-
-        if (RateLimiter::tooManyAttempts($throttleKey, TableEntry::MAX_ATTEMPTS)) {
-            return $this->backWithError('Too many attempts. Please wait a minute and try again.');
-        }
-
-        RateLimiter::hit($throttleKey, 60);
-
-        // First-entry validation, unchanged: resolveCode() hands the code's
-        // table to TableEntry::validate().
-        $target = TableEntry::resolveCode($code);
-
-        if ($target === null) {
-            return $this->backWithError('That code is not valid. Please check the code printed on your new table, or ask our staff for help.');
-        }
+        $target = TableEntry::throughCodeBudget($request, fn () => TableEntry::resolveCode($code));
 
         if (!$target['ok']) {
             return $this->backWithError($target['error']);
         }
-
-        RateLimiter::clear($throttleKey);
 
         $verdict = TableChange::assess($target['branch'], $target['table_number']);
 

@@ -795,13 +795,13 @@ class DineInChangeTableTest extends TestCase
         $this->on('phone');
         $this->scanQr($t1)->assertOk();
 
-        for ($i = 0; $i < TableEntry::MAX_ATTEMPTS; $i++) {
+        for ($i = 0; $i < TableEntry::MAX_FAILED_PER_IP; $i++) {
             $this->from('/customer/dineinqr')->post('/customer/dineinqr', ['table_code' => 'WRONG' . $i . 'XYZ']);
         }
 
         $this->changeTo($t2->code);
 
-        $this->assertSame('Too many attempts. Please wait a minute and try again.', session('table_change_error'));
+        $this->assertSame(TableEntry::ERR_TOO_MANY, session('table_change_error'));
         $this->assertSame($t1->table_number, session('table_number'));
     }
 

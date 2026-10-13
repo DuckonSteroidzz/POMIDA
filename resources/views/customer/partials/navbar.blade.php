@@ -1,6 +1,9 @@
 {{-- Shared customer navigation: mobile --}}
 @php
-    $navActive = fn (string $route) => request()->routeIs($route);
+    // Which tab this page belongs to — including pages that are not tabs
+    // themselves (a category, an item, a receipt, Vouchers, Account, Help).
+    // See App\Support\CustomerNav.
+    $navActive = fn (string $section) => \App\Support\CustomerNav::isActive($section);
 @endphp
 
 <nav
@@ -13,8 +16,9 @@
         {{-- Menu --}}
         <a
             href="{{ route('customer.menu') }}"
-            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-[0.7rem] font-bold no-underline transition
-                {{ $navActive('customer.menu')
+            @if($navActive('menu')) aria-current="page" @endif
+            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-sm font-bold no-underline transition
+                {{ $navActive('menu')
                     ? 'bg-peach-soft text-peach-red'
                     : 'text-peach-deep/50 hover:bg-peach-soft hover:text-peach-red' }}"
         >
@@ -25,8 +29,9 @@
         {{-- Orders --}}
         <a
             href="{{ route('customer.orders') }}"
-            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-[0.7rem] font-bold no-underline transition
-                {{ $navActive('customer.orders')
+            @if($navActive('orders')) aria-current="page" @endif
+            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-sm font-bold no-underline transition
+                {{ $navActive('orders')
                     ? 'bg-peach-soft text-peach-red'
                     : 'text-peach-deep/50 hover:bg-peach-soft hover:text-peach-red' }}"
         >
@@ -37,8 +42,9 @@
         {{-- Spin & Win --}}
         <a
             href="{{ route('customer.game') }}"
-            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-[0.7rem] font-bold no-underline transition
-                {{ $navActive('customer.game')
+            @if($navActive('game')) aria-current="page" @endif
+            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-sm font-bold no-underline transition
+                {{ $navActive('game')
                     ? 'bg-peach-soft text-peach-red'
                     : 'text-peach-deep/50 hover:bg-peach-soft hover:text-peach-red' }}"
         >
@@ -49,8 +55,9 @@
         {{-- More: available to Guest, Account, and Pickup --}}
         <a
             href="{{ route('customer.more') }}"
-            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-[0.7rem] font-bold no-underline transition
-                {{ $navActive('customer.more')
+            @if($navActive('more')) aria-current="page" @endif
+            class="flex min-w-0 flex-1 flex-col items-center justify-center gap-1 py-2 text-sm font-bold no-underline transition
+                {{ $navActive('more')
                     ? 'bg-peach-soft text-peach-red'
                     : 'text-peach-deep/50 hover:bg-peach-soft hover:text-peach-red' }}"
         >

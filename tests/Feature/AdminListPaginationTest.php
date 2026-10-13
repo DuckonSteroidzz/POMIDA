@@ -383,6 +383,12 @@ class AdminListPaginationTest extends TestCase
             ->assertOk()
             ->getContent();
 
+        // Only the paginated All Vouchers table. Since the Streak Rewards
+        // pass (Oct 2026) the owner's "Voucher to copy" picker above it lists
+        // every active voucher on every page, by design.
+        $page1 = $this->voucherTable($page1);
+        $page2 = $this->voucherTable($page2);
+
         foreach (array_slice($codes, 0, 15) as $code) {
             $this->assertStringContainsString($code, $page1);
             $this->assertStringNotContainsString($code, $page2);
@@ -391,5 +397,16 @@ class AdminListPaginationTest extends TestCase
             $this->assertStringContainsString($code, $page2);
             $this->assertStringNotContainsString($code, $page1);
         }
+    }
+
+    /** The "All Vouchers (n)" heading through the end of its table. */
+    private function voucherTable(string $html): string
+    {
+        $start = strpos($html, 'All Vouchers (');
+        $this->assertNotFalse($start, 'the All Vouchers table is gone');
+        $end = strpos($html, '</table>', $start);
+        $this->assertNotFalse($end);
+
+        return substr($html, $start, $end - $start);
     }
 }

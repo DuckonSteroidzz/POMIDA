@@ -52,17 +52,17 @@
             align-items: center;
             justify-content: center;
             margin: 0 auto 0.75rem;
-            font-size: 2rem;
+            font-size: 2.1875rem;
         }
  
         .auth-header h1 {
-            font-size: 2rem;
+            font-size: 2.1875rem;
             font-weight: 700;
             margin-bottom: 0.1rem;
         }
  
         .auth-header p {
-            font-size: 0.85rem;
+            font-size: 1rem;
             opacity: 0.85;
             margin-bottom: 0;
         }
@@ -75,21 +75,21 @@
         }
  
         .auth-title {
-            font-size: 1rem;
+            font-size: 1.0625rem;
             font-weight: 600;
             color: #333;
             margin-bottom: 1.25rem;
         }
  
         .form-label {
-            font-size: 0.8rem;
+            font-size: 0.875rem;
             font-weight: 500;
             color: #555;
             margin-bottom: 0.3rem;
         }
  
         .form-control {
-            font-size: 0.85rem;
+            font-size: 1rem;
             border: 1px solid #ddd;
             border-radius: 8px;
             padding: 0.55rem 0.85rem;
@@ -105,7 +105,7 @@
  
         .form-control::placeholder {
             color: #aaa;
-            font-size: 0.82rem;
+            font-size: 0.875rem;
         }
  
         .btn-main {
@@ -114,7 +114,7 @@
             border: none;
             border-radius: 8px;
             padding: 0.6rem;
-            font-size: 0.88rem;
+            font-size: 1rem;
             font-weight: 600;
             width: 100%;
             transition: background-color 0.2s;
@@ -131,7 +131,7 @@
             border: none;
             border-radius: 8px;
             padding: 0.6rem;
-            font-size: 0.88rem;
+            font-size: 1rem;
             font-weight: 600;
             width: 100%;
             transition: background-color 0.2s;
@@ -154,14 +154,14 @@
         }
  
         .small-text {
-            font-size: 0.78rem;
+            font-size: 0.875rem;
             color: #888;
         }
  
         .divider-text {
             text-align: center;
             color: #aaa;
-            font-size: 0.8rem;
+            font-size: 0.875rem;
             margin: 0.75rem 0;
             position: relative;
         }
@@ -180,7 +180,7 @@
         .divider-text::after { right: 0; }
  
         .alert {
-            font-size: 0.82rem;
+            font-size: 0.875rem;
             border-radius: 8px;
             padding: 0.6rem 0.85rem;
         }

@@ -103,11 +103,11 @@ class UserVoucher extends Model
 
         $voucher = $this->voucher;
 
-        if ($voucher && $voucher->expires_at && $voucher->expires_at->isPast()) {
+        if ($voucher && $voucher->isExpired()) {
             return 'expired';
         }
 
-        if ($this->valid_from && today()->lessThan($this->valid_from)) {
+        if (! \App\Support\ShopDay::hasStarted($this->valid_from)) {
             return 'not_yet_valid';
         }
 

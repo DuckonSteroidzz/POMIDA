@@ -83,7 +83,7 @@
                 &nbsp;&bull;&nbsp; Status: {{ ucfirst(request('status')) }}
             @endif
         </p>
-        <p style="color:#555;">Generated: {{ now()->format('M d, Y g:i A') }}</p>
+        <p style="color:#555;">Generated: {{ \App\Support\ShopDay::format(now(), 'M d, Y g:i A') }}</p>
         <p style="color:#555;">Scope: All filtered results ({{ count($orders) }} order{{ count($orders) === 1 ? '' : 's' }})</p>
         <hr>
     </div>
@@ -128,7 +128,7 @@
                     };
                 @endphp
                 <tr>
-                    <td>{{ ($order->completed_at ?? $order->created_at)->format('M d, Y h:i A') }}</td>
+                    <td>{{ \App\Support\ShopDay::format($order->completed_at ?? $order->created_at, 'M d, Y h:i A') }}</td>
                     <td>{{ $order->order_number }}</td>
                     <td class="co-ta-center">
                         @if($order->type === 'dine_in' && $order->is_takeout)Table {{ $order->table_number ?? 'N/A' }} · Take Out @else{{ $typeLabel }}@endif
@@ -152,6 +152,10 @@
                              right before it IS a word character. The space below
                              is deliberate, not stray formatting. --}}
                         @if($orderRating){{ $orderRating->rating }}/5 @else —@endif
+                        @php $dessertRating = ($dessertRatings ?? collect())[$order->id] ?? null; @endphp
+                        @if($dessertRating)
+                            <div style="font-size:0.85em;">Reward item: {{ $dessertRating->rating }}/5 @if($dessertRating->comment)<br>“{{ $dessertRating->comment }}”@endif</div>
+                        @endif
                     </td>
                 </tr>
             @endforeach

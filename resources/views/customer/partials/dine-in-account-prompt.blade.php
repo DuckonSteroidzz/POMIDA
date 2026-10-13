@@ -64,7 +64,7 @@
 
     .account-prompt-card h2 {
         color: var(--deep-red);
-        font-size: 1.65rem;
+        font-size: 1.8125rem;
         margin-bottom: 0.65rem;
     }
 
@@ -85,7 +85,7 @@
         border-radius: 999px;
         padding: 0.75rem 1.2rem;
         font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-size: 0.95rem;
+        font-size: 1rem;
         font-weight: 700;
         cursor: pointer;
     }

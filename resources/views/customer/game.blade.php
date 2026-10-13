@@ -80,7 +80,7 @@
 
         .legend-title {
             font-family: 'Fraunces', Georgia, serif;
-            font-size: 1.05rem;
+            font-size: 1.1563rem;
             font-weight: 800;
             color: #8B1A1A;
             margin: 0 0 .85rem;
@@ -107,7 +107,7 @@
             flex-shrink: 0;
             background: linear-gradient(135deg,#F4845F,#C0392B);
             color: #fff;
-            font-size: .68rem;
+            font-size: 0.8125rem;
             font-weight: 800;
             padding: .3rem .55rem;
             border-radius: 999px;
@@ -131,7 +131,7 @@
             gap: .35rem;
             background: linear-gradient(135deg,#2E7D5B,#1f5c40);
             color: #fff;
-            font-size: .72rem;
+            font-size: 0.875rem;
             font-weight: 800;
             padding: .35rem .75rem;
             border-radius: 999px;
@@ -150,7 +150,7 @@
         }
 
         .legend-text {
-            font-size: .8rem;
+            font-size: 0.875rem;
             color: #5b4740;
             line-height: 1.35;
         }
@@ -160,7 +160,7 @@
         }
 
         .legend-empty {
-            font-size: .8rem;
+            font-size: 0.875rem;
             color: #8A6A61;
             text-align: center;
             padding: .5rem 0 0;
@@ -190,7 +190,7 @@
 
         .game-title {
             font-family: 'Fraunces', Georgia, serif;
-            font-size: 1.65rem;
+            font-size: 1.8125rem;
             font-weight: 900;
             color: #8B1A1A;
             margin: 0 0 .25rem;
@@ -198,7 +198,7 @@
         }
 
         .game-subtitle {
-            font-size: .82rem;
+            font-size: 0.875rem;
             color: rgba(139,26,26,.5);
             margin: 0 0 1.5rem;
             text-align: center;
@@ -226,7 +226,7 @@
             top: -18px;
             left: 50%;
             transform: translateX(-50%);
-            font-size: 2rem;
+            font-size: 2.1875rem;
             z-index: 10;
             color: #8B1A1A;
             filter: drop-shadow(0 2px 4px rgba(59,35,32,.2));
@@ -249,27 +249,28 @@
 
         .spin-meter-count {
             margin: 0;
-            font-size: .95rem;
+            font-size: 1rem;
             font-weight: 800;
             color: #C0392B;
         }
 
         .spin-meter-note {
             margin: .15rem 0 0;
-            font-size: .74rem;
+            font-size: 0.875rem;
             font-weight: 500;
             line-height: 1.35;
             color: rgba(59,35,32,.62);
         }
 
         .spin-cta {
+            min-height: 44px;
             display: inline-flex;
             align-items: center;
             gap: .4rem;
             border-radius: 999px;
             border: 1px solid rgba(244,132,95,.5);
             padding: .5rem 1.4rem;
-            font-size: .82rem;
+            font-size: 0.875rem;
             font-weight: 700;
             color: #C0392B;
             text-decoration: none;
@@ -284,7 +285,7 @@
             border: 0;
             border-radius: 999px;
             padding: .85rem 3rem;
-            font-size: 1rem;
+            font-size: 1.0625rem;
             font-weight: 800;
             cursor: pointer;
             box-shadow: 0 8px 20px -10px rgba(139,26,26,.7);
@@ -305,7 +306,7 @@
             background: none;
             border: 0;
             color: rgba(139,26,26,.5);
-            font-size: .78rem;
+            font-size: 0.875rem;
             cursor: pointer;
             text-decoration: underline;
             margin-bottom: .5rem;
@@ -333,21 +334,21 @@
         }
 
         .result-emoji {
-            font-size: 2.5rem;
+            font-size: 2.75rem;
             display: block;
             margin-bottom: .5rem;
         }
 
         .result-title {
             font-family: 'Fraunces', Georgia, serif;
-            font-size: 1.1rem;
+            font-size: 1.2188rem;
             font-weight: 900;
             color: #8B1A1A;
             margin: 0 0 .25rem;
         }
 
         .result-code {
-            font-size: 1.4rem;
+            font-size: 1.5313rem;
             font-weight: 900;
             color: #C0392B;
             letter-spacing: 2px;
@@ -380,7 +381,7 @@
 
         .claim-keep-label {
             margin: 0;
-            font-size: .68rem;
+            font-size: 0.875rem;
             font-weight: 900;
             letter-spacing: .09em;
             text-transform: uppercase;
@@ -389,20 +390,20 @@
 
         .claim-keep .result-code {
             margin: .45rem 0 .35rem;
-            font-size: 1.25rem;
+            font-size: 1.375rem;
             letter-spacing: 3px;
             word-break: break-all;
         }
 
         .claim-keep-note {
             margin: 0;
-            font-size: .68rem;
+            font-size: 0.875rem;
             line-height: 1.45;
             color: #8A6A61;
         }
 
         .result-desc {
-            font-size: .78rem;
+            font-size: 0.875rem;
             color: #666;
         }
 
@@ -412,7 +413,7 @@
             border: 0;
             border-radius: 999px;
             padding: .45rem 1rem;
-            font-size: .78rem;
+            font-size: 0.875rem;
             font-weight: 700;
             cursor: pointer;
             margin-top: .5rem;
@@ -425,7 +426,7 @@
         }
 
         .disabled-game i {
-            font-size: 3rem;
+            font-size: 3.3125rem;
             display: block;
             margin-bottom: .75rem;
             color: #F4845F;
@@ -437,7 +438,7 @@
             }
 
             .game-title {
-                font-size: 2rem;
+                font-size: 2.1875rem;
             }
         }
     </style>
@@ -458,7 +459,7 @@
 
                     <span class="min-w-0">
                         <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
+                        <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
                     </span>
                 </a>
 
@@ -492,7 +493,7 @@
                 <i class="bi bi-ticket-perforated-fill"></i>
                 Your voucher{{ count($guestClaims) === 1 ? '' : 's' }} — save the code
             </p>
-            <p class="mt-1 mb-3 text-[0.72rem] leading-snug text-peach-deep/60">
+            <p class="mt-1 mb-3 text-[0.875rem] leading-snug text-peach-deep/60">
                 You are not signed in, so these codes are the only way to use these vouchers.
                 Type one into the voucher box in your cart. Each works once.
             </p>
@@ -503,7 +504,7 @@
                     <span class="block font-display text-base font-black tracking-[0.14em] text-peach-red {{ $claim['is_used'] ? 'line-through opacity-50' : '' }}">
                         {{ $claim['claim_code'] }}
                     </span>
-                    <span class="block text-[0.68rem] font-semibold text-peach-deep/60">
+                    <span class="block text-xs font-semibold text-peach-deep/60">
                         {{ $claim['description'] ?? 'Peachy voucher' }}
                         @if($claim['is_used'])
                             · already used
@@ -535,6 +536,16 @@
                  the guest total (0 pts) instead of their real balance. --}}
             <span class="font-display text-base font-black text-peach-red" id="pointsDisplay">{{ $pointsBalance }} pts</span>
         </div>
+
+        {{-- Guests only: what an account adds (config/loyalty.php). --}}
+        @if(! Auth::guard('customer')->check() && ($signupTeaser = \App\Services\Loyalty::guestTeaser()))
+        <div class="mb-5 flex flex-col gap-3 rounded-2xl border border-peach-soft bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="guest-signup-teaser">
+            <p class="text-sm font-medium text-peach-deep/80"><i class="bi bi-stars text-peach-red"></i> {{ $signupTeaser }}</p>
+            <a href="{{ route('customer.register') }}" class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-peach-red px-5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                <i class="bi bi-person-plus"></i> Create account
+            </a>
+        </div>
+        @endif
 
         <section class="game-shell">
 
@@ -611,8 +622,8 @@
             @else
             <div class="disabled-game">
                 <i class="bi bi-dice-5"></i>
-                <p style="font-size:0.95rem;font-weight:600;color:#555;">Game is currently unavailable</p>
-                <p style="font-size:0.78rem;">Check back later!</p>
+                <p style="font-size:1rem;font-weight:600;color:#555;">Game is currently unavailable</p>
+                <p style="font-size:0.875rem;">Check back later!</p>
             </div>
             @endif
 
@@ -626,17 +637,17 @@
          than only inline in the result panel, so it cannot be scrolled past. --}}
     <div id="voucherWinModal" style="display:none;position:fixed;inset:0;background:rgba(74,59,54,.55);z-index:9998;align-items:center;justify-content:center;padding:1rem;">
         <div style="background:#fff;border-radius:18px;padding:1.5rem 1.25rem;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 50px -20px rgba(139,26,26,.5);">
-            <p style="font-family:'Fraunces',Georgia,serif;font-size:1.15rem;font-weight:900;color:#8B1A1A;margin:0 0 .25rem;">🎉 You won a voucher!</p>
+            <p style="font-family:'Fraunces',Georgia,serif;font-size:1.25rem;font-weight:900;color:#8B1A1A;margin:0 0 .25rem;">🎉 You won a voucher!</p>
             {{-- States plainly when this can actually be used. The server
                  always mints wheel-won vouchers as valid starting today —
                  usable on the very next order, never on the order that won
                  them — rather than leaving that to be assumed. --}}
             <span id="voucherWinTiming" class="voucher-timing-badge" style="display:none;"></span>
-            <p id="voucherWinDesc" style="font-size:.8rem;color:#8A6A61;margin:0 0 .75rem;"></p>
-            <div id="voucherWinCode" style="font-size:1.5rem;font-weight:900;letter-spacing:2px;color:#C0392B;background:#FFF7F3;border:2px dashed #F4845F;border-radius:10px;padding:.6rem .5rem;margin:0 0 .6rem;word-break:break-all;"></div>
-            <p id="voucherWinNote" style="font-size:.72rem;color:#8A6A61;margin:0 0 1rem;line-height:1.45;"></p>
+            <p id="voucherWinDesc" style="font-size:0.875rem;color:#8A6A61;margin:0 0 .75rem;"></p>
+            <div id="voucherWinCode" style="font-size:1.6563rem;font-weight:900;letter-spacing:2px;color:#C0392B;background:#FFF7F3;border:2px dashed #F4845F;border-radius:10px;padding:.6rem .5rem;margin:0 0 .6rem;word-break:break-all;"></div>
+            <p id="voucherWinNote" style="font-size:0.875rem;color:#8A6A61;margin:0 0 1rem;line-height:1.45;"></p>
             <button type="button" id="voucherWinCopy" class="copy-btn" style="width:100%;margin:0 0 .5rem;"><i class="bi bi-clipboard"></i> Copy Code</button>
-            <button type="button" onclick="document.getElementById('voucherWinModal').style.display='none'" style="background:none;border:0;color:#8A6A61;font-size:.78rem;text-decoration:underline;cursor:pointer;">Close</button>
+            <button type="button" onclick="document.getElementById('voucherWinModal').style.display='none'" style="background:none;border:0;color:#8A6A61;font-size:0.875rem;text-decoration:underline;cursor:pointer;">Close</button>
         </div>
     </div>
 
@@ -646,10 +657,10 @@
          dismissed by tapping anywhere or the button. --}}
     <div id="spinResultModal" onclick="hideSpinToast()" style="display:none;position:fixed;inset:0;background:rgba(74,59,54,.5);z-index:9997;align-items:center;justify-content:center;padding:1rem;">
         <div style="background:#fff;border-radius:18px;padding:1.4rem 1.25rem;max-width:320px;width:100%;text-align:center;box-shadow:0 20px 50px -20px rgba(139,26,26,.5);">
-            <span id="spinResultEmoji" style="font-size:2.4rem;display:block;margin-bottom:.35rem;">⭐</span>
-            <p id="spinResultTitle" style="font-family:'Fraunces',Georgia,serif;font-size:1.15rem;font-weight:900;color:#8B1A1A;margin:0 0 .3rem;"></p>
-            <p id="spinResultDesc" style="font-size:.82rem;color:#8A6A61;margin:0 0 1rem;line-height:1.45;"></p>
-            <button type="button" onclick="hideSpinToast()" style="background:linear-gradient(135deg,#F4845F,#C0392B);color:#fff;border:0;border-radius:999px;padding:.55rem 2rem;font-size:.85rem;font-weight:800;cursor:pointer;">Nice!</button>
+            <span id="spinResultEmoji" style="font-size:2.625rem;display:block;margin-bottom:.35rem;">⭐</span>
+            <p id="spinResultTitle" style="font-family:'Fraunces',Georgia,serif;font-size:1.25rem;font-weight:900;color:#8B1A1A;margin:0 0 .3rem;"></p>
+            <p id="spinResultDesc" style="font-size:0.875rem;color:#8A6A61;margin:0 0 1rem;line-height:1.45;"></p>
+            <button type="button" onclick="hideSpinToast()" style="background:linear-gradient(135deg,#F4845F,#C0392B);color:#fff;border:0;border-radius:999px;padding:.55rem 2rem;font-size:1rem;font-weight:800;cursor:pointer;">Nice!</button>
         </div>
     </div>
 
@@ -978,11 +989,11 @@
                     line += '<br>' + data.points_needed +
                         ' more pts to win: ' + esc(data.next_voucher) + '!';
                 }
-                showSpinToast('⭐', '+' + won.points + ' Points!', line);
+                showSpinToast('⭐', '+' + won.points + ' Points!', line + signupTeaserHtml(data));
                 if (window.celebrateWin) window.celebrateWin();
                 releaseSpinButton();
             } else {
-                showSpinToast('😅', 'Try Again!', 'Better luck next time!');
+                showSpinToast('😅', 'Try Again!', 'Better luck next time!' + signupTeaserHtml(data));
                 releaseSpinButton();
             }
 
@@ -999,6 +1010,14 @@
 
         /* The win panel builds HTML from a server response, so anything from it
            is escaped before it goes in. */
+        /* Guests only: the server adds signup_teaser (built from
+           config/loyalty.php) to a guest spin result; a signed-in result has
+           none, so this returns nothing for them. */
+        function signupTeaserHtml(data) {
+            if (!data || !data.signup_teaser) return '';
+            return '<span class="mt-2 block font-semibold text-peach-red" data-signup-teaser>' + esc(data.signup_teaser) + '</span>';
+        }
+
         function esc(v) {
             var d = document.createElement('div');
             d.textContent = v == null ? '' : String(v);
@@ -1213,7 +1232,7 @@
 
                 var card = el('div', 'background:white;border-radius:12px;max-width:340px;width:90%;position:relative;overflow:hidden;');
 
-                var closeBtn = el('button', 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:50%;width:28px;height:28px;font-size:1rem;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;', '✕');
+                var closeBtn = el('button', 'position:absolute;top:8px;right:8px;background:rgba(0,0,0,0.5);color:white;border:none;border-radius:50%;width:28px;height:28px;font-size:1.0625rem;cursor:pointer;z-index:10;display:flex;align-items:center;justify-content:center;', '✕');
                 closeBtn.type = 'button';
                 closeBtn.addEventListener('click', closeAd);
                 card.appendChild(closeBtn);
@@ -1225,8 +1244,8 @@
                 }
 
                 var body = el('div', 'padding:1rem;text-align:center;');
-                body.appendChild(el('p', 'font-size:0.95rem;font-weight:700;color:#F4845F;margin:0 0 0.25rem;', ad.title));
-                body.appendChild(el('p', 'font-size:0.78rem;color:#666;margin:0;', ad.description || ''));
+                body.appendChild(el('p', 'font-size:1rem;font-weight:700;color:#F4845F;margin:0 0 0.25rem;', ad.title));
+                body.appendChild(el('p', 'font-size:0.875rem;color:#666;margin:0;', ad.description || ''));
                 card.appendChild(body);
 
                 if (gameAds.length > 1) {

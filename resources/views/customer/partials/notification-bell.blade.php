@@ -34,7 +34,7 @@
         data-notif-toggle
         aria-label="Notifications"
         aria-expanded="false"
-        class="relative grid h-10 w-10 place-items-center rounded-full border border-peach-soft bg-white text-peach-deep no-underline transition hover:bg-peach-soft"
+        class="relative grid h-11 w-11 place-items-center rounded-full border border-peach-soft bg-white text-peach-deep no-underline transition hover:bg-peach-soft"
     >
         <i class="bi bi-bell text-lg leading-none"></i>
 
@@ -42,7 +42,7 @@
         <span
             data-notif-badge
             hidden
-            class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-peach-red px-1 text-[0.6rem] font-black leading-none text-white"
+            class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-white bg-peach-red px-1 text-[0.8125rem] font-black leading-none text-white"
         >0</span>
     </button>
 
@@ -59,14 +59,14 @@
                 <button
                     type="button"
                     data-notif-markread
-                    class="rounded-full px-2 py-1 text-[0.7rem] font-bold text-peach-red transition hover:bg-peach-soft"
+                    class="-my-2 inline-flex min-h-11 items-center rounded-full px-3 text-sm font-bold text-peach-red transition hover:bg-peach-soft"
                 >Mark all read</button>
                 <button
                     type="button"
                     data-notif-close
                     aria-label="Close"
                     class="toast-x"
-                ><i class="bi bi-x-lg" style="font-size:0.75rem;"></i></button>
+                ><i class="bi bi-x-lg" style="font-size:0.875rem;"></i></button>
             </span>
         </div>
 
@@ -139,7 +139,7 @@
         box-shadow: 0 8px 24px rgba(139, 26, 26, 0.14);
     }
     .toast-bar { width: 6px; flex: 0 0 auto; background: #C0392B; }
-    .toast-ico { margin-top: 2px; font-size: 0.85rem; color: #C0392B; }
+    .toast-ico { margin-top: 2px; font-size: 1rem; color: #C0392B; }
 
     [data-toast-type="gcash_approved"]              .toast-bar { background: #16A34A; }
     [data-toast-type="gcash_approved"]              .toast-ico { color: #16A34A; }
@@ -157,8 +157,8 @@
     [data-toast-type="points_reward_earned"]        .toast-ico { color: #F4845F; }
 
     .toast-body { display: flex; min-width: 0; flex: 1; align-items: flex-start; gap: 0.5rem; padding: 0.6rem 0.7rem; }
-    .toast-title { margin: 0; font-size: 0.78rem; font-weight: 900; line-height: 1.3; color: #8B1A1A; }
-    .toast-msg { margin: 2px 0 0; font-size: 0.72rem; line-height: 1.35; color: rgba(139, 26, 26, 0.72); }
+    .toast-title { margin: 0; font-size: 0.875rem; font-weight: 900; line-height: 1.3; color: #8B1A1A; }
+    .toast-msg { margin: 2px 0 0; font-size: 0.875rem; line-height: 1.35; color: rgba(139, 26, 26, 0.72); }
 
     /*
        Order reference chip. A customer can have several orders in flight at
@@ -176,7 +176,7 @@
         border-radius: 999px;
         background: #FDE8DE;
         color: #8B1A1A;
-        font-size: 0.62rem;
+        font-size: 0.875rem;
         font-weight: 800;
         letter-spacing: 0.02em;
         max-width: 100%;
@@ -184,7 +184,7 @@
         text-overflow: ellipsis;
         white-space: nowrap;
     }
-    .toast-x { margin-left: 4px; flex: 0 0 auto; border: 0; background: transparent; color: rgba(139,26,26,0.4); cursor: pointer; padding: 0 2px; }
+    .toast-x { margin: -12px -10px -12px 4px; min-width: 44px; min-height: 44px; display: inline-grid; place-items: center; flex: 0 0 auto; border: 0; background: transparent; color: rgba(139,26,26,0.4); cursor: pointer; padding: 0 2px; }
     .toast-x:hover { color: #8B1A1A; }
 </style>
 
@@ -243,12 +243,12 @@
                 '<span class="mt-1.5 h-2 w-2 shrink-0 rounded-full ' +
                    (n.is_read ? 'bg-transparent' : 'bg-peach-red') + '"></span>' +
                 '<div class="min-w-0 flex-1">' +
-                  '<p class="text-[0.8rem] leading-snug ' +
+                  '<p class="text-[0.875rem] leading-snug ' +
                      (n.is_read ? 'font-semibold text-peach-deep/70' : 'font-black text-peach-deep') +
                      '">' + esc(n.title) + '</p>' +
-                  '<p class="mt-0.5 text-[0.75rem] leading-snug text-peach-deep/70">' +
+                  '<p class="mt-0.5 text-[0.875rem] leading-snug text-peach-deep/70">' +
                      esc(n.message) + '</p>' +
-                  '<p class="mt-1 text-[0.65rem] font-semibold uppercase tracking-wide text-peach-deep/40">' +
+                  '<p class="mt-1 text-[0.8125rem] font-semibold uppercase tracking-wide text-peach-deep/40">' +
                      esc(n.ago) + '</p>' +
                 '</div>' +
                 // Per-card dismiss (X). Reuses .toast-x, already defined below
@@ -258,7 +258,7 @@
                 // the card rather than stretching over a multi-line message.
                 '<button type="button" class="toast-x self-start" data-notif-dismiss ' +
                    'data-id="' + esc(n.id) + '" aria-label="Dismiss">' +
-                   '<i class="bi bi-x-lg" style="font-size:0.65rem;"></i></button>' +
+                   '<i class="bi bi-x-lg" style="font-size:0.8125rem;"></i></button>' +
               '</div>';
         }).join('');
     }
@@ -328,6 +328,7 @@
         gcash_awaiting_verification: 'bi-hourglass-split',
         new_order:                   'bi-bag-check-fill',
         points_reward_earned:        'bi-gift-fill',
+        free_dessert_earned:         'bi-gift-fill',
         order_status_changed:        'bi-cup-hot-fill'
     };
 
@@ -360,7 +361,7 @@
                     : '') +
                 '</div>' +
                 '<button type="button" data-toast-close aria-label="Dismiss" class="toast-x">' +
-                  '<i class="bi bi-x-lg" style="font-size:0.7rem;"></i></button>' +
+                  '<i class="bi bi-x-lg" style="font-size:0.8125rem;"></i></button>' +
               '</div>' +
             '</div>';
 

@@ -87,6 +87,16 @@ return [
     'timezone' => env('APP_TIMEZONE', 'UTC'),
 
     /*
+    | The shop's own time zone. Timestamps are still stored in the app
+    | timezone above (UTC or Asia/Manila; either works); this only decides
+    | where a customer-facing "day" starts and ends — the daily spin limit,
+    | the spins per order placed today, voucher start and expiry dates and
+    | the streak calendar — and the time printed on receipts and order
+    | lists. Read it through App\Support\ShopDay.
+    */
+    'shop_timezone' => env('SHOP_TIMEZONE', 'Asia/Manila'),
+
+    /*
     |--------------------------------------------------------------------------
     | Application Locale Configuration
     |--------------------------------------------------------------------------

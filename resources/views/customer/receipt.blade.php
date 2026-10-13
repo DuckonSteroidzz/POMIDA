@@ -266,45 +266,48 @@
     <header class="no-print sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @include('customer.partials.header-back', ['href' => route('customer.orders'), 'label' => 'Orders'])
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 {{-- Header actions: kept in ONE grid cell so the 2-column
                      header grid does not push the cart onto a second row.
                      Mirrors customer/partials/desktop-nav, with the extra
-                     dine-in Help control this page needs. --}}
+                     Help link this page carries. --}}
                 @php $desktopCartCount = collect(session('cart', []))->sum('quantity'); @endphp
                 <div class="flex items-center justify-end gap-3 md:gap-4">
                 <nav class="hidden items-center gap-1 md:flex">
-                    <a href="{{ route('customer.orders') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.orders') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.orders') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('orders') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-receipt"></i> Orders
                     </a>
-                    <a href="{{ route('customer.menu') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.menu') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.menu') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('menu') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-grid"></i> Menu
                     </a>
-                    <a href="{{ route('customer.game') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.game') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.game') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('game') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-dice-5"></i> Spin &amp; Win
                     </a>
-                    <a href="{{ route('customer.more') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.more') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.more') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('more') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-three-dots"></i> More
                     </a>
-                    @if(session('order_type') === 'dine_in' && session('table_number'))
-                    <form action="{{ route('customer.help-request') }}" method="POST" class="contents">
-                        @csrf
-                        <button type="submit" class="cursor-pointer rounded-full border-none bg-transparent px-3 py-2 text-[0.95rem] font-semibold text-peach-deep/70 transition hover:bg-peach-soft hover:text-peach-red">
-                            <i class="bi bi-question-circle"></i> Help
-                        </button>
-                    </form>
-                    @endif
-                    <a href="{{ route('customer.cart') }}" class="relative ml-2 inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2 text-[0.95rem] font-bold text-white no-underline transition hover:bg-peach-deep">
+                    {{-- A link to the Help page, for every customer. It used to be
+                         a form POSTing to customer.help-request with no `message`,
+                         which that route requires, so every tap bounced back
+                         with a validation error this page never showed. A seated
+                         dine-in customer asks staff from the Help page itself. --}}
+                    <a href="{{ route('customer.help') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red">
+                        <i class="bi bi-question-circle"></i> Help
+                    </a>
+                    <a href="{{ route('customer.cart') }}" class="relative ml-2 inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2 text-[1rem] font-bold text-white no-underline transition hover:bg-peach-deep">
                         <i class="bi bi-cart"></i> Cart
                         @if($desktopCartCount > 0)
-                        <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.65rem] font-black text-peach-red">{{ $desktopCartCount }}</span>
+                        <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.8125rem] font-black text-peach-red">{{ $desktopCartCount }}</span>
                         @endif
                     </a>
                 </nav>
@@ -313,10 +316,10 @@
                 @include('customer.partials.notification-bell')
 
                 {{-- Mobile cart shortcut --}}
-                <a href="{{ route('customer.cart') }}" class="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
+                <a href="{{ route('customer.cart') }}" class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
                     <i class="bi bi-cart text-lg"></i>
                     @if($desktopCartCount > 0)
-                    <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.6rem] font-black text-white">{{ $desktopCartCount }}</span>
+                    <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.8125rem] font-black text-white">{{ $desktopCartCount }}</span>
                     @endif
                 </a>
                 </div>
@@ -331,7 +334,7 @@
         {{-- Page intro --}}
         <div class="no-print rise rise-1 mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-7">
             <div class="min-w-0">
-                <p class="text-[0.68rem] font-bold uppercase tracking-[0.22em] text-peach-red/70">Order Receipt</p>
+                <p class="text-[0.8125rem] font-bold uppercase tracking-[0.22em] text-peach-red/70">Order Receipt</p>
                 <h1 class="mt-1 font-display text-3xl font-black leading-tight tracking-tight text-peach-deep sm:text-4xl">Freshly baked, all settled.</h1>
             </div>
             <div class="no-print flex items-center gap-2">
@@ -351,16 +354,16 @@
                 <div class="bg-gradient-to-br from-peach-sand/60 via-peach-soft to-white px-5 pb-6 pt-5 text-center sm:px-8">
                     <span class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-white text-2xl shadow-sm">🍑</span>
                     <h2 class="mt-3 font-display text-2xl font-black tracking-tight text-peach-deep sm:text-3xl">Peachy</h2>
-                    <p class="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-peach-red/75">Cakes &amp; Deli Cafe</p>
+                    <p class="text-[0.8125rem] font-semibold uppercase tracking-[0.2em] text-peach-red/75">Cakes &amp; Deli Cafe</p>
                     @if($order->branch)
-                    <p class="mt-1 text-[0.72rem] font-bold uppercase tracking-[0.16em] text-peach-deep/60">{{ $order->branch->name }}</p>
+                    <p class="mt-1 text-[0.875rem] font-bold uppercase tracking-[0.16em] text-peach-deep/60">{{ $order->branch->name }}</p>
                     @endif
 
                     <div class="mt-4 inline-flex items-center gap-2 rounded-full bg-white/90 px-4 py-1.5 shadow-sm">
                         <i class="bi bi-receipt-cutoff text-peach-red"></i>
                         <span class="font-display text-base font-black tracking-tight text-peach-deep sm:text-lg">{{ $order->order_number }}</span>
                     </div>
-                    <p class="mt-2 text-xs font-medium text-peach-deep/55">{{ $order->created_at->format('M d, Y h:i A') }}</p>
+                    <p class="mt-2 text-xs font-medium text-peach-deep/55">{{ \App\Support\ShopDay::format($order->created_at, 'M d, Y h:i A') }}</p>
                 </div>
 
                 <hr class="perf">
@@ -369,7 +372,7 @@
                 <div class="px-5 py-5 sm:px-8 sm:py-6">
                     <div class="mb-3 flex items-center justify-between">
                         <h3 class="font-display text-base font-black tracking-tight text-peach-deep sm:text-lg">Your Items</h3>
-                        <span class="text-[0.68rem] font-bold uppercase tracking-[0.16em] text-peach-deep/40">Amount</span>
+                        <span class="text-[0.8125rem] font-bold uppercase tracking-[0.16em] text-peach-deep/40">Amount</span>
                     </div>
 
                     <ul class="m-0 list-none space-y-2.5 p-0">
@@ -377,10 +380,10 @@
                         <li class="rounded-2xl border border-peach-soft/80 bg-peach-cream/60 px-3.5 py-3 transition hover:border-peach/60">
                             <div class="flex items-start justify-between gap-3">
                                 <div class="flex min-w-0 items-start gap-2.5">
-                                    <span class="mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-peach-soft px-1 text-[0.68rem] font-black text-peach-red">{{ $item->quantity }}</span>
+                                    <span class="mt-0.5 grid h-6 min-w-6 shrink-0 place-items-center rounded-full bg-peach-soft px-1 text-[0.8125rem] font-black text-peach-red">{{ $item->quantity }}</span>
                                     <div class="min-w-0">
                                         {{-- Snapshots only: item_name + the size_name a sized line was sold as. --}}
-                                        <p class="text-sm font-bold leading-snug text-peach-deep sm:text-[0.95rem]">{{ $item->displayName() }}</p>
+                                        <p class="text-sm font-bold leading-snug text-peach-deep sm:text-[1rem]">{{ $item->displayName() }}</p>
                                         @if($item->options && $item->options->count() > 0)
                                         <div class="mt-1.5 flex flex-wrap gap-1">
                                             @foreach($item->options as $option)
@@ -389,7 +392,7 @@
                                                  since the table's creation migration, always written by
                                                  OrderController::placeOrder()) precisely so renaming an add-on
                                                  later cannot rewrite what a past receipt says was sold. --}}
-                                            <span class="rounded-full bg-white px-2 py-0.5 text-[0.64rem] font-semibold text-peach-red/85 ring-1 ring-peach-soft">{{ $option->pivot->option_name }}</span>
+                                            <span class="rounded-full bg-white px-2 py-0.5 text-xs font-semibold text-peach-red/85 ring-1 ring-peach-soft">{{ $option->pivot->option_name }}</span>
                                             @endforeach
                                         </div>
                                         @endif
@@ -449,8 +452,8 @@
 
                     <div class="mt-4 flex items-end justify-between gap-3 rounded-2xl bg-peach-deep px-4 py-4 sm:px-5">
                         <div>
-                            <p class="text-[0.62rem] font-bold uppercase tracking-[0.2em] text-white/60">Total Paid</p>
-                            <p class="mt-0.5 text-[0.7rem] font-medium text-white/60">{{ ucfirst($order->payment_method ?? 'Cash') }}</p>
+                            <p class="text-[0.8125rem] font-bold uppercase tracking-[0.2em] text-white/60">Total Paid</p>
+                            <p class="mt-0.5 text-xs font-medium text-white/60">{{ ucfirst($order->payment_method ?? 'Cash') }}</p>
                         </div>
                         <span class="font-display text-3xl font-black leading-none tracking-tight text-white sm:text-4xl">₱{{ number_format($order->total, 2) }}</span>
                     </div>
@@ -467,30 +470,30 @@
 
                     <dl class="m-0 space-y-3.5">
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-[0.7rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Order #</dt>
+                            <dt class="text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Order #</dt>
                             <dd class="m-0 min-w-0 truncate text-right text-sm font-bold text-peach-deep">{{ $order->order_number }}</dd>
                         </div>
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-[0.7rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Date</dt>
-                            <dd class="m-0 text-right text-sm font-semibold text-peach-deep">{{ $order->created_at->format('M d, Y h:i A') }}</dd>
+                            <dt class="text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Date</dt>
+                            <dd class="m-0 text-right text-sm font-semibold text-peach-deep">{{ \App\Support\ShopDay::format($order->created_at, 'M d, Y h:i A') }}</dd>
                         </div>
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-[0.7rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Type</dt>
+                            <dt class="text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Type</dt>
                             <dd class="m-0 text-right text-sm font-semibold text-peach-deep">
-                                <span class="inline-flex items-center gap-1.5 rounded-full bg-peach-soft px-2.5 py-1 text-[0.72rem] font-bold text-peach-red">
+                                <span class="inline-flex items-center gap-1.5 rounded-full bg-peach-soft px-2.5 py-1 text-[0.875rem] font-bold text-peach-red">
                                     <i class="bi {{ $order->type === 'dine_in' ? 'bi-cup-hot' : 'bi-bag' }}"></i>
                                     {{ $order->type === 'dine_in' ? 'Dine-in (Table ' . $order->table_number . ')' : 'Pickup' }}
                                 </span>
                             </dd>
                         </div>
                         <div class="flex items-start justify-between gap-3">
-                            <dt class="text-[0.7rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Payment</dt>
+                            <dt class="text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Payment</dt>
                             <dd class="m-0 text-right text-sm font-semibold text-peach-deep">{{ ucfirst($order->payment_method ?? 'Cash') }}</dd>
                         </div>
                         <div class="flex items-center justify-between gap-3 border-t border-peach-soft pt-3.5">
-                            <dt class="text-[0.7rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Status</dt>
+                            <dt class="text-[0.8125rem] font-bold uppercase tracking-[0.14em] text-peach-deep/45">Status</dt>
                             <dd class="m-0">
-                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[0.7rem] font-black tracking-wide text-white" style="background:{{ $order->status === 'completed' ? '#4CAF50' : '#C0392B' }};">
+                                <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black tracking-wide text-white" style="background:{{ $order->status === 'completed' ? '#4CAF50' : '#C0392B' }};">
                                     <i class="bi {{ $order->status === 'completed' ? 'bi-check-circle-fill' : 'bi-clock-fill' }}"></i>
                                     {{ strtoupper($order->status) }}
                                 </span>
@@ -513,6 +516,14 @@
 
                 <div class="no-print">
                     @if(!isset($isAdminView) || !$isAdminView)
+                    {{-- Mobile Help control. It used to be a Help tab in this
+                         page's own bottom bar; the page now uses the shared bar
+                         (same four tabs everywhere), so Help stays one tap away
+                         here instead. Desktop has the Help link in the header. --}}
+                    <a href="{{ route('customer.help') }}"
+                       class="mb-2.5 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-full border border-peach-soft bg-white px-5 py-3 text-sm font-bold text-peach-red no-underline transition hover:bg-peach-soft md:hidden">
+                        <i class="bi bi-question-circle"></i> Need help with this order?
+                    </a>
                     <a href="{{ route('customer.orders') }}" class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-3.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                         <i class="bi bi-arrow-left"></i> Back to Orders
                     </a>
@@ -527,32 +538,13 @@
     </main>
 
     @if(!isset($isAdminView) || !$isAdminView)
-    {{-- ================= BOTTOM NAV (mobile) ================= --}}
-    <nav class="no-print fixed inset-x-0 bottom-0 z-40 border-t border-peach-soft bg-white/95 backdrop-blur md:hidden">
-        <div class="mx-auto grid max-w-md grid-cols-4">
-            <a href="{{ route('customer.orders') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-red no-underline">
-                <i class="bi bi-receipt text-lg"></i><span>Orders</span>
-            </a>
-            <a href="{{ route('customer.menu') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-grid text-lg"></i><span>Menu</span>
-            </a>
-            <a href="{{ route('customer.more') }}" class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/50 no-underline">
-                <i class="bi bi-three-dots text-lg"></i><span>More</span>
-            </a>
-            @if(session('order_type') === 'dine_in' && session('table_number'))
-            <form action="{{ route('customer.help-request') }}" method="POST" class="contents">
-                @csrf
-                <button type="submit" class="flex cursor-pointer flex-col items-center gap-1 border-none bg-transparent py-2.5 text-[0.62rem] font-bold text-peach no-underline">
-                    <i class="bi bi-question-circle text-lg"></i><span>Help</span>
-                </button>
-            </form>
-            @else
-            <span class="flex flex-col items-center gap-1 py-2.5 text-[0.62rem] font-bold text-peach-deep/25">
-                <i class="bi bi-question-circle text-lg"></i><span>Help</span>
-            </span>
-            @endif
-        </div>
-    </nav>
+    {{-- ================= BOTTOM NAV (mobile) =================
+         The shared bar (Orders is lit for a receipt). Help stays one tap
+         away under More and in the receipt's own Help buttons. Wrapped in
+         no-print so the printed slip never shows it. --}}
+    <div class="no-print">
+        @include('customer.partials.navbar')
+    </div>
     @endif
 
     @if(!isset($isAdminView) || !$isAdminView)

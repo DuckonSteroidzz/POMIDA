@@ -75,6 +75,15 @@
     #serviceNotice{display:none;font-size:0.8rem;line-height:1.45;padding:0.6rem 0.8rem;border-radius:8px;margin:0 0 0.9rem;background:#FFF4E5;color:#8A4B00;border:1px solid #F3D3A4;text-align:left;}
     .card-inactive{opacity:0.5;filter:grayscale(1);}
 
+    /* "More info" toggle on this page's two note paragraphs. Native
+       <details>/<summary> so it needs no JS and is keyboard-operable for
+       free; the summary itself is the 44px tap target. */
+    .more-info{margin:0 0 1rem;}
+    .more-info summary{cursor:pointer;font-size:14px;font-weight:600;color:#8B1A1A;min-height:44px;display:flex;align-items:center;gap:0.35rem;list-style:none;}
+    .more-info summary::-webkit-details-marker{display:none;}
+    .more-info summary::before{content:'▸';display:inline-block;font-size:11px;transition:transform .15s ease;}
+    .more-info[open] summary::before{transform:rotate(90deg);}
+
     @if($canRegenerate)
     /* The trash icon beside a free table in the Move table list (managers
        only). A small secondary button in the same grid cell, never inside the
@@ -105,21 +114,33 @@
 </style>
 
 <div class="content-card">
-    <p style="font-size:0.85rem; color:#555; margin-bottom:1.25rem;">
-        Generate the printable card for each table. The card carries the table's QR
-        <strong>and its permanent code</strong> — customers scan the QR, or type the code
-        if their camera will not focus. The code is static: it never expires and is
-        never used up during normal operation, so print it once and it works for good.
-        Entering a table number that is not registered yet adds it and gives it a code.
-        @if($canRegenerate)
-            Use <strong>Regenerate Code</strong> beside the card preview if a table's code
-            has leaked or is receiving bogus orders: it stops both the printed QR and the
-            typed code for that table working immediately, issues a fresh one for that
-            table only, and redraws the card — you must print and place the new card
-            afterward. A table added by mistake that nobody has used yet can be deleted
-            with the trash icon beside it in the <strong>Move table</strong> list under Occupied Tables.
-        @endif
+    <p style="font-size:0.85rem; color:#555; margin:0 0 0.5rem;">
+        Print one QR card per table. The 4-character code on the card never expires.
     </p>
+    @if($canRegenerate)
+    <p style="font-size:0.8rem; color:#8A4B00; background:#FFF4E5; border:1px solid #F3D3A4; padding:0.5rem 0.75rem; border-radius:8px; margin:0 0 0.75rem;">
+        If you use <strong>Regenerate Code</strong>, reprint the new card.
+    </p>
+    @endif
+    <details class="more-info">
+        <summary>More info</summary>
+        <p style="font-size:0.8rem; color:#555; margin:0.6rem 0 0;">
+            The card carries the table's QR <strong>and its permanent 4-character code</strong>
+            — customers scan the QR, or type the code if their camera will not focus. The
+            code is static and is never used up during normal operation, so print it once
+            and it works for good. Entering a table number that is not registered yet adds
+            it and gives it a code.
+            @if($canRegenerate)
+                Use <strong>Regenerate Code</strong> beside the card preview if a table's
+                code has leaked or is receiving bogus orders: it stops both the printed QR
+                and the typed code for that table working immediately, issues a fresh one
+                for that table only, and redraws the card — you must print and place the
+                new card afterward. A table added by mistake that nobody has used yet can
+                be deleted with the trash icon beside it in the <strong>Move table</strong>
+                list under Occupied Tables.
+            @endif
+        </p>
+    </details>
 
     <div class="qr-split">
         {{-- Left column: input controls --}}
@@ -202,16 +223,20 @@
         </button>
     </div>
 
-    <p style="font-size:0.8rem; color:#555; margin:0.4rem 0 1rem;">
-        Everyone at a table shares one session, so a second or third person scanning
-        the same QR joins it rather than being turned away. A table frees itself when
-        its order is completed or cancelled, and again after
-        <strong>{{ \App\Services\TableOccupancy::INACTIVITY_MINUTES }} minutes</strong>
-        with no sign of the customer. Clear it by hand only when you know they have gone —
-        it ends the session and leaves any order exactly as it is.
-        <strong>Move table</strong> seats the party at a free table in the same branch:
-        every phone at the table, their carts and any open order go with them.
+    <p style="font-size:0.8rem; color:#555; margin:0.4rem 0 0.5rem;">
+        Tables free up when the order is completed or cancelled, or after
+        <strong>{{ \App\Services\TableOccupancy::INACTIVITY_MINUTES }} minutes</strong> of no activity.
     </p>
+    <details class="more-info">
+        <summary>More info</summary>
+        <p style="font-size:0.8rem; color:#555; margin:0.6rem 0 0;">
+            Everyone at a table shares one session, so a second or third person scanning
+            the same QR joins it rather than being turned away. Clear it by hand only when
+            you know they have gone — it ends the session and leaves any order exactly as
+            it is. <strong>Move table</strong> seats the party at a free table in the same
+            branch: every phone at the table, their carts and any open order go with them.
+        </p>
+    </details>
 
     <p id="tablesMsg" style="display:none; font-size:0.8rem; padding:0.6rem 0.8rem; border-radius:8px; margin-bottom:1rem;"></p>
 
@@ -451,9 +476,12 @@
         ctx.fillText('Can’t scan? Enter this code', CARD_W / 2, codeBoxY + 32);
 
         ctx.fillStyle = '#8B1A1A';
-        ctx.font = '700 44px "Courier New", monospace';
-        // Spaced out so 8 characters cannot be misread as one blur.
-        ctx.fillText(String(data.code).split('').join(' '), CARD_W / 2, codeBoxY + 82);
+        // Four characters (App\Services\TableEntry::CODE_LENGTH) leave room
+        // for a bigger face than the old eight did; spaced out so they read
+        // as separate characters at arm's length. Still inside the code box:
+        // cap height ~37px sits between the caption and the box's bottom edge.
+        ctx.font = '700 56px "Courier New", monospace';
+        ctx.fillText(String(data.code).split('').join(' '), CARD_W / 2, codeBoxY + 88);
 
         ctx.fillStyle = '#8A7069';
         ctx.font = '400 15px Arial, sans-serif';

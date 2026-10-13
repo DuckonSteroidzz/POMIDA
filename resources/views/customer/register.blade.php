@@ -172,7 +172,7 @@
         .eyebrow {
             margin: 0;
 
-            font-size: 0.65rem;
+            font-size: 0.8125rem;
             font-weight: 700;
 
             letter-spacing: 0.3em;
@@ -210,7 +210,7 @@
 
             color: rgba(255, 255, 255, 0.86);
 
-            font-size: 0.92rem;
+            font-size: 1rem;
 
             line-height: 1.65;
         }
@@ -230,7 +230,7 @@
 
             color: rgba(255, 255, 255, 0.9);
 
-            font-size: 0.85rem;
+            font-size: 1rem;
 
             line-height: 1.45;
         }
@@ -270,9 +270,29 @@
 
             color: var(--muted);
 
-            font-size: 0.9rem;
+            font-size: 1rem;
 
             line-height: 1.55;
+        }
+
+        .join-note {
+            margin: -0.75rem 0 1.25rem;
+            padding: 0.75rem 0.9rem;
+            border-radius: 12px;
+            background: var(--light-peach, #FDE8DE);
+            color: var(--text);
+            font-size: 1rem;
+            line-height: 1.5;
+        }
+
+        .join-note a {
+            display: inline-flex;
+            align-items: center;
+            min-height: 44px;
+            color: var(--deep-red, #8B1A1A);
+            font-weight: 800;
+            text-decoration: underline;
+            text-underline-offset: 3px;
         }
 
         /* =====================================================
@@ -292,7 +312,7 @@
 
             border: 1px solid rgba(192, 57, 43, 0.2);
 
-            font-size: 0.82rem;
+            font-size: 0.875rem;
 
             line-height: 1.5;
         }
@@ -327,7 +347,7 @@
 
             margin-bottom: 0.4rem;
 
-            font-size: 0.78rem;
+            font-size: 0.875rem;
 
             font-weight: 700;
 
@@ -353,7 +373,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.9rem;
+            font-size: 1rem;
 
             outline: none;
 
@@ -378,6 +398,46 @@
             border-color: var(--terracotta);
         }
 
+        /* Show / hide password: eye button sits inside the field's right edge.
+           44px square tap target; the input keeps its 16px text (no iOS zoom). */
+        .pw-wrap {
+            position: relative;
+            display: block;
+        }
+
+        .pw-wrap input {
+            padding-right: 48px;
+        }
+
+        .pw-eye {
+            position: absolute;
+            top: 50%;
+            right: 0;
+            transform: translateY(-50%);
+            width: 44px;
+            height: 44px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+            border: none;
+            border-radius: 0.75rem;
+            background: transparent;
+            color: var(--muted);
+            font-size: 1.15rem;
+            line-height: 1;
+            cursor: pointer;
+        }
+
+        .pw-eye:hover {
+            color: var(--deep-red);
+        }
+
+        .pw-eye:focus-visible {
+            outline: 2px solid var(--peach);
+            outline-offset: -2px;
+        }
+
         /* Companion to .is-invalid: a field that has passed the same check the
            server enforces on submit. Green tone (#155724 / #2E7D5B) is the one
            already used for success messaging elsewhere in the app — no new
@@ -390,7 +450,7 @@
             display: none;
             margin-left: 0.4rem;
             color: #155724;
-            font-size: 0.78rem;
+            font-size: 0.875rem;
             vertical-align: -0.05em;
         }
 
@@ -405,7 +465,7 @@
 
             color: var(--terracotta);
 
-            font-size: 0.75rem;
+            font-size: 0.875rem;
 
             line-height: 1.35;
         }
@@ -417,7 +477,7 @@
 
             color: var(--muted);
 
-            font-size: 0.72rem;
+            font-size: 0.875rem;
         }
 
         /* =====================================================
@@ -426,13 +486,14 @@
 
         .tos {
             margin-top: 1.15rem;
-            font-size: 0.78rem;
+            font-size: 1rem;
             text-align: center;
         }
 
         .tos a,
         .terms a,
         .signin a {
+            display: inline-block; padding: 0.875rem 0.25rem; margin: -0.875rem -0.25rem;
             color: var(--deep-red);
 
             font-weight: 700;
@@ -453,9 +514,14 @@
 
             color: var(--muted);
 
-            font-size: 0.76rem;
+            font-size: 1rem;
 
             line-height: 1.5;
+
+            /* 44px tap row; the extra height is padding so the text does not move */
+            min-height: 44px;
+
+            padding: 0.35rem 0;
 
             cursor: pointer;
         }
@@ -494,7 +560,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.92rem;
+            font-size: 1rem;
 
             font-weight: 700;
 
@@ -539,7 +605,7 @@
 
             color: var(--muted);
 
-            font-size: 0.82rem;
+            font-size: 1rem;
         }
 
         /* =====================================================
@@ -600,7 +666,7 @@
 
             color: var(--deep-red);
 
-            font-size: 1.5rem;
+            font-size: 1.6563rem;
         }
 
         .modal-body {
@@ -612,7 +678,7 @@
 
             color: var(--muted);
 
-            font-size: 0.82rem;
+            font-size: 0.875rem;
 
             line-height: 1.65;
         }
@@ -624,7 +690,7 @@
 
             font-family: "Fraunces", Georgia, serif;
 
-            font-size: 1rem;
+            font-size: 1.0625rem;
         }
 
         .modal-body h4:first-child {
@@ -657,7 +723,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.8rem;
+            font-size: 0.875rem;
 
             font-weight: 700;
 
@@ -844,6 +910,19 @@
                     Come on and join us — it only takes a minute.
                 </p>
 
+                {{-- Dine-In "get a stamp for this order" flow (App\Support\DineInJoin).
+                     Sign-up does not log in, so say where the stamp comes from,
+                     and offer Log in up front so nobody makes a second account. --}}
+                @if (!empty($joinForOrder))
+                    <p class="join-note" data-dinein-join-note>
+                        Confirm your email and log in on this phone today, and your
+                        order will count toward your stamp card.
+                        <br>
+                        Already have an account?
+                        <a href="{{ route('customer.login') }}">Log in</a>
+                    </p>
+                @endif
+
 
                 @if ($errors->any())
 
@@ -955,14 +1034,20 @@
                                 <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
+                            <span class="pw-wrap">
                             <input
                                 type="password"
+                                id="reg-password"
                                 name="password"
                                 required
                                 maxlength="20"
                                 autocomplete="new-password"
                                 class="@error('password') is-invalid @enderror"
                             >
+                            <button type="button" class="pw-eye" data-password-toggle="reg-password" aria-label="Show password" aria-pressed="false">
+                                <i class="bi bi-eye" aria-hidden="true"></i>
+                            </button>
+                            </span>
 
                             @error('password')
 
@@ -983,14 +1068,20 @@
                                 <i class="bi bi-check-lg field-valid-icon" aria-hidden="true"></i>
                             </span>
 
+                            <span class="pw-wrap">
                             <input
                                 type="password"
+                                id="reg-password-confirmation"
                                 name="password_confirmation"
                                 required
                                 maxlength="20"
                                 autocomplete="new-password"
                                 class="@error('password_confirmation') is-invalid @enderror"
                             >
+                            <button type="button" class="pw-eye" data-password-toggle="reg-password-confirmation" aria-label="Show password" aria-pressed="false">
+                                <i class="bi bi-eye" aria-hidden="true"></i>
+                            </button>
+                            </span>
 
                             @error('password_confirmation')
 
@@ -1326,6 +1417,26 @@
 
             var form = document.getElementById('registerForm');
             if (!form) return;
+
+            // Show / hide password. Only flips the input's type; the value is
+            // never read, stored or logged, and the validators key off the
+            // input's name, so the checkmarks are unaffected.
+            form.querySelectorAll('[data-password-toggle]').forEach(function (btn) {
+                var target = document.getElementById(btn.getAttribute('data-password-toggle'));
+                var icon = btn.querySelector('i');
+                if (!target) return;
+                btn.addEventListener('click', function () {
+                    var show = target.type === 'password';
+                    target.type = show ? 'text' : 'password';
+                    btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                    btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                    if (icon) {
+                        icon.classList.toggle('bi-eye', !show);
+                        icon.classList.toggle('bi-eye-slash', show);
+                    }
+                    target.focus();
+                });
+            });
 
             var pw = form.querySelector('input[name="password"]');
 

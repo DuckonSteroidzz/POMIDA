@@ -261,6 +261,21 @@ class RolePermissionMatrixTest extends TestCase
             'close branch'           => ['PUT',    'admin.branches.toggle',     ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
             'system configuration'   => ['POST',   'admin.customization.update', ['admin' => self::ALLOW, 'supervisor' => self::DENY, 'staff' => self::DENY]],
             'spin wheel toggle'      => ['POST',   'admin.game.toggle',         ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            'streak calendar toggle' => ['POST',   'admin.streak.toggle',       ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            // Streak Rewards, PER BRANCH (Oct 2026): the manager tier passes the
+            // role gate for the settings, the use-default button and a branch's
+            // on/off — the owner for any branch and the company default, a
+            // supervisor for their own branch only (that second rule is the
+            // controller's, pinned by StreakRewardsPerBranchTest). The master
+            // switch above stays the owner's. The read-only code check is the
+            // manager tier too, never staff.
+            // Streak Rewards is its own page now (split off Vouchers & Game,
+            // Oct 2026) — same tier as the settings routes below it.
+            'view streak rewards'    => ['GET',    'admin.streak-rewards',      ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'streak rewards settings' => ['POST', 'admin.streak.rewards.update', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'streak rewards use default' => ['POST', 'admin.streak.rewards.default', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'streak branch on/off'   => ['POST',   'admin.streak.branch.toggle', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'check reward code'      => ['POST',   'admin.streak.rewards.check', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
 
             // ── OPERATIONAL ──
             'dashboard'              => ['GET',    'admin.home',                ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
@@ -444,6 +459,13 @@ class RolePermissionMatrixTest extends TestCase
             'admin.qr-generator.tables' => [[], ['branch_id' => $branch]],
             'admin.customization.update' => [[], ['primary_color' => '#F4845F']],
             'admin.game.toggle' => [[], []],
+            'admin.streak.toggle' => [[], []],
+            'admin.streak.rewards.update' => [[], [
+                'branch_id' => $branch, 'days' => 7, 'reward_type' => 'menu_item', 'menu_item_id' => $this->menuItemIn($branch)->id, 'valid_days' => 30,
+            ]],
+            'admin.streak.rewards.default',
+            'admin.streak.branch.toggle' => [[], ['branch_id' => $branch]],
+            'admin.streak.rewards.check' => [[], ['reward_code' => 'RWD-2345-6789']],
             default => [[], []],
         };
     }
@@ -550,6 +572,9 @@ class RolePermissionMatrixTest extends TestCase
             'staff / no menu options link' => ['staff', 'admin.home', 'admin.menu-options', []],
             'staff / no branches link'     => ['staff', 'admin.home', 'admin.branches', []],
             'staff / no account link'      => ['staff', 'admin.home', 'admin.account', []],
+            // Streak Rewards moved to its own sidebar link (Oct 2026); staff
+            // must not see it, same as the other manager-tier links above.
+            'staff / no streak rewards link' => ['staff', 'admin.home', 'admin.streak-rewards', []],
 
             // Staff — page-level controls.
             //
@@ -572,6 +597,9 @@ class RolePermissionMatrixTest extends TestCase
             'manager / no branches link'   => ['supervisor', 'admin.home', 'admin.branches', []],
             'manager / no account link'    => ['supervisor', 'admin.home', 'admin.account', []],
             'manager / no spin wheel'      => ['supervisor', 'admin.vouchers', 'admin.game.toggle', []],
+            // The master switch now lives on the Streak Rewards page itself
+            // (Oct 2026), so that is the page that must hide it from a manager.
+            'manager / no streak switch'   => ['supervisor', 'admin.streak-rewards', 'admin.streak.toggle', []],
             'manager / no deleted items link' => ['supervisor', 'admin.inventory', 'admin.inventory.deleted', []],
         ];
     }
@@ -637,6 +665,21 @@ class RolePermissionMatrixTest extends TestCase
             'manager / has create voucher' => ['supervisor', 'admin.vouchers', 'Create New Voucher', true],
             'manager / no spin wheel card' => ['supervisor', 'admin.vouchers', 'Spin Wheel Game', false],
             'owner / has spin wheel card'  => ['admin', 'admin.vouchers', 'Spin Wheel Game', true],
+            // Streak Rewards is its own page now (split off Vouchers & Game,
+            // Oct 2026): the master switch, the owner's branch selector and
+            // overview, a manager's own branch form and switch, and the code
+            // check — all live there instead.
+            'manager / no streak card'     => ['supervisor', 'admin.streak-rewards', 'Streak Calendar on/off', false],
+            'owner / has streak card'      => ['admin', 'admin.streak-rewards', 'Streak Calendar on/off', true],
+            'owner / has streak rewards form'   => ['admin', 'admin.streak-rewards', 'data-testid="streak-rewards-form"', true],
+            'owner / has branch selector'       => ['admin', 'admin.streak-rewards', 'data-testid="streak-rewards-selector"', true],
+            'manager / has streak rewards form' => ['supervisor', 'admin.streak-rewards', 'data-testid="streak-rewards-form"', true],
+            'manager / has own branch switch'   => ['supervisor', 'admin.streak-rewards', 'data-testid="streak-branch-switch"', true],
+            'manager / no branch selector'      => ['supervisor', 'admin.streak-rewards', 'data-testid="streak-rewards-selector"', false],
+            'manager / no branch overview'      => ['supervisor', 'admin.streak-rewards', 'data-testid="streak-rewards-overview"', false],
+            'manager / has reward code check'   => ['supervisor', 'admin.streak-rewards', 'data-testid="reward-code-check-card"', true],
+            'staff / no streak rewards card'    => ['staff', 'admin.vouchers', 'data-testid="streak-rewards-card"', false],
+            'staff / no reward code check'      => ['staff', 'admin.vouchers', 'data-testid="reward-code-check-card"', false],
 
             // Menu items — staff see availability as a badge, not a toggle.
             'staff / no availability form' => ['staff', 'admin.menu-items', 'openAddModal()', false],
@@ -683,6 +726,8 @@ class RolePermissionMatrixTest extends TestCase
             'owner sees delete table'      => ['admin', 'admin.qr-generator', 'admin.tables.delete'],
             'owner sees branches link'     => ['admin', 'admin.home', 'admin.branches'],
             'owner sees spin wheel'        => ['admin', 'admin.vouchers', 'admin.game.toggle'],
+            'owner sees streak switch'     => ['admin', 'admin.streak-rewards', 'admin.streak.toggle'],
+            'manager sees streak rewards link' => ['supervisor', 'admin.home', 'admin.streak-rewards'],
             'staff still see summary'      => ['staff', 'admin.home', 'admin.summary'],
             'staff still see vouchers'     => ['staff', 'admin.home', 'admin.vouchers'],
         ];
@@ -1104,7 +1149,7 @@ class RolePermissionMatrixTest extends TestCase
             ['admin.users'], ['admin.branches'], ['admin.account'], ['admin.inventory'],
             ['admin.inventory.deleted'],
             ['admin.menu-items'], ['admin.menu-options'], ['admin.add-category'],
-            ['admin.vouchers'], ['admin.qr-generator'], ['admin.completed-orders'],
+            ['admin.vouchers'], ['admin.streak-rewards'], ['admin.qr-generator'], ['admin.completed-orders'],
             ['admin.archived'],
         ];
     }

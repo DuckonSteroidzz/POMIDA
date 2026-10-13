@@ -959,6 +959,85 @@ confirm nothing else broke.
 * **Do not run `php artisan test` on the live server.** This project's tests run
   against whatever database is configured, which on the server is the real one.
 
+#### One-off: the 4-character table code update (October 2026)
+
+This update shortens every table code from 8 characters to 4. The migration
+`2026_10_07_000000_shorten_table_codes_to_four_characters` gives **every
+existing table a new code**, so **every printed table card stops working** —
+both the QR and the code printed under it — the moment it runs.
+
+1. Take the backup in [`RECOVERY_PLAN.md`](RECOVERY_PLAN.md) §3 first.
+2. Run the normal update commands above. Step 3 (`php artisan migrate --force`)
+   runs this migration; it finishes in well under a second and does not log
+   anyone out or move anyone who is already seated.
+3. **Straight away**, reprint every table card: admin → **QR & Table Codes** →
+   pick the branch, type the table number, **Generate QR**, then Print or
+   Download — once per table. Replace the cards on the tables.
+4. Until a table's card is replaced, a customer scanning or typing the old card
+   is told *"This table card is out of date. Please ask our staff for help"*.
+   Staff can read the new code off the QR & Table Codes page.
+
+Do step 3 as soon as possible after step 2: until a table's new card is in
+place, customers at that table cannot open it by themselves. (Old codes keep
+working right up until the migration runs, so a pause between `git pull` and
+`migrate` is harmless.) Plan the update for a quiet hour, before opening if you
+can, with the new cards printed right after.
+
+To undo (only together with putting the old code back), `php artisan
+migrate:rollback --step=1` restores the 8-character codes for every table that
+has not been regenerated since — and the old printed cards work again.
+
+#### One-off: Streak Rewards and reward codes (October 2026)
+
+This update lets the owner choose the stamp card reward (one menu item free, or
+a voucher's discount), how many days earn it and how long it stays valid, gives
+every reward its own one-time code (`RWD-XXXX-XXXX`), and renames the customer
+page to **Vouchers & Rewards**. (Later update, same month: Streak Rewards moved
+off that page onto its own **Streak Rewards** sidebar link, directly under
+Vouchers — see the note right after this one.)
+
+**Stamp cards are per branch.** Each branch has its own card: a stamp is a day
+with a completed order *at that branch*, and each branch has its own days
+needed, reward, validity and on/off. A reward can be used only at the branch
+that issued it. A branch with no settings of its own uses **All branches**
+(the company-wide fallback). The 3-day streak *points* bonus and the other
+point bonuses are unchanged and still count every branch.
+
+1. Run the normal update commands above. Step 3 runs, in this order, any of
+   these that the server does not have yet:
+   `2026_10_08_000000_create_free_dessert_rewards`,
+   `2026_10_08_100000_add_notified_at_to_free_dessert_rewards`,
+   `2026_10_12_000000_add_codes_and_snapshots_to_free_dessert_rewards`,
+   `2026_10_12_000100_add_reward_code_to_orders`,
+   `2026_10_13_000000_scope_stamp_card_ledger_keys_by_branch` (data only; on a
+   server where nobody has earned a reward yet it changes nothing).
+   Step 4 (`config:clear` + `optimize`) is required: the days and validity
+   fall back to `config/loyalty.php` until they are saved on the page.
+2. Log in as the **owner** and open the **Streak Rewards** page (sidebar, under
+   Vouchers). With **All branches** selected, set *Days needed*, choose the
+   reward (a **voucher discount** for a company-wide voucher — "Free menu
+   item" is disabled for All branches, since no menu item is ever sold at
+   every branch) and *Valid for (days)*, then **Save for all branches**. Every
+   branch without its own settings now uses it.
+3. For a branch that should differ, pick it in the branch tabs (or let that
+   branch's supervisor do it), set its own On/Off, days, reward and validity
+   and **Save for** *(branch name)*. Its reward must be that branch's own item
+   or voucher, or an all-branches one. **Use All branches instead** undoes it.
+   The table at the bottom of the page (owner only) shows every branch's
+   on/off, days and reward at a glance.
+4. **Until a reward is saved, no reward is given** at a branch that has none
+   (its own or All branches). Stamps keep counting, and every customer who
+   filled that branch's card meanwhile receives the reward at their next
+   completed order there after you save — nothing is lost.
+
+Changing the settings later only affects rewards earned after the change;
+rewards already earned keep their own item or discount, expiry and branch.
+The **Streak Calendar switch** at the top of the page (owner only) turns the
+stamp card off at every branch; each branch also has its own On/Off (owner, or
+that branch's supervisor). Supervisors can change only their own branch, and
+**Check a reward code** (same page, bottom) shows them details only for codes
+their branch issued.
+
 ---
 
 ### 4. If something breaks after an update

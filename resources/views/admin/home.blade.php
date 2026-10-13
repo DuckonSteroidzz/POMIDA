@@ -1075,7 +1075,7 @@
                         data-total="{{ number_format((float) $order->total, 2) }}"
 
 
-                        data-created="{{ $order->created_at?->format('M d, Y h:i A') }}"
+                        data-created="{{ \App\Support\ShopDay::format($order->created_at, 'M d, Y h:i A') }}"
 
 
                         {{-- The full-details modal showed no payment information at

@@ -12,6 +12,7 @@ use App\Models\Order;
 use App\Services\SpinWheel;
 use App\Services\VoucherClaims;
 use App\Support\GuestVoucherClaims;
+use App\Support\ShopDay;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -86,14 +87,44 @@ class AuthController extends Controller
         // AdminAuthController::showLogin() — same alert box, same key.
         $notice = \App\Support\SingleSession::loginNotice($request);
 
+        $data = [
+            'joinForOrder' => \App\Support\DineInJoin::active() && \App\Support\DineInJoin::pinnedOrderId() !== null,
+        ];
+
         return $notice === null
-            ? view('customer.login')
-            : view('customer.login')->withErrors(['session' => $notice]);
+            ? view('customer.login', $data)
+            : view('customer.login', $data)->withErrors(['session' => $notice]);
     }
 
     public function showRegister()
     {
-        return view('customer.register');
+        return view('customer.register', [
+            'joinForOrder' => \App\Support\DineInJoin::active() && \App\Support\DineInJoin::pinnedOrderId() !== null,
+        ]);
+    }
+
+    /**
+     * The Sign up / Log in buttons on the Dine-In Orders page card and menu
+     * line. Records this session's intent (and the one order it is about,
+     * chosen server-side) and moves on to the normal form. Someone already
+     * signed in has nothing to join; someone not seated at a table is not in
+     * the Dine-In flow at all.
+     */
+    public function startDineInJoin(string $mode)
+    {
+        if (Auth::guard('customer')->check()) {
+            return redirect()->route('customer.orders');
+        }
+
+        if (! \App\Support\DineInJoin::isDineInGuest()) {
+            return redirect()->route('customer.menu');
+        }
+
+        \App\Support\DineInJoin::start();
+
+        return redirect()->route(
+            $mode === \App\Support\DineInJoin::MODE_SIGNUP ? 'customer.register' : 'customer.login'
+        );
     }
 
     public function showTerms()
@@ -153,12 +184,17 @@ class AuthController extends Controller
              * TableEntry::ERR_QR_STALE and lands the customer on the code-entry
              * page with a calm "type the code on your card" message, never a
              * 403 or an error page.
+             *
+             * A wrong `k` spends the shared failed-code budget: with four-
+             * character codes, this door would otherwise let one address try
+             * a known table's whole code space in about a day under the
+             * table-session ceiling alone.
              */
-            $parsed = \App\Services\QrPayload::fromParts(
+            $parsed = \App\Services\TableEntry::throughCodeBudget($request, fn () => \App\Services\QrPayload::fromParts(
                 $request->input('branch_id'),
                 $request->input('table'),
                 $request->input('k')
-            );
+            ));
 
             if (!$parsed['ok']) {
                 return redirect()->route('customer.dineinqr')
@@ -256,6 +292,10 @@ class AuthController extends Controller
         // query for the whole grid — see InventoryDeductionService.
         $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
 
+        // Dine-In guests get the rewards pop-up once per table session; null
+        // for everyone else (see DineInJoin::claimMenuPopup()).
+        $dineInJoinPopup = \App\Support\DineInJoin::claimMenuPopup();
+
         return view('customer.menu', compact(
             'categories',
             'menuItems',
@@ -263,7 +303,8 @@ class AuthController extends Controller
             'selectedBranchId',
             'orderType',
             'reserved',
-            'welcomeCustomer'
+            'welcomeCustomer',
+            'dineInJoinPopup'
         ));
     }
 
@@ -352,7 +393,7 @@ private function switchBranch($branchId): void
         $manualCode = trim((string) $request->input('table_code'));
 
         /*
-         * ── Typed code. The permanent code printed on the table standee, 8
+         * ── Typed code. The permanent code printed on the table standee, 4
          * characters — the only kind of typed code now. It does not expire and
          * is not spent by being used; the only way it stops working is an
          * admin deliberately regenerating that one table's code (see
@@ -371,28 +412,19 @@ private function switchBranch($branchId): void
          * apart.
          */
         if ($manualCode !== '') {
-            $throttleKey = 'table-code:' . $request->ip();
-
-            if (RateLimiter::tooManyAttempts($throttleKey, \App\Services\TableEntry::MAX_ATTEMPTS)) {
-                return back()
-                    ->with('error', 'Too many attempts. Please wait a minute and try again.')
-                    ->with('show_manual', true);
-            }
-
-            RateLimiter::hit($throttleKey, 60);
-
-            $permanent = \App\Services\TableEntry::resolveCode($manualCode);
-
-            // One message whether the string was never a code at all or was a
-            // real code that failed validate() for some other reason — see
-            // resolveCode()'s own docblock for why that refusal is not split
-            // out further: it would let someone probe for codes that exist.
-            if ($permanent === null) {
-                return back()
-                    ->with('error', 'That code is not valid. Please check the code printed on your table, or ask our staff for help.')
-                    ->with('show_manual', true)
-                    ->withInput();
-            }
+            /*
+             * The shared failed-code budget (per device and per address) runs
+             * the check, and resolveCode() answers every refusal with the same
+             * sentence — see both docblocks for why. One response shape for
+             * every refusal, too: the same flash keys and the same withInput(),
+             * so nothing but the wording could differ, and the wording does
+             * not. A success no longer clears the counters (that was a way to
+             * reset the café's budget with one real code).
+             */
+            $permanent = \App\Services\TableEntry::throughCodeBudget(
+                $request,
+                fn () => \App\Services\TableEntry::resolveCode($manualCode)
+            );
 
             if (!$permanent['ok']) {
                 return back()
@@ -400,8 +432,6 @@ private function switchBranch($branchId): void
                     ->with('show_manual', true)
                     ->withInput();
             }
-
-            RateLimiter::clear($throttleKey);
 
             return $this->startDineIn(
                 $request,
@@ -426,8 +456,12 @@ private function switchBranch($branchId): void
         RateLimiter::hit($scanKey, 60);
 
         // All parsing and validation lives in QrPayload so the scan path cannot
-        // drift from what the admin QR generator actually encodes.
-        $parsed = \App\Services\QrPayload::parse(is_string($rawPayload) ? $rawPayload : null);
+        // drift from what the admin QR generator actually encodes. A wrong `k`
+        // spends the same failed-code budget as the other code doors.
+        $parsed = \App\Services\TableEntry::throughCodeBudget(
+            $request,
+            fn () => \App\Services\QrPayload::parse(is_string($rawPayload) ? $rawPayload : null)
+        );
 
         if (!$parsed['ok']) {
             return back()->with('error', $parsed['error']);
@@ -598,7 +632,7 @@ private function switchBranch($branchId): void
          * Continue as Guest:
          * If a customer was previously logged in, explicitly log them out
          * so the Dine-In Guest session does not inherit account-only access
-         * such as My Account, Order History, and Vouchers & Points.
+         * such as My Account, Order History, and Vouchers & Rewards.
          *
          * Preserve the Dine-In context after logout because the guest still
          * needs the scanned branch and table.
@@ -654,6 +688,19 @@ private function switchBranch($branchId): void
     {
         return response()->json([
             'recorded' => \App\Services\TableOccupancy::recordGuestActivity(),
+        ]);
+    }
+
+    /**
+     * The Dine-In rewards pop-up just opened on this phone: use up its one
+     * showing for this table session. Called by the pop-up itself, never with
+     * input, and a no-op for anyone it is not shown to. See
+     * App\Support\DineInJoin::claimMenuPopup().
+     */
+    public function dineInPopupSeen()
+    {
+        return response()->json([
+            'recorded' => \App\Support\DineInJoin::markMenuPopupSeen(),
         ]);
     }
 
@@ -743,13 +790,107 @@ private function switchBranch($branchId): void
         return view('customer.more', compact('customer', 'branch', 'storeInfo'));
     }
 
-    public function showAccount()
+    /**
+     * Help & Instructions.
+     *
+     * Instructions are the same for everyone. The assistance form is for a
+     * seated dine-in customer only, because a help request is addressed to a
+     * branch + table (see submitHelpRequest); pick-up customers and guests
+     * without a table get the shop's contact details instead.
+     */
+    public function showHelp()
+    {
+        $customer = Auth::guard('customer')->user();
+
+        $branchId = session('branch_id') ?: ($customer?->branch_id);
+
+        $branch = $branchId
+            ? \App\Models\Branch::find($branchId)
+            : \App\Models\Branch::where('is_main_branch', true)->first();
+
+        if (!$branch) {
+            $branch = \App\Models\Branch::where('is_active', true)->orderBy('id')->first();
+        }
+
+        $storeInfo = \App\Support\StoreContact::forBranch($branch?->id);
+
+        // The same branch + table the submit path will use.
+        $tableNumber = session('table_number');
+        $canRequestAssistance = session('order_type') === 'dine_in'
+            && session('branch_id')
+            && $tableNumber;
+
+        $openRequest = $canRequestAssistance
+            ? \App\Models\HelpRequest::where('branch_id', session('branch_id'))
+                ->where('table_number', $tableNumber)
+                ->whereIn('status', ['pending', 'assisting'])
+                ->latest('requested_at')
+                ->first()
+            : null;
+
+        return view('customer.help', compact(
+            'customer',
+            'branch',
+            'storeInfo',
+            'canRequestAssistance',
+            'tableNumber',
+            'openRequest'
+        ));
+    }
+
+    public function showAccount(Request $request)
     {
         if (!Auth::guard('customer')->check()) {
             return redirect()->route('customer.menu');
         }
 
-        return view('customer.account-settings');
+        /** @var \App\Models\User $customer */
+        $customer = Auth::guard('customer')->user();
+
+        // Streak Calendar + Account benefits (Oct 2026). Read-only: nothing on
+        // this page pays a bonus — App\Services\Loyalty does that when staff
+        // complete an order or when the email is verified.
+        //
+        // PER BRANCH: the calendar, the progress bar and the stamp card show
+        // the branch the customer is ordering from (the pickup branch they
+        // picked, or their Dine-In table's branch — session('branch_id')),
+        // counting only orders completed there. Null calendar while the
+        // owner's master switch or that branch's own switch is off. With no
+        // branch picked yet the page asks them to choose one instead.
+        //
+        // The streak POINTS bonus stays company-wide: $streakOn is the master
+        // switch only, and the calendar's bonus line counts every branch.
+        $streakOn = \App\Models\Setting::streakCalendarEnabled();
+        $streakBranch = \App\Services\FreeDesserts::sessionBranch();
+        $streak = $streakBranch && \App\Services\FreeDesserts::switchedOn($streakBranch->id)
+            ? \App\Services\StreakCalendar::forAccountPage($customer, $request->query('month'), branchId: $streakBranch->id)
+            : null;
+
+        // Points bonuses only: a stamp card reward is not points (its ledger
+        // row is 0) and has its own card below.
+        $recentAwards = $customer->loyaltyAwards()
+            ->where('type', '!=', \App\Models\LoyaltyAward::TYPE_FREE_DESSERT)
+            ->latest('id')->limit(5)->get();
+
+        // Stamp card + the progress bar under the calendar, for the same
+        // branch: stamps toward its next reward, and how many rewards are
+        // ready there (their codes are listed on Vouchers & Rewards). Same
+        // data as Vouchers & Rewards.
+        $freeDessert = \App\Services\FreeDesserts::summaryFor($customer, $streakBranch?->id);
+
+        $loyalty = [
+            'qualifies'      => \App\Services\Loyalty::qualifies($customer),
+            'verified'       => $customer->hasVerifiedEmail(),
+            'welcome_points' => (int) config('loyalty.welcome_bonus_points', 0),
+            'welcome_paid'   => \App\Services\Loyalty::hasWelcome($customer),
+            'order_points'   => (int) config('loyalty.order_bonus_points', 0),
+            'milestones'     => $streakOn ? \App\Services\Loyalty::milestones() : [],
+            'bonus_points'   => (int) $customer->bonus_points,
+            'spins_per_order' => self::SPINS_PER_ORDER,
+            'spins_per_day'  => self::SPINS_PER_DAY,
+        ];
+
+        return view('customer.account-settings', compact('streak', 'streakBranch', 'streakOn', 'recentAwards', 'loyalty', 'freeDessert'));
     }
 
     public function showItem($id)
@@ -872,7 +1013,20 @@ private function switchBranch($branchId): void
             ->orderBy('name')
             ->get();
 
+        // The header's category jump strip: the same categories, in the same
+        // order, as the Main Menu grid (showMenu) — active ones with at least
+        // one available item at this branch — so the strip never offers a
+        // category the grid hides.
         $categories = \App\Models\Category::where('is_active', true)
+            ->whereIn('id', \App\Models\MenuItem::query()
+                ->select('category_id')
+                ->whereNotNull('category_id')
+                ->where('is_available', true)
+                ->when($selectedBranchId, fn ($q) => $q->where(function ($q) use ($selectedBranchId) {
+                    $q->where('branch_id', $selectedBranchId)
+                        ->orWhereNull('branch_id');
+                })))
+            ->orderBy('display_order')
             ->orderBy('name')
             ->get();
 
@@ -1460,7 +1614,20 @@ private function switchBranch($branchId): void
             ->get();
     }
 
+    /*
+     * Loyalty reward (Oct 2026): "Use now" on Vouchers & Rewards leaves the
+     * reward's code here, and the cart's code box applies it on load exactly
+     * as if it had been typed (so the preview, the summary and checkout all
+     * go through the one reward-code path). Pulled, so it is offered once.
+     * Signed-in customers only — a reward code works for its owner alone.
+     * Replaces the old free dessert chooser.
+     */
+    $applyRewardCode = Auth::guard('customer')->check() && isset($cart) && count($cart) > 0
+        ? session()->pull('apply_reward_code')
+        : null;
+
     return view('customer.cart', compact(
+        'applyRewardCode',
         'cart',
         'total',
         'activeOrder',
@@ -1825,6 +1992,12 @@ private function switchBranch($branchId): void
                 // request. See App\Support\SingleSession.
                 \App\Support\SingleSession::claim($request, 'customer');
 
+                // The Dine-In "Want a stamp for this order?" flow: attach the
+                // one order this session pinned. See App\Support\DineInJoin.
+                $joined = \App\Support\DineInJoin::active();
+                $hadPinnedOrder = \App\Support\DineInJoin::pinnedOrderId() !== null;
+                $claim = $joined ? \App\Support\DineInJoin::claimInto($user) : null;
+
                 // Same hand-over as registration: a prize won as a guest in
                 // this browser follows the customer into the account they just
                 // signed in to.
@@ -1845,14 +2018,31 @@ private function switchBranch($branchId): void
                     session()->forget('table_number');
                 }
 
+                $welcome = 'Welcome back, ' . $user->name . '!'
+                    . ($adopted > 0
+                        ? ' Your ' . ($adopted === 1 ? 'voucher has' : $adopted . ' vouchers have')
+                            . ' been moved to your account.'
+                        : '');
+
+                // Came from the Orders page card about a specific order: go
+                // back to that order screen (same table, same branch), not the
+                // menu, and say what happened to the order.
+                if ($joined && $hadPinnedOrder && $orderType === 'dine_in') {
+                    $note = match ($claim) {
+                        \App\Support\DineInJoin::CLAIMED           => \App\Support\DineInJoin::MSG_CLAIMED,
+                        \App\Support\DineInJoin::CLAIMED_COMPLETED => \App\Support\DineInJoin::MSG_CLAIMED_COMPLETED,
+                        \App\Support\DineInJoin::TOO_LATE          => \App\Support\DineInJoin::MSG_TOO_LATE,
+                        default                                    => null,
+                    };
+
+                    return redirect()->route('customer.orders')
+                        ->with('success', $note ? $user->name . ', you are logged in. ' . $note : $welcome);
+                }
+
                 $this->flashWelcomePopup($user);
 
                 return redirect()->route('customer.menu')
-                    ->with('success', 'Welcome back, ' . $user->name . '!'
-                        . ($adopted > 0
-                            ? ' Your ' . ($adopted === 1 ? 'voucher has' : $adopted . ' vouchers have')
-                                . ' been moved to your account.'
-                            : ''));
+                    ->with('success', $welcome);
             }
 
             return back()->withErrors([
@@ -1921,8 +2111,18 @@ private function switchBranch($branchId): void
 
     public function applyVoucher(Request $request)
     {
-        $code = strtoupper(trim($request->input('code')));
+        $code = strtoupper(trim((string) $request->input('code')));
         $subtotal = (float) $request->input('subtotal', 0);
+
+        /*
+         * A loyalty reward code (RWD-XXXX-XXXX, Oct 2026) typed into the same
+         * box, or filled in by "Use now". A shared voucher code is still tried
+         * first, exactly as resolveTypedCode() tries it first, so no existing
+         * voucher can be shadowed by the new shape.
+         */
+        if (\App\Support\RewardCode::looksLike($code) && ! \App\Models\Voucher::where('code', $code)->exists()) {
+            return response()->json($this->previewRewardCode($code, $subtotal));
+        }
 
         /*
          * One box, two kinds of code: the SHARED voucher code, and the unique
@@ -1975,10 +2175,138 @@ private function switchBranch($branchId): void
 
         return response()->json([
             'success' => true,
+            'kind' => 'voucher',
             'message' => $voucher->description ?? 'Voucher applied!',
             'discount' => $discount,
             'final_total' => $final_total,
         ]);
+    }
+
+    /**
+     * The cart preview of a loyalty reward code (Oct 2026). Answers what
+     * checkout would decide (OrderController::placeOrder re-decides all of it
+     * inside the order transaction), and spends nothing.
+     *
+     *  - Only the signed-in, qualifying owner's code resolves. A guest, a
+     *    stranger's code and a code that does not exist all get the same
+     *    "Invalid voucher code." a mistyped voucher gets — nothing here tells
+     *    a guesser that a code exists. The route's apply-voucher limiter caps
+     *    the guessing on top.
+     *  - kind 'reward_item': the menu item, if it can be given at the session's
+     *    branch right now (availability, branch, recipe, stock).
+     *  - kind 'reward_discount': priced like a voucher — branch, minimum
+     *    order, the same discount formula — against the paid subtotal.
+     */
+    private function previewRewardCode(string $code, float $subtotal): array
+    {
+        $reward = \App\Services\FreeDesserts::findForCustomer(Auth::guard('customer')->user(), $code);
+
+        if (! $reward) {
+            return ['success' => false, 'message' => 'Invalid voucher code.'];
+        }
+
+        if (($error = $reward->usabilityError()) !== null) {
+            return ['success' => false, 'message' => $error];
+        }
+
+        $branchId = session('branch_id') ? (int) session('branch_id') : null;
+
+        // Only at the branch that issued it, item and voucher rewards alike.
+        if (($error = $reward->branchErrorFor($branchId)) !== null) {
+            return ['success' => false, 'message' => $error];
+        }
+
+        if ($reward->isItemReward()) {
+            $line = $branchId
+                ? \App\Services\FreeDesserts::itemLineFor(
+                    $reward,
+                    $branchId,
+                    app(\App\Services\InventoryDeductionService::class)->committedQuantities()
+                )
+                : null;
+
+            if (! $line) {
+                return [
+                    'success' => false,
+                    'message' => 'Your reward (' . $reward->description() . ') is not available at this branch right now. It stays in Vouchers & Rewards for another order.',
+                ];
+            }
+
+            return [
+                'success'   => true,
+                'kind'      => 'reward_item',
+                'code'      => $reward->displayCode(),
+                'item_name' => $line['name'],
+                'message'   => 'Reward added: ' . $line['name'] . ', free.',
+            ];
+        }
+
+        if (($error = $reward->redemptionErrorFor($subtotal, $branchId)) !== null) {
+            return ['success' => false, 'message' => $error];
+        }
+
+        $discount = $reward->discountFor($subtotal);
+
+        return [
+            'success'     => true,
+            'kind'        => 'reward_discount',
+            'code'        => $reward->displayCode(),
+            'message'     => 'Reward applied: ' . $reward->description() . '.',
+            'discount'    => $discount,
+            'final_total' => round($subtotal - $discount, 2),
+        ];
+    }
+
+    /**
+     * "Use now" on a reward in More → Vouchers & Rewards (Oct 2026).
+     *
+     * Spends nothing. It checks the reward is the signed-in customer's own
+     * and usable, then hands its code to the cart, whose code box applies it
+     * on load exactly as if the customer had typed it — so there is one path
+     * for a reward code, not two. An empty cart goes to the menu first (an
+     * order needs at least one paid item), and the code waits in the session
+     * until the cart is opened.
+     */
+    public function useReward(int $reward)
+    {
+        /** @var \App\Models\User|null $customer */
+        $customer = Auth::guard('customer')->user();
+
+        if (! $customer) {
+            return redirect()->route('customer.login')
+                ->with('error', 'Please login to use your rewards.');
+        }
+
+        $row = \App\Models\FreeDessertReward::whereKey($reward)
+            ->where('user_id', $customer->id)
+            ->first();
+
+        // Someone else's reward looks exactly like a reward that does not exist.
+        if (! $row || ! \App\Services\Loyalty::qualifies($customer)) {
+            return redirect()->route('customer.vouchers')
+                ->with('error', 'That reward could not be found.');
+        }
+
+        if (($error = $row->usabilityError()) !== null) {
+            return redirect()->to(route('customer.vouchers') . '#rewards')->with('error', $error);
+        }
+
+        // Only at the branch that issued it: say so here rather than letting
+        // the cart refuse it a step later.
+        if (($error = $row->branchErrorFor(session('branch_id') ? (int) session('branch_id') : null)) !== null) {
+            return redirect()->to(route('customer.vouchers') . '#rewards')->with('error', $error);
+        }
+
+        session()->put('apply_reward_code', $row->displayCode());
+
+        if (empty(session('cart'))) {
+            return redirect()->route('customer.menu')->with(
+                'success',
+                'Add something to your order, then open your cart — your reward code ' . $row->displayCode() . ' will be applied there.'
+            );
+        }
+
+        return redirect()->route('customer.cart');
     }
 
     // ══════════ GAME ══════════
@@ -1987,7 +2315,7 @@ private function switchBranch($branchId): void
     {
         if (!Auth::guard('customer')->check()) {
             return redirect()->route('customer.login')
-                ->with('error', 'Please login to view your vouchers.');
+                ->with('error', 'Please login to view your vouchers and rewards.');
         }
 
         /*
@@ -2016,7 +2344,21 @@ private function switchBranch($branchId): void
             })
             ->values();
 
-        return view('customer.vouchers', compact('userVouchers'));
+        // The stamp card of the branch the customer is ordering from, the
+        // same partial and data as the Account page
+        // (App\Services\FreeDesserts::summaryFor; hidden while that branch is
+        // off), and every loyalty reward with its code FROM EVERY BRANCH, each
+        // labeled with its branch — listed whatever the switches say, because
+        // a reward already earned can always be used (FreeDesserts::rewardsFor).
+        /** @var \App\Models\User $customer */
+        $customer = Auth::guard('customer')->user();
+        $rewardBranch = \App\Services\FreeDesserts::sessionBranch();
+        $freeDessert = \App\Services\FreeDesserts::summaryFor($customer, $rewardBranch?->id);
+        $loyaltyRewards = \App\Services\Loyalty::qualifies($customer)
+            ? \App\Services\FreeDesserts::rewardsFor($customer)
+            : collect();
+
+        return view('customer.vouchers', compact('userVouchers', 'freeDessert', 'loyaltyRewards', 'rewardBranch'));
     }
 
     // ══════════ HELP REQUEST ══════════
@@ -2200,7 +2542,9 @@ private function switchBranch($branchId): void
      */
     private function eligibleSpinOrders(): \Illuminate\Support\Collection
     {
-        $query = Order::whereDate('created_at', now()->today())
+        // "Today" is the SHOP's day (Manila), not UTC's, which would end at
+        // 8:00 AM Manila and drop an early-morning order's spins.
+        $query = ShopDay::whereToday(Order::query(), 'created_at')
             ->where('status', '!=', 'cancelled');
 
         if (Auth::guard('customer')->check()) {
@@ -2241,20 +2585,24 @@ private function switchBranch($branchId): void
      * it; the server re-derives it on every spin and is the only thing that
      * actually allows or refuses.
      *
+     * Public (Oct 2026) only so App\Support\SpinPrompt can ask "does this
+     * visitor still have spins?" without a second copy of the rules. It is
+     * read-only; nothing outside this controller changes what it returns.
+     *
      * @return array{
      *   can_spin:bool, blocked:?string, message:string,
      *   spins_used:int, spins_total:int, spins_remaining:int,
      *   order_id:?int, order_number:?string, daily_remaining:?int
      * }
      */
-    private function spinWindowState(): array
+    public function spinWindowState(): array
     {
         $userId = Auth::guard('customer')->check()
             ? Auth::guard('customer')->id()
             : null;
 
         $dailyUsed = $userId
-            ? GamePlayed::where('user_id', $userId)->whereDate('created_at', today())->count()
+            ? ShopDay::whereToday(GamePlayed::where('user_id', $userId), 'created_at')->count()
             : 0;
 
         // null for guests — the daily ceiling does not apply to them.
@@ -2341,10 +2689,10 @@ private function switchBranch($branchId): void
         // could be WON, see winnableVoucherFor() below) for a customer at
         // branch 1, and a branch-3-only ad played in every branch's carousel.
         $vouchers = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('expires_at')
-                    ->orWhere('expires_at', '>=', now()->endOfDay());
-            })
+            // Same expiry rule as redemption (valid through the expiry date,
+            // shop time). This used to compare with UTC end-of-day, which
+            // hid a voucher on its last valid day.
+            ->notExpired()
             ->where(
                 'used_count',
                 '<',
@@ -2368,8 +2716,10 @@ private function switchBranch($branchId): void
         // guard — nobody on the customer side authenticates there, so a
         // logged-in customer's card always fell through to the guest total and
         // rendered "0 pts" no matter what they had actually earned.
+        // wheelPoints(): the spin balance plus the account bonus balance —
+        // the same total addPoints() checks a voucher against.
         $pointsBalance = Auth::guard('customer')->check()
-            ? (int) Auth::guard('customer')->user()->points
+            ? Auth::guard('customer')->user()->wheelPoints()
             : (int) session('guest_points', 0);
 
         /*
@@ -2491,10 +2841,7 @@ private function switchBranch($branchId): void
         return $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
             ->where('points_required', '>', 0)
             ->where('points_required', '<=', $totalPoints)
-            ->where(function ($q) {
-                $q->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            })
+            ->notExpired()
             // A prize that has already been claimed to its limit is not a prize.
             // The redemption path refuses it (Voucher::availabilityErrorFor),
             // so awarding one would hand the customer something dead on arrival.
@@ -2649,8 +2996,7 @@ private function switchBranch($branchId): void
                 }
 
                 if ($spinUserId !== null) {
-                    $dailyUsed = GamePlayed::where('user_id', $spinUserId)
-                        ->whereDate('created_at', today())
+                    $dailyUsed = ShopDay::whereToday(GamePlayed::where('user_id', $spinUserId), 'created_at')
                         ->count();
 
                     if ($dailyUsed >= self::SPINS_PER_DAY) {
@@ -2746,7 +3092,7 @@ private function switchBranch($branchId): void
                         'description' => $earnedVoucher->description
                             ?? $this->voucherDiscountText($earnedVoucher),
                         'valid_from'  => $claim->valid_from?->toDateString(),
-                        'expires_at'  => $earnedVoucher->expires_at?->format('M d, Y'),
+                        'expires_at'  => ShopDay::formatExpiry($earnedVoucher->expires_at) ?: null,
                         'message'     => 'Valid now — use it on your next order.',
                     ];
                 }
@@ -2763,6 +3109,9 @@ private function switchBranch($branchId): void
                 'guest_notice' => $voucherData
                     ? 'Save your claim code — it is the only way to use this voucher later.'
                     : 'Keep spinning to win a voucher!',
+                // What an account would add (config/loyalty.php), shown under
+                // the spin result. Null when every bonus is switched off.
+                'signup_teaser' => \App\Services\Loyalty::guestTeaser(),
             ], $this->spinResultState($spinNumber, $segment)));
         }
 
@@ -2772,7 +3121,20 @@ private function switchBranch($branchId): void
         $user->points += $points;
         $user->save();
 
-        $totalPoints = $user->points;
+        /*
+         * BONUS POINTS COUNT TOWARDS THE WHEEL VOUCHER (Oct 2026).
+         *
+         * Registered-customer bonuses (App\Services\Loyalty) live in
+         * users.bonus_points, which placeOrder() does not reset. They are
+         * added here — read fresh, since a bonus may have been credited since
+         * this request loaded the user — so they do the one thing points can
+         * do: bring the next wheel voucher closer. A voucher's cost is taken
+         * from the spin balance first (it would be reset at the next order
+         * anyway) and only the remainder from the bonus balance.
+         */
+        $bonusPoints = (int) \App\Models\User::whereKey($user->id)->value('bonus_points');
+
+        $totalPoints = $user->points + $bonusPoints;
 
         /*
          * NO NOTIFICATION AT A LIFETIME-POINTS THRESHOLD.
@@ -2818,14 +3180,29 @@ private function switchBranch($branchId): void
             $earnedVoucher = $this->winnableVoucherFor($totalPoints, $alreadyWon);
 
             if ($earnedVoucher) {
-                // Deduct points
-                $totalPoints -= $earnedVoucher->points_required;
-                $user->points = $totalPoints;
+                // Deduct points — spin balance first, then bonus balance.
+                $cost      = (int) $earnedVoucher->points_required;
+                $fromSpin  = min((int) $user->points, $cost);
+                $fromBonus = $cost - $fromSpin;
+
+                $user->points -= $fromSpin;
                 $user->save();
+
+                if ($fromBonus > 0) {
+                    // Atomic and floored, so a concurrent bonus credit is not
+                    // overwritten and the balance can never go negative.
+                    \App\Models\User::whereKey($user->id)
+                        ->where('bonus_points', '>=', $fromBonus)
+                        ->decrement('bonus_points', $fromBonus);
+                }
+
+                $totalPoints -= $cost;
 
                 // Valid from = today (pwede nang gamitin sa susunod na order,
                 // hindi lang sa order na kinuha ang panalo)
-                $validFrom = today()->toDateString();
+                // The shop's date (ShopDay), so a win just after midnight in
+                // Manila is dated that day and not UTC's previous one.
+                $validFrom = ShopDay::todayString();
 
                 /*
                  * This window belongs on THIS CUSTOMER'S claim, not on the
@@ -2864,7 +3241,7 @@ private function switchBranch($branchId): void
                     'user_id'       => $user->id,
                     'voucher_id'    => $earnedVoucher->id,
                     'claim_code'    => \App\Services\VoucherClaims::mintCode(),
-                    'acquired_date' => today()->toDateString(),
+                    'acquired_date' => ShopDay::todayString(),
                     'valid_from'    => $validFrom,
                     'is_used'       => false,
                 ]);
@@ -2879,9 +3256,7 @@ private function switchBranch($branchId): void
                     'claim_code'  => \App\Services\VoucherClaims::display($accountClaim->claim_code),
                     'description' => ($earnedVoucher->description ?? $discountText),
                     'valid_from'  => $validFrom,
-                    'expires_at'  => $earnedVoucher->expires_at
-                        ? $earnedVoucher->expires_at->format('M d, Y')
-                        : null,
+                    'expires_at'  => ShopDay::formatExpiry($earnedVoucher->expires_at) ?: null,
                     'message'     => 'Valid now — use it on your next order.',
                 ];
             }
@@ -2895,10 +3270,7 @@ private function switchBranch($branchId): void
         // a customer at branch 1, who could never actually earn or redeem it.
         $nextVoucher = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
             ->where('points_required', '>', $totalPoints)
-            ->where(function ($q) {
-                $q->whereNull('expires_at')
-                    ->orWhere('expires_at', '>', now());
-            }))
+            ->notExpired())
             ->orderBy('points_required', 'asc')
             ->first();
 

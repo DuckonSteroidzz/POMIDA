@@ -160,10 +160,10 @@ class GuestVoucherClaims
             // null once the window has opened (the normal case: claims mint
             // valid from today), so the page has nothing stale to show —
             // only a claim that genuinely still has to wait prints a date.
-            'valid_from'  => ($c->valid_from && today()->lessThan($c->valid_from))
+            'valid_from'  => ($c->valid_from && ! ShopDay::hasStarted($c->valid_from))
                 ? $c->valid_from->format('M d, Y')
                 : null,
-            'expires_at'  => $c->voucher?->expires_at?->format('M d, Y'),
+            'expires_at'  => ShopDay::formatExpiry($c->voucher?->expires_at) ?: null,
             'is_used'     => (bool) $c->is_used,
         ])->values()->all();
     }

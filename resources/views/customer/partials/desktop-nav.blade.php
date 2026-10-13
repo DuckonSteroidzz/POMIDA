@@ -19,7 +19,9 @@
     // Inactive: muted dark text, transparent background, soft hover.
     // Active: light peach pill + dark red text — lightweight enough not to
     // fight the solid Cart button next to it, and matches the mobile nav.
-    $navLink = fn (string $route) => request()->routeIs($route)
+    // Section-aware (App\Support\CustomerNav), so a category, a receipt or
+    // Vouchers & Rewards lights up the tab it belongs to.
+    $navLink = fn (string $section) => \App\Support\CustomerNav::isActive($section)
         ? 'bg-peach-soft text-peach-red'
         : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red';
 @endphp
@@ -32,31 +34,31 @@
          "Pea…". Full size returns at lg where there's room for both. --}}
     <nav class="hidden items-center gap-1 md:flex">
         <a href="{{ route('customer.menu') }}"
-           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.menu') }}">
+           class="rounded-full px-2 py-2 text-[1rem] font-semibold no-underline transition lg:px-3 lg:text-[1rem] {{ $navLink('menu') }}">
             <i class="bi bi-grid"></i> Menu
         </a>
 
         <a href="{{ route('customer.orders') }}"
-           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.orders') }}">
+           class="rounded-full px-2 py-2 text-[1rem] font-semibold no-underline transition lg:px-3 lg:text-[1rem] {{ $navLink('orders') }}">
             <i class="bi bi-receipt"></i> Orders
         </a>
 
         <a href="{{ route('customer.game') }}"
-           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.game') }}">
+           class="rounded-full px-2 py-2 text-[1rem] font-semibold no-underline transition lg:px-3 lg:text-[1rem] {{ $navLink('game') }}">
             <i class="bi bi-dice-5"></i> Spin &amp; Win
         </a>
 
         <a href="{{ route('customer.more') }}"
-           class="rounded-full px-2 py-2 text-[0.85rem] font-semibold no-underline transition lg:px-3 lg:text-[0.95rem] {{ $navLink('customer.more') }}">
+           class="rounded-full px-2 py-2 text-[1rem] font-semibold no-underline transition lg:px-3 lg:text-[1rem] {{ $navLink('more') }}">
             <i class="bi bi-three-dots"></i> More
         </a>
 
         {{-- Cart: an action button, visually separated from the links above. --}}
         <a href="{{ route('customer.cart') }}"
-           class="relative ml-1 inline-flex items-center gap-2 rounded-full bg-peach-red px-3 py-2 text-[0.85rem] font-bold text-white no-underline transition hover:bg-peach-deep lg:ml-2 lg:px-4 lg:text-[0.95rem]">
+           class="relative ml-1 inline-flex items-center gap-2 rounded-full bg-peach-red px-3 py-2 text-[1rem] font-bold text-white no-underline transition hover:bg-peach-deep lg:ml-2 lg:px-4 lg:text-[1rem]">
             <i class="bi bi-cart"></i> Cart
             @if($desktopCartCount > 0)
-                <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.65rem] font-black text-peach-red">
+                <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.8125rem] font-black text-peach-red">
                     {{ $desktopCartCount }}
                 </span>
             @endif
@@ -68,10 +70,10 @@
 
     {{-- Mobile cart shortcut (the nav's Cart button is hidden below md). --}}
     <a href="{{ route('customer.cart') }}"
-       class="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
+       class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
         <i class="bi bi-cart text-lg"></i>
         @if($desktopCartCount > 0)
-            <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.6rem] font-black text-white">
+            <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.8125rem] font-black text-white">
                 {{ $desktopCartCount }}
             </span>
         @endif

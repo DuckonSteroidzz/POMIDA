@@ -44,18 +44,18 @@
 <div id="idleTimeoutModal" role="alertdialog" aria-modal="true" aria-labelledby="idleTimeoutTitle" hidden
      style="position:fixed;inset:0;z-index:10002;background:rgba(59,35,32,0.55);display:flex;align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:316px;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;padding:24px 20px 20px;text-align:center;box-shadow:0 18px 45px rgba(59,35,32,0.22);">
-        <div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#FDE8DE;font-size:24px;">
+        <div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#FDE8DE;font-size:26.5px;">
             ⏳
         </div>
-        <h3 id="idleTimeoutTitle" style="margin:0 0 8px;color:#3b2320;font-family:'Fraunces',Georgia,serif;font-size:19px;line-height:1.25;font-weight:700;">
+        <h3 id="idleTimeoutTitle" style="margin:0 0 8px;color:#3b2320;font-family:'Fraunces',Georgia,serif;font-size:21px;line-height:1.25;font-weight:700;">
             Are you still there?
         </h3>
-        <p style="max-width:260px;margin:0 auto;color:#8A6A61;font-size:12px;line-height:1.55;">
+        <p style="max-width:260px;margin:0 auto;color:#8A6A61;font-size:14px;line-height:1.55;">
             We haven't seen any activity in a while. For your security we'll end this session in
             <span id="idleTimeoutCountdown">60</span> seconds unless you tell us you're still here.
         </p>
         <button type="button" id="idleTimeoutYesBtn"
-                style="margin-top:16px;height:36px;padding:0 22px;border-radius:999px;background:#EF8585;color:#fff;border:1px solid #EF8585;font-size:12px;font-weight:700;cursor:pointer;">
+                style="margin-top:16px;height:36px;padding:0 22px;border-radius:999px;background:#EF8585;color:#fff;border:1px solid #EF8585;font-size:14px;font-weight:700;cursor:pointer;">
             Yes, I'm here
         </button>
     </div>

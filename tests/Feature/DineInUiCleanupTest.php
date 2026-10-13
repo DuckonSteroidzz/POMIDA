@@ -8,12 +8,13 @@ use Tests\TestCase;
  * Dine-In customer UI cleanup (Sept 2026). Scope of this pass:
  *
  *   1. the Cart tab is gone from the mobile bottom navigation on every
- *      customer surface that carries one (the shared partial plus the three
- *      pages with an inline copy: item-details, receipt, vouchers);
+ *      customer surface that carries one (Oct 2026: item-details, receipt and
+ *      vouchers no longer keep inline copies — they include the shared one);
  *   2. on the Main Menu the table/branch banner sits ABOVE the search bar,
  *      rendered as a compact pill, and only on the categories view;
- *   3. the per-category item view has no banner, and its item-count badge +
- *      "Back to Categories" button sit directly above the category title;
+ *   3. the per-category item view has no banner, and its item-count badge
+ *      sits directly above the category title (Oct 2026: the way back is the
+ *      header back button, not an in-page "Back to Categories" button);
  *   4. the "Spin & Win" card is gone from the More page (the bottom-nav tab
  *      stays);
  *   5. the item-details quantity control is an editable <input type="number">.
@@ -59,9 +60,30 @@ class DineInUiCleanupTest extends TestCase
     {
         return [
             'shared partial' => ['partials/navbar.blade.php'],
-            'item-details'   => ['item-details.blade.php'],
-            'receipt'        => ['receipt.blade.php'],
-            'vouchers'       => ['vouchers.blade.php'],
+        ];
+    }
+
+    /**
+     * The three pages that used to carry their own bottom-bar copy (with the
+     * tabs in a different order on each) now include the shared one, so the
+     * no-Cart rule above covers them too.
+     *
+     * @dataProvider formerInlineNavBlades
+     */
+    public function test_former_inline_copies_now_include_the_shared_bottom_nav(string $relative): void
+    {
+        $source = $this->viewSrc($relative);
+
+        $this->assertStringContainsString("@include('customer.partials.navbar')", $source, "{$relative}: should include the shared bottom nav");
+        $this->assertDoesNotMatchRegularExpression('/<nav\b[^>]*fixed inset-x-0 bottom-0/', $source, "{$relative}: still carries its own fixed bottom bar");
+    }
+
+    public static function formerInlineNavBlades(): array
+    {
+        return [
+            'item-details' => ['item-details.blade.php'],
+            'receipt'      => ['receipt.blade.php'],
+            'vouchers'     => ['vouchers.blade.php'],
         ];
     }
 
@@ -124,11 +146,12 @@ class DineInUiCleanupTest extends TestCase
 
     // ─────────────── 3. category header order ───────────────
 
-    public function test_category_view_puts_count_and_back_above_the_title(): void
+    public function test_category_view_puts_count_above_the_title_and_back_in_the_header(): void
     {
         $menu = $this->viewSrc('menu.blade.php');
 
-        $backPos  = strpos($menu, 'Back to Categories');
+        // The back control is the shared header button, shown on this view only.
+        $backPos  = strpos($menu, "@isset(\$items) @include('customer.partials.header-back'");
         $countPos = strpos($menu, "count(\$items) === 1 ? 'item' : 'items'");
         $titlePos = strpos($menu, "\$category->name ?? 'Items'");
 
@@ -136,7 +159,8 @@ class DineInUiCleanupTest extends TestCase
         $this->assertNotFalse($countPos);
         $this->assertNotFalse($titlePos);
 
-        $this->assertLessThan($titlePos, $backPos, '"Back to Categories" must come before the category title');
+        $this->assertLessThan($titlePos, $backPos, 'the header back button must come before the category title');
+        $this->assertStringNotContainsString('Back to Categories', $menu, 'the in-page back button duplicated the header one');
         $this->assertLessThan($titlePos, $countPos, 'the item-count badge must come before the category title');
     }
 

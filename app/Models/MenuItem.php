@@ -34,6 +34,9 @@ class MenuItem extends Model
         'display_order',
         'is_available',
         'is_featured',
+        // Can be chosen as the stamp card free dessert (Oct 2026). Set
+        // only by the manager-tier Add/Edit menu item form.
+        'free_dessert_eligible',
         'track_stock',
         'stock_quantity',
         'low_stock_alert',
@@ -46,6 +49,7 @@ class MenuItem extends Model
         'cost' => 'decimal:2',
         'is_available' => 'boolean',
         'is_featured' => 'boolean',
+        'free_dessert_eligible' => 'boolean',
         'track_stock' => 'boolean',
         'archived_at' => 'datetime',
     ];

@@ -69,4 +69,32 @@ class Setting extends Model
     {
         return self::get(self::GAME_ENABLED) === '1';
     }
+
+    /**
+     * The Streak Calendar & Free Dessert Stamps on/off switch (Oct 2026),
+     * built exactly like the Spin & Win switch above: ONE global row,
+     * branch_id NULL, written by AdminController::toggleStreakCalendar() from
+     * the card under the Spin Wheel card on the Vouchers page.
+     *
+     * The one difference is the default: this feature shipped switched on, so
+     * a MISSING row is ON and only a value of exactly '0' turns it off. No
+     * migration or seed row is needed, and deploying changes nothing.
+     *
+     * Since stamp cards became per branch (Oct 2026) this is the MASTER
+     * switch, owner only: each branch also has its own switch
+     * (StreakRewardSettings::branchEnabled, owner or that branch's
+     * supervisor), and a branch is on only while both are.
+     *
+     * What OFF means is decided in one place each: Loyalty::orderCompleted()
+     * pays no streak milestone bonus (company-wide), FreeDesserts::active()
+     * (earning and every stamp-card view, at every branch) is false, and the
+     * pop-up stays quiet. Rewards already earned stay spendable at the cart,
+     * which reads none of the switches.
+     */
+    public const STREAK_CALENDAR_ENABLED = 'streak_calendar_enabled';
+
+    public static function streakCalendarEnabled(): bool
+    {
+        return self::get(self::STREAK_CALENDAR_ENABLED) !== '0';
+    }
 }

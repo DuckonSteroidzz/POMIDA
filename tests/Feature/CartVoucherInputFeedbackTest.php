@@ -78,10 +78,12 @@ class CartVoucherInputFeedbackTest extends TestCase
         $page = $this->cartPage();
         $page->assertOk();
 
+        // "Voucher or reward code" since the Streak Rewards pass (Oct 2026):
+        // the same box takes a loyalty reward's RWD-… code.
         $this->assertMatchesRegularExpression(
-            '/<input[^>]*id="voucherInput"[^>]*placeholder="Enter voucher code"/s',
+            '/<input[^>]*id="voucherInput"[^>]*placeholder="Voucher or reward code"/s',
             $page->getContent(),
-            'the voucher input has no visible "Enter voucher code" placeholder'
+            'the voucher input has no visible "Voucher or reward code" placeholder'
         );
     }
 

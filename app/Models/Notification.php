@@ -218,6 +218,46 @@ class Notification extends Model
     }
 
     /**
+     * The customer's stamp card just earned one or more rewards
+     * (App\Services\FreeDesserts::grantDue). One notification per completion,
+     * however many came due, attached to the order whose completion added the
+     * stamp. The type key keeps its first name (free_dessert_earned) so the
+     * bell and any stored rows keep working.
+     *
+     * @param  array<int, FreeDessertReward>  $rewards  granted together, so they share an expiry
+     */
+    public static function freeDessertEarned(Order $order, array $rewards): ?self
+    {
+        $count = count($rewards);
+
+        if ($count === 0) {
+            return null;
+        }
+
+        // Stamp cards are per branch: the rewards were earned at this order's
+        // branch, with that branch's number of stamps.
+        $branchId = $order->branch_id ? (int) $order->branch_id : null;
+        $stamps = \App\Services\FreeDesserts::visitDays($branchId) * $count;
+        $branchName = $branchId ? \App\Models\Branch::whereKey($branchId)->value('name') : null;
+        $expiresAt = $rewards[0]->expires_at;
+        $useBy = $expiresAt
+            ? ' Use ' . ($count === 1 ? 'it' : 'them') . ' by ' . \App\Support\ShopDay::format($expiresAt, 'M j, Y') . '.'
+            : '';
+
+        return self::forCustomer(
+            $order,
+            'free_dessert_earned',
+            $count === 1 ? 'You earned a reward!' : 'You earned ' . $count . ' rewards!',
+            'Thank you! You collected ' . $stamps . ' stamps'
+                . ($branchName ? ' at ' . $branchName . ' (1 stamp per day you completed an order there). ' : ' (1 stamp per day you completed an order). ')
+                . ($count === 1
+                    ? 'Your reward (' . $rewards[0]->description() . ') and its code are in More → Vouchers & Rewards.'
+                    : 'Your rewards and their codes are in More → Vouchers & Rewards.')
+                . $useBy
+        );
+    }
+
+    /**
      * Staff rejected the customer's GCash payment.
      */
     public static function gcashRejected(Order $order): ?self

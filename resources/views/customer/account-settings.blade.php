@@ -31,6 +31,19 @@
             [hidden] { display: none !important; }
             button:not(:disabled), [onclick] { cursor: pointer; }
         }
+
+        /* Show / hide password: 44px eye button inside the field's right edge. */
+        .pw-wrap { position: relative; }
+        .pw-wrap .field-input { padding-right: 48px; }
+        .pw-eye {
+            position: absolute; top: 50%; right: 0; transform: translateY(-50%);
+            width: 44px; height: 44px; padding: 0; border: 0; border-radius: 0.75rem;
+            display: flex; align-items: center; justify-content: center;
+            background: transparent; color: var(--color-peach-deep); opacity: 0.6;
+            font-size: 1.15rem; line-height: 1;
+        }
+        .pw-eye:hover { opacity: 1; }
+        .pw-eye:focus-visible { outline: 2px solid var(--color-peach); outline-offset: -2px; opacity: 1; }
     </style>
     @include('partials.session-guard')
 
@@ -47,13 +60,16 @@
     <header class="sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.68rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.72rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'More'])
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 {{-- Header actions: kept in ONE grid cell so the 2-column
                      header grid does not push the cart onto a second row.
@@ -61,24 +77,24 @@
                 @php $desktopCartCount = collect(session('cart', []))->sum('quantity'); @endphp
                 <div class="flex items-center justify-end gap-3 md:gap-4">
                 <nav class="hidden items-center gap-1 md:flex">
-                    <a href="{{ route('customer.orders') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.orders') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.orders') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('orders') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-receipt"></i> Orders
                     </a>
-                    <a href="{{ route('customer.menu') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.menu') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.menu') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('menu') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-grid"></i> Menu
                     </a>
-                    <a href="{{ route('customer.game') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.game') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.game') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('game') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-dice-5"></i> Spin &amp; Win
                     </a>
                     @if(session('order_type') !== 'dine_in')
-                    <a href="{{ route('customer.more') }}" class="rounded-full px-3 py-2 text-[0.95rem] font-semibold no-underline transition {{ request()->routeIs('customer.more') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
+                    <a href="{{ route('customer.more') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('more') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
                         <i class="bi bi-three-dots"></i> More
                     </a>
                     @endif
-                    <a href="{{ route('customer.cart') }}" class="relative ml-2 inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2 text-[0.95rem] font-bold text-white no-underline transition hover:bg-peach-deep">
+                    <a href="{{ route('customer.cart') }}" class="relative ml-2 inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2 text-[1rem] font-bold text-white no-underline transition hover:bg-peach-deep">
                         <i class="bi bi-cart"></i> Cart
                         @if($desktopCartCount > 0)
-                        <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.65rem] font-black text-peach-red">{{ $desktopCartCount }}</span>
+                        <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.8125rem] font-black text-peach-red">{{ $desktopCartCount }}</span>
                         @endif
                     </a>
                 </nav>
@@ -87,10 +103,10 @@
                 @include('customer.partials.notification-bell')
 
                 {{-- Mobile cart shortcut --}}
-                <a href="{{ route('customer.cart') }}" class="relative grid h-10 w-10 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
+                <a href="{{ route('customer.cart') }}" class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
                     <i class="bi bi-cart text-lg"></i>
                     @if($desktopCartCount > 0)
-                    <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.6rem] font-black text-white">{{ $desktopCartCount }}</span>
+                    <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.8125rem] font-black text-white">{{ $desktopCartCount }}</span>
                     @endif
                 </a>
                 </div>
@@ -121,6 +137,37 @@
             <p class="mt-1 text-sm text-peach-deep/55">Manage your details, discount IDs and account preferences.</p>
         </div>
 
+        {{-- Streak Calendar, reward challenge bar + stamp card, Account
+             benefits (Oct 2026). Outside the account-update form: they are
+             links and read-only figures only. All three are PER BRANCH — the
+             branch the customer is ordering from ($streakBranch). $streak is
+             null and the two stamp partials render nothing while the owner's
+             master switch or that branch's own switch is off; with no branch
+             picked yet, a short card asks them to choose one. --}}
+        <div class="mb-5 flex flex-col items-center gap-5">
+            @if($streak)
+                @include('customer.partials.streak-calendar')
+            @elseif(! $streakBranch && $streakOn)
+                <section class="card-surface w-full max-w-3xl p-3 sm:p-6" data-testid="streak-choose-branch">
+                    <div class="flex flex-wrap items-center gap-3">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-peach-soft text-lg text-peach-red" aria-hidden="true">
+                            <i class="bi bi-shop"></i>
+                        </span>
+                        <p class="min-w-0 flex-1 text-sm text-peach-deep/70">
+                            Each branch has its own Streak Calendar and stamp card. Choose a branch to see your stamps there.
+                        </p>
+                        <a href="{{ route('customer.menu') }}"
+                            class="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-peach-red px-4 py-2 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                            Choose a branch <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                        </a>
+                    </div>
+                </section>
+            @endif
+            @include('customer.partials.free-dessert-progress')
+            @include('customer.partials.free-dessert-stamp-card')
+            @include('customer.partials.account-benefits')
+        </div>
+
         <form action="{{ route('customer.account.update') }}" method="POST" enctype="multipart/form-data">
             @csrf
             @method('PUT')
@@ -141,19 +188,19 @@
 
                     <div class="grid gap-4 sm:grid-cols-2">
                         <div class="sm:col-span-2">
-                            <label for="acc-name" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">Name</label>
+                            <label for="acc-name" class="-mt-3 -mb-1.5 block py-3 text-sm font-bold uppercase tracking-[0.12em] text-peach-deep/60">Name</label>
                             <input id="acc-name" class="field-input" type="text" name="name" value="{{ $customer?->name ?? '' }}" autocomplete="name">
                         </div>
                         <div class="sm:col-span-2">
-                            <label for="acc-address" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">Address</label>
+                            <label for="acc-address" class="-mt-3 -mb-1.5 block py-3 text-sm font-bold uppercase tracking-[0.12em] text-peach-deep/60">Address</label>
                             <input id="acc-address" class="field-input" type="text" name="address" value="{{ $customer?->address ?? '' }}" autocomplete="street-address">
                         </div>
                         <div>
-                            <label for="acc-contact" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">Contact</label>
+                            <label for="acc-contact" class="-mt-3 -mb-1.5 block py-3 text-sm font-bold uppercase tracking-[0.12em] text-peach-deep/60">Contact</label>
                             <input id="acc-contact" class="field-input" type="text" name="contact_number" value="{{ $customer?->contact_number ?? '' }}" inputmode="numeric" autocomplete="tel">
                         </div>
                         <div>
-                            <label for="acc-email" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">Email Address</label>
+                            <label for="acc-email" class="-mt-3 -mb-1.5 block py-3 text-sm font-bold uppercase tracking-[0.12em] text-peach-deep/60">Email Address</label>
                             <input id="acc-email" class="field-input" type="email" name="email" value="{{ $customer?->email ?? '' }}" autocomplete="email">
                         </div>
                         @if($customer && ! $customer->hasVerifiedEmail())
@@ -171,19 +218,25 @@
                         </div>
                         @endif
                         <div class="sm:col-span-2">
-                            <label for="acc-password" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">
+                            <label for="acc-password" class="-mt-3 -mb-1.5 block py-3 text-sm font-bold uppercase tracking-[0.12em] text-peach-deep/60">
                                 Password
                                 <span class="ml-1 font-medium normal-case tracking-normal text-peach-deep/40">(leave blank to keep current)</span>
                             </label>
-                            <input id="acc-password" class="field-input" type="password" name="password" maxlength="20" autocomplete="new-password">
+                            <div class="pw-wrap">
+                                <input id="acc-password" class="field-input" type="password" name="password" maxlength="20" autocomplete="new-password">
+                                <button type="button" class="pw-eye" data-password-toggle="acc-password" aria-label="Show password" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+                            </div>
                         </div>
                         {{-- Checked by updateAccount() only when the email or password is changing. --}}
                         <div class="sm:col-span-2">
-                            <label for="acc-current-password" class="mb-1.5 block text-xs font-bold uppercase tracking-[0.12em] text-peach-deep/60">
+                            <label for="acc-current-password" class="-mt-3 -mb-1.5 block py-3 text-sm font-bold uppercase tracking-[0.12em] text-peach-deep/60">
                                 Current Password
                                 <span class="ml-1 font-medium normal-case tracking-normal text-peach-deep/40">(needed only to change your email or password)</span>
                             </label>
-                            <input id="acc-current-password" class="field-input" type="password" name="current_password" autocomplete="current-password">
+                            <div class="pw-wrap">
+                                <input id="acc-current-password" class="field-input" type="password" name="current_password" autocomplete="current-password">
+                                <button type="button" class="pw-eye" data-password-toggle="acc-current-password" aria-label="Show password" aria-pressed="false"><i class="bi bi-eye" aria-hidden="true"></i></button>
+                            </div>
                         </div>
                     </div>
                 </section>
@@ -203,7 +256,7 @@
                                 <i class="bi bi-trash"></i> Delete Account
                             </button>
                             <button type="submit"
-                                class="inline-flex items-center justify-center gap-2 rounded-full bg-peach-red px-6 py-2.5 text-sm font-bold text-white transition hover:bg-peach-deep">
+                                class="inline-flex min-h-11 items-center justify-center gap-2 rounded-full bg-peach-red px-6 py-2.5 text-sm font-bold text-white transition hover:bg-peach-deep">
                                 <i class="bi bi-check2"></i> Save Changes
                             </button>
                         </div>
@@ -214,6 +267,24 @@
     @include('customer.partials.navbar')
 
     <script>
+        // Show / hide password: flips the input type only; the value is never read.
+        document.querySelectorAll('[data-password-toggle]').forEach(function (btn) {
+            var target = document.getElementById(btn.getAttribute('data-password-toggle'));
+            var icon = btn.querySelector('i');
+            if (!target) return;
+            btn.addEventListener('click', function () {
+                var show = target.type === 'password';
+                target.type = show ? 'text' : 'password';
+                btn.setAttribute('aria-pressed', show ? 'true' : 'false');
+                btn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+                if (icon) {
+                    icon.classList.toggle('bi-eye', !show);
+                    icon.classList.toggle('bi-eye-slash', show);
+                }
+                target.focus();
+            });
+        });
+
         function resendVerification() {
             const status = document.getElementById('verify-email-status');
             fetch('{{ route("customer.email-verification.resend") }}', {

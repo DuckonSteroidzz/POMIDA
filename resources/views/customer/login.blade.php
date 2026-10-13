@@ -174,7 +174,7 @@
         }
 
         .eyebrow {
-            font-size: 0.65rem;
+            font-size: 0.8125rem;
             font-weight: 700;
 
             letter-spacing: 0.3em;
@@ -214,7 +214,7 @@
 
             color: var(--muted);
 
-            font-size: 0.95rem;
+            font-size: 1rem;
 
             line-height: 1.6;
         }
@@ -230,7 +230,7 @@
 
             margin-bottom: 1.25rem;
 
-            font-size: 0.875rem;
+            font-size: 1rem;
 
             line-height: 1.5;
         }
@@ -264,7 +264,7 @@
 
             font-family: "Fraunces", Georgia, serif;
 
-            font-size: 1.4rem;
+            font-size: 1.5313rem;
 
             font-weight: 600;
 
@@ -280,7 +280,7 @@
 
             margin-bottom: 0.45rem;
 
-            font-size: 0.8rem;
+            font-size: 0.875rem;
 
             font-weight: 700;
 
@@ -308,7 +308,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.95rem;
+            font-size: 1rem;
 
             outline: none;
 
@@ -364,7 +364,7 @@
 
             color: var(--muted);
 
-            font-size: 1.05rem;
+            font-size: 1.1563rem;
             line-height: 1;
 
             cursor: pointer;
@@ -388,7 +388,7 @@
 
             color: var(--terracotta);
 
-            font-size: 0.78rem;
+            font-size: 0.875rem;
         }
 
         /* =====================================================
@@ -407,13 +407,16 @@
         }
 
         .auth-link {
+            display: inline-block; padding: 0.875rem 0.25rem; margin: -0.875rem -0.25rem;
             color: var(--deep-red);
 
-            font-size: 0.8rem;
+            font-size: 1rem;
 
             font-weight: 700;
 
             text-decoration: underline;
+
+            text-decoration-skip-ink: auto;
 
             text-underline-offset: 3px;
         }
@@ -441,7 +444,7 @@
 
             font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 
-            font-size: 0.95rem;
+            font-size: 1rem;
 
             font-weight: 700;
 
@@ -490,7 +493,7 @@
 
             color: var(--muted);
 
-            font-size: 0.85rem;
+            font-size: 1rem;
         }
 
         .signup .auth-link {
@@ -514,11 +517,11 @@
             }
 
             .brand-title {
-                font-size: 2.25rem;
+                font-size: 2.4688rem;
             }
 
             .brand-title span {
-                font-size: 1.45rem;
+                font-size: 1.5938rem;
             }
 
             .form-options {
@@ -574,7 +577,9 @@
                 </h1>
 
                 <p class="page-subtitle">
-                    @if (session('order_type') === 'dine_in' && session('table_number'))
+                    @if (!empty($joinForOrder))
+                        Log in and your order will count toward your stamp card.
+                    @elseif (session('order_type') === 'dine_in' && session('table_number'))
                         Your dine-in table has been remembered. Please log in to continue your order.
                     @else
                         Hurry Up and Explore!

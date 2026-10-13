@@ -203,8 +203,11 @@ class DineInQrEntryTest extends TestCase
             'garbage'              => ['zzzzzzzz'],
             'never issued'         => ['K7QMP3'],
             'old permanent format' => ['MAIN-3-Z6L3'],
-            'too short'            => ['K7QM'],
-            'too long'             => ['K7QMP3X'],
+            // Right length, but carries a 0 — outside the alphabet, so it can
+            // never be any table's code (a plain 4-letter guess could be).
+            'unissuable'           => ['K7Q0'],
+            'too short'            => ['K7Q'],
+            'too long'             => ['K7QMP'],
             'punctuation soup'     => ['!!!---???'],
             'oversized'            => [null],
         ];
@@ -245,7 +248,11 @@ class DineInQrEntryTest extends TestCase
                 $mutated = $valid;
                 $mutated[$pos] = $replacement;
 
-                if ($mutated === $valid) {
+                // At four characters a one-character change can land on ANOTHER
+                // table's real code (13 tables x 120 mutations: ~0.2% a run).
+                // That would rightly open that table, so it is not a mutation
+                // of THIS code worth asserting on.
+                if ($mutated === $valid || \App\Models\RestaurantTable::where('code', $mutated)->exists()) {
                     continue;
                 }
 
@@ -345,9 +352,14 @@ class DineInQrEntryTest extends TestCase
 
     // ══════════ Rate limiting ══════════
 
+    /**
+     * The per-address half of the failed-code budget (TableEntry::
+     * throughCodeBudget()). Each request here is a fresh session, so the
+     * per-device half never fills and it is the address that runs out.
+     */
     public function test_typed_code_attempts_are_throttled(): void
     {
-        for ($i = 0; $i < TableEntry::MAX_ATTEMPTS; $i++) {
+        for ($i = 0; $i < TableEntry::MAX_FAILED_PER_IP; $i++) {
             $this->flushSession();
             $this->typeCode('K7QMP3');
             $this->assertStringNotContainsString('Too many', (string) session('error'));
@@ -362,7 +374,7 @@ class DineInQrEntryTest extends TestCase
     {
         $valid = $this->permanentCode(1, '3');
 
-        for ($i = 0; $i < TableEntry::MAX_ATTEMPTS; $i++) {
+        for ($i = 0; $i < TableEntry::MAX_FAILED_PER_IP; $i++) {
             $this->flushSession();
             $this->typeCode('K7QMP3');
         }
@@ -395,7 +407,15 @@ class DineInQrEntryTest extends TestCase
         $this->assertStringContainsString('Too many scan attempts', (string) session('error'));
     }
 
-    public function test_successful_entry_clears_the_throttle_counter(): void
+    /**
+     * REVERSED in Oct 2026. A successful entry used to clear the counter, so
+     * anyone holding one real code (any customer sitting at any table) could
+     * guess a few times, enter their own code, and start again with a full
+     * budget — for the whole café's address. With four-character codes that
+     * reset is a real bypass, so a success now spends nothing and clears
+     * nothing.
+     */
+    public function test_a_successful_entry_does_not_reset_the_failed_code_budget(): void
     {
         for ($i = 0; $i < 5; $i++) {
             $this->flushSession();
@@ -405,6 +425,6 @@ class DineInQrEntryTest extends TestCase
         $this->flushSession();
         $this->typeCode($this->permanentCode(1, '3'))->assertRedirect(route('customer.menu'));
 
-        $this->assertSame(0, RateLimiter::attempts('table-code:127.0.0.1'));
+        $this->assertSame(5, RateLimiter::attempts('table-code:127.0.0.1'));
     }
 }
