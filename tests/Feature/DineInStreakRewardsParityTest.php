@@ -370,6 +370,12 @@ class DineInStreakRewardsParityTest extends TestCase
         $this->assertNotNull($guestOrder);
         $this->assertNull($guestOrder->user_id, 'the guest order should not start out linked');
 
+        // Logging in is closed while this order is in progress (it would take
+        // the order away from the guest; see DineInOngoingOrderGuardTest), so
+        // staff finish it first. Finished, the login is open and, with no
+        // Sign up / Log in join button pressed, attaches nothing.
+        $this->complete($guestOrder);
+
         // The guest logs in to an existing account, mid table-session.
         $this->post(route('customer.login.post'), [
             'email'    => $user->email,

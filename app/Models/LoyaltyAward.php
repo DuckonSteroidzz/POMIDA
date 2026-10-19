@@ -6,11 +6,12 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 /**
- * One bonus paid to one customer. Written only by App\Services\Loyalty.
+ * One bonus paid to one customer. Written by App\Services\Loyalty (and
+ * FreeDesserts), plus the spin reversal debits of App\Services\SpinPoints.
  *
  * @property int      $id
  * @property int      $user_id
- * @property string   $type       welcome | order_bonus | streak_milestone
+ * @property string   $type       welcome | order_bonus | streak_milestone | free_dessert | spin_reversal | spin_reversal_shortfall
  * @property string   $award_key  Unique per (user, type) — see the migration.
  * @property int      $points
  * @property int|null $order_id
@@ -30,6 +31,24 @@ class LoyaltyAward extends Model
      * branch was unknown may remain; it is no longer read.
      */
     public const TYPE_FREE_DESSERT = 'free_dessert';
+
+    /**
+     * Spin points taken back because the order they were won on was
+     * cancelled (App\Services\SpinPoints). Key: the order id. points is what
+     * was actually taken from users.points, which may be 0. Not a bonus, so
+     * never listed as one.
+     */
+    public const TYPE_SPIN_REVERSAL = 'spin_reversal';
+
+    /**
+     * The part of a spin reversal that could not be taken because the points
+     * had already been spent on a wheel voucher. Key: the order id. A record
+     * only; nothing is owed and nothing is revoked.
+     */
+    public const TYPE_SPIN_REVERSAL_SHORTFALL = 'spin_reversal_shortfall';
+
+    /** Debit rows: written to this ledger but never shown as a bonus earned. */
+    public const DEBIT_TYPES = [self::TYPE_SPIN_REVERSAL, self::TYPE_SPIN_REVERSAL_SHORTFALL];
 
     protected $fillable = [
         'user_id',

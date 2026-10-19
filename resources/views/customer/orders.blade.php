@@ -262,7 +262,7 @@
         </div>
 
         {{-- ══════════ TAB 1: Current Order ══════════ --}}
-        <div id="statusTab" @if($initialTab === 'history') style="display:none;" @endif>
+        <div id="statusTab" @if($initialTab === 'history') style="display:none;" @endif @if(\App\Support\DineInJoin::isDineInGuest()) data-dinein-guest @endif>
             @php
             // A party can have more than one order in flight at once (dine-in
             // second round, pick-up follow-up), so this tab lists all of them
@@ -632,6 +632,12 @@
             @endif
 
             @else
+            {{-- No order in progress. A Dine-In guest whose order was completed today
+                 still gets the card: this is where it comes back once the order is done
+                 (see DineInJoin::cardOrder()). --}}
+            @if(!empty($joinCardOrder))
+                @include('customer.partials.dinein-join-card')
+            @endif
             <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                 <i class="bi bi-bag-check block text-5xl text-peach/40"></i>
                 <p class="mt-3 text-base font-semibold text-peach-deep/55">No active order right now</p>
@@ -1789,6 +1795,10 @@
         }
 
         if (statusTab) {
+            // The Dine-In "Want a stamp?" card already on the page (a finished
+            // order was loaded with it) must survive the repaint.
+            const joinCard = statusTab.querySelector('section.dinein-join');
+
             statusTab.innerHTML = `
                 <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                     <i class="bi bi-bag-check block text-5xl text-peach/40"></i>
@@ -1798,7 +1808,46 @@
                     </a>
                 </div>
             `;
+
+            if (joinCard) {
+                statusTab.insertBefore(joinCard, statusTab.firstChild);
+            } else if (statusTab.hasAttribute('data-dinein-guest')) {
+                restoreJoinCard(statusTab);
+            }
         }
+    }
+
+    /**
+     * A Dine-In guest's last order just finished while this page was open: the
+     * join (stamp) card was not drawn (it is hidden while an
+     * order is in progress) and the server alone knows whether it is due now
+     * (completed today, a branch that earns stamps; never for a cancelled or
+     * rejected order). Ask the server by loading this same page and take only
+     * the card, with its own style block, from the answer. Nothing is decided
+     * here, and a failure just leaves the page as it was.
+     */
+    function restoreJoinCard(statusTab) {
+        fetch(window.location.pathname, {
+            credentials: 'same-origin',
+            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
+        })
+            .then(function (r) { return r.ok ? r.text() : ''; })
+            .then(function (html) {
+                if (!html || statusTab.querySelector('section.dinein-join')) return;
+
+                const doc = new DOMParser().parseFromString(html, 'text/html');
+                const card = doc.querySelector('section.dinein-join');
+                if (!card) return;
+
+                doc.querySelectorAll('style').forEach(function (style) {
+                    if (style.textContent.indexOf('.dinein-join') !== -1) {
+                        document.head.appendChild(document.importNode(style, true));
+                    }
+                });
+
+                statusTab.insertBefore(document.importNode(card, true), statusTab.firstChild);
+            })
+            .catch(function () { /* the page stays as it is */ });
     }
 
     /**
@@ -2220,6 +2269,7 @@
 </script>
 
     @include('customer.partials.navbar')
+    @include('customer.partials.ongoing-order-prompt')
     @include('customer.partials.idle-timeout')
 </body>
 

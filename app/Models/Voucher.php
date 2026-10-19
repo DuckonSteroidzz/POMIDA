@@ -413,6 +413,118 @@ class Voucher extends Model
         return VoucherClaims::unusedOn($this, $user);
     }
 
+    /*
+    |--------------------------------------------------------------------------
+    | LIST STATUS (Promotions & Rewards > Vouchers)
+    |--------------------------------------------------------------------------
+    |
+    | DISPLAY AND FILTERING ONLY. Nothing here decides whether a voucher can be
+    | redeemed (that is redemptionErrorFor() above) and nothing here is stored;
+    | it names, for the admin list, what the existing rules already say:
+    |
+    |   expired  - expires_at has passed (the same ShopDay rule as isExpired())
+    |   used_up  - max_uses reached (the same test isValid() makes)
+    |   inactive - switched off (is_active), neither of the above
+    |   active   - none of the above
+    |
+    | A voucher that is both expired and switched off reads "Expired": the fact
+    | comes before the switch.
+    */
+
+    public const LIST_STATUSES = ['active', 'inactive', 'expired', 'used_up'];
+
+    public function isUsedUp(): bool
+    {
+        return (int) $this->max_uses > 0 && (int) $this->used_count >= (int) $this->max_uses;
+    }
+
+    public function listStatus(): string
+    {
+        if ($this->isExpired()) {
+            return 'expired';
+        }
+
+        if ($this->isUsedUp()) {
+            return 'used_up';
+        }
+
+        return $this->is_active ? 'active' : 'inactive';
+    }
+
+    /**
+     * Is this voucher a Spin & Win prize right now? The same conditions as
+     * AuthController::winnableVoucherFor() (the picker) minus the two that
+     * depend on who is spinning: how many points they have, and what they
+     * already hold. Active, a wheel voucher (points_required > 0), not
+     * expired, not used up.
+     */
+    public function isOnWheel(): bool
+    {
+        return $this->is_active
+            && (int) $this->points_required > 0
+            && ! $this->isExpired()
+            && ! $this->isUsedUp();
+    }
+
+    /**
+     * Whole shop days from today to the expiry date (negative once past), or
+     * null with no expiry. An expiry date is valid through the end of that
+     * day, so the last day reads 0 and the day after reads -1.
+     */
+    public function daysUntilExpiry(): ?int
+    {
+        if ($this->expires_at === null) {
+            return null;
+        }
+
+        $today = strtotime(ShopDay::todayString() . ' 00:00:00 UTC');
+        $expiry = strtotime($this->expires_at->format('Y-m-d') . ' 00:00:00 UTC');
+
+        return (int) round(($expiry - $today) / 86400);
+    }
+
+    /** SQL twin of isExpired(). */
+    public function scopeExpiredNow($query)
+    {
+        $column = $this->qualifyColumn('expires_at');
+
+        return $query->whereNotNull($column)
+            ->whereNot(fn ($q) => ShopDay::whereNotExpired($q, $column));
+    }
+
+    /** SQL twin of isUsedUp(). */
+    public function scopeUsedUp($query)
+    {
+        return $query->where('max_uses', '>', 0)->whereColumn('used_count', '>=', 'max_uses');
+    }
+
+    /** SQL twin of ! isUsedUp(). */
+    public function scopeNotUsedUp($query)
+    {
+        return $query->where(fn ($q) => $q->where('max_uses', '<=', 0)->orWhereColumn('used_count', '<', 'max_uses'));
+    }
+
+    /** SQL twin of isOnWheel(). */
+    public function scopeOnWheel($query)
+    {
+        return $query->where('is_active', true)
+            ->where('points_required', '>', 0)
+            ->notExpired()
+            ->notUsedUp();
+    }
+
+    /** SQL twin of listStatus() === $status. An unknown word filters nothing. */
+    public function scopeWithListStatus($query, ?string $status)
+    {
+        return match ($status) {
+            'expired'  => $query->expiredNow(),
+            'used_up'  => $query->notExpired()->usedUp(),
+            'inactive' => $query->notExpired()->notUsedUp()->where('is_active', false),
+            'active'   => $query->notExpired()->notUsedUp()->where('is_active', true),
+            default    => $query,
+        };
+    }
+
     /**
      * Discount for this subtotal, already rounded to centavos and floored so it
      * can never exceed the subtotal (the total must never go negative).

@@ -844,32 +844,21 @@
                 <span>QR &amp; Table Codes</span>
             </a>
 
-            {{-- Vouchers.
+            {{-- Promotions & Rewards (Oct 2026) — Vouchers, Streak Rewards and
+                 Ads in ONE page with a tab bar (admin.partials.promotions-header),
+                 so this is the one link for all three; it is lit on any of them
+                 and opens the first tab, Vouchers.
 
-                 Shared: staff get a read-only view of the All Vouchers table
-                 so they can read active codes to customers. The Spin Wheel
-                 toggle, the Create form and the Actions column are hidden for
-                 non-admins by admin.vouchers itself, and every mutating route
-                 is behind role:admin. --}}
+                 Shared: every portal role can reach the Vouchers tab (staff get
+                 a read-only list plus Issue Code; what they may not do is hidden
+                 by admin.vouchers itself). The Streak Rewards and Ads tabs are the
+                 manager tier and the tab bar lists them only for owner and
+                 supervisor; every route behind them keeps its own role gate. --}}
             <a href="{{ route('admin.vouchers') }}"
-                class="nav-link-item {{ request()->routeIs('admin.vouchers') ? 'active' : '' }}">
-                <i class="bi bi-ticket-perforated"></i>
-                <span>Vouchers</span>
+                class="nav-link-item {{ request()->routeIs('admin.vouchers', 'admin.streak-rewards', 'admin.ads', 'admin.promotions') ? 'active' : '' }}">
+                <i class="bi bi-stars"></i>
+                <span>Promotions &amp; Rewards</span>
             </a>
-
-            {{-- Streak Rewards — its own page (Oct 2026), placed right
-                 under Vouchers since it used to live on that page. Same
-                 tier as the manager section below (admin + supervisor, their
-                 own branch only), but kept here rather than in that block so
-                 it stays next to Vouchers. Same row geometry as every other
-                 link — no extra indent. --}}
-            @if($adminUser && $adminUser->isManager())
-                <a href="{{ route('admin.streak-rewards') }}"
-                    class="nav-link-item {{ request()->routeIs('admin.streak-rewards') ? 'active' : '' }}">
-                    <i class="bi bi-gift"></i>
-                    <span>Streak Rewards</span>
-                </a>
-            @endif
 
             {{-- Summary — ALL THREE roles.
 
@@ -915,13 +904,6 @@
                     class="nav-link-item {{ request()->routeIs('admin.menu-options') ? 'active' : '' }}">
                     <i class="bi bi-menu-button"></i>
                     <span>Menu Options</span>
-                </a>
-
-                {{-- Ads — "Manage Advertisements", Y | Y | N. --}}
-                <a href="{{ route('admin.ads') }}"
-                    class="nav-link-item {{ request()->routeIs('admin.ads') ? 'active' : '' }}">
-                    <i class="bi bi-megaphone"></i>
-                    <span>Ads</span>
                 </a>
 
                 {{-- Staff Accounts — Y | Y | N to reach the screen.
@@ -976,7 +958,7 @@
         {{-- Logout Section --}}
         @if($adminUser)
             <div class="logout-section">
-                <form action="{{ route('admin.logout') }}" method="POST" style="margin: 0;">
+                <form action="{{ route('admin.logout') }}" method="POST" style="margin: 0;" data-logout-form>
                     @csrf
 
                     <button type="submit" class="nav-link-item logout-btn">
@@ -1210,6 +1192,10 @@
 
     {{-- Show/hide password toggle, shared by every password field on admin pages (account, staff accounts). --}}
     @include('admin.partials.password-toggle')
+
+    @if($adminUser)
+        @include('admin.partials.logout-confirm')
+    @endif
 </body>
 
 </html>

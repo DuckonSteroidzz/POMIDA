@@ -17,8 +17,8 @@
 |
 | WHAT THE POINTS ARE WORTH
 | -------------------------
-| Bonus points land in users.bonus_points, a balance that is NOT reset when an
-| order is placed (users.points, the Spin & Win balance, is). The wheel adds
+| Bonus points land in users.bonus_points, kept apart from users.points (the
+| Spin & Win balance; neither is reset when an order is placed). The wheel adds
 | the two together when it checks whether a spin has reached a wheel voucher,
 | so bonus points do the one thing points can do in this app: bring the next
 | wheel voucher closer. See AuthController::addPoints().

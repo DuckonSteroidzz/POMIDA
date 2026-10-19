@@ -113,6 +113,14 @@ class RateLimitServiceProvider extends ServiceProvider
     public const HELP_REQUEST_PER_SESSION = 10;
 
     /**
+     * The customer Help page / More page ask "is my request still open?" about
+     * every 6 seconds, only while the tab is visible and only until the request
+     * is resolved: about 10 a minute per phone. 30 leaves room for a second tab
+     * and a retry; the per-IP ceiling (HELP_STATUS_PER_IP) is the whole café.
+     */
+    public const HELP_STATUS_PER_SESSION = 30;
+
+    /**
      * Opening a dine-in session from the table QR or the permanent table code.
      *
      * WHY THIS LIMITER EXISTS AT ALL
@@ -158,6 +166,7 @@ class RateLimitServiceProvider extends ServiceProvider
     public const RATING_GET_PER_IP = 300;
     public const VOUCHER_PER_IP = 60;
     public const HELP_REQUEST_PER_IP = 60;
+    public const HELP_STATUS_PER_IP = 300;
     public const TABLE_SESSION_PER_IP = 600;
 
     /**
@@ -470,6 +479,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->pair('order-rating-read', self::RATING_GET_PER_SESSION, self::RATING_GET_PER_IP);
         $this->pair('apply-voucher', self::VOUCHER_PER_SESSION, self::VOUCHER_PER_IP);
         $this->pair('help-request', self::HELP_REQUEST_PER_SESSION, self::HELP_REQUEST_PER_IP);
+        $this->pair('help-status', self::HELP_STATUS_PER_SESSION, self::HELP_STATUS_PER_IP);
         $this->pair('table-session', self::TABLE_SESSION_PER_SESSION, self::TABLE_SESSION_PER_IP);
         $this->pair('table-change', self::TABLE_CHANGE_PER_SESSION, self::TABLE_CHANGE_PER_IP);
     }

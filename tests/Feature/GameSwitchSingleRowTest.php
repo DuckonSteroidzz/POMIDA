@@ -106,7 +106,7 @@ class GameSwitchSingleRowTest extends TestCase
 
         // The Spin Wheel card only: since Oct 2026 the Streak Calendar card
         // under it has a button with the same ✓ Enabled / ✗ Disabled labels.
-        $start = strpos($html, 'Spin Wheel Game');
+        $start = strpos($html, 'data-testid="spin-wheel-bar"');
         $this->assertNotFalse($start, 'the Spin Wheel card is missing from the Vouchers page');
         $label = substr($html, $start, strpos($html, '</form>', $start) - $start);
 

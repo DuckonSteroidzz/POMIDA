@@ -289,7 +289,7 @@
         {{-- The stamp card: the same partial as the Account page. --}}
         @if($freeDessert['enabled'] ?? false)
         <div class="rise rise-2 mb-5">
-            @include('customer.partials.free-dessert-stamp-card', ['rewardListHere' => true])
+            @include('customer.partials.free-dessert-stamp-card', ['rewardListHere' => true, 'fillWidth' => true])
         </div>
         @endif
 

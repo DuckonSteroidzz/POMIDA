@@ -67,12 +67,16 @@
     .sr-pair > .sr-field{flex:1 1 160px;min-width:140px;margin-bottom:0}
 </style>
 
-@if($streakRewards['scope_ok'] && ! $isAdmin && $streakRewards['branch'])
-    <p class="page-title">Streak Rewards - {{ $streakRewards['branch']->name }}</p>
-@else
-    <p class="page-title">Streak Rewards</p>
-@endif
-<p style="font-size:0.82rem;color:#888;margin:-0.5rem 0 1rem;">Set what a full stamp card gives, and turn it on or off.</p>
+@include('admin.partials.promotions-header', ['active' => 'streak-rewards'])
+
+<div class="promo-section">
+    @if($streakRewards['scope_ok'] && ! $isAdmin && $streakRewards['branch'])
+        <h2 class="promo-section-title">Streak Rewards - {{ $streakRewards['branch']->name }}</h2>
+    @else
+        <h2 class="promo-section-title">Streak Rewards</h2>
+    @endif
+    <p class="promo-section-sub">Set what a full stamp card gives, and turn it on or off.</p>
+</div>
 
 {{-- Admin-only master switch: the Spin Wheel card's twin, same tier
      (admin.streak.toggle stays in `role:admin`). On when no row exists —

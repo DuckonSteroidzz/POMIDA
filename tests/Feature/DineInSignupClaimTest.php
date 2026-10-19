@@ -290,7 +290,15 @@ class DineInSignupClaimTest extends TestCase
 
         [$order] = $this->seatedGuestWithOrder($this->table($branch->id));
 
-        // The card is on the order screen, with Sign up and Log in.
+        // While the order is in progress there is no card, and Sign up / Log
+        // in are closed (see DineInOngoingOrderGuardTest for the details).
+        $this->get(route('customer.orders'))->assertOk()->assertDontSee('data-dinein-join-card', false);
+        $this->get(route('customer.dinein-join', ['mode' => 'signup']))
+            ->assertSessionHas(DineInJoin::NOTICE_KEY, DineInJoin::MSG_ONGOING_ORDER);
+        $this->assertNull(session(DineInJoin::SESSION_ORDER), 'a blocked join must not pin anything');
+
+        // Staff complete it: the card is back on the order screen, with Sign up and Log in.
+        $this->complete($order);
         $orders = $this->get(route('customer.orders'))->assertOk();
         $orders->assertSee('data-dinein-join-card', false);
         $orders->assertSee('Want a stamp for this order?');
@@ -334,9 +342,11 @@ class DineInSignupClaimTest extends TestCase
         $page->assertDontSee('name="remember"', false);
         $page->assertSee('Log in and your order will count toward your stamp card.');
 
+        // The order was completed (the same shop day) before this login, so it
+        // is attached and its loyalty step runs now.
         $this->login($user)
             ->assertRedirect(route('customer.orders'))
-            ->assertSessionHas('success', fn ($m) => str_contains($m, DineInJoin::MSG_CLAIMED));
+            ->assertSessionHas('success', fn ($m) => str_contains($m, DineInJoin::MSG_CLAIMED_COMPLETED));
 
         $this->assertAuthenticatedAs($user, 'customer');
         $this->assertSame($user->id, $order->fresh()->user_id, 'the order was not attached at login');
@@ -347,12 +357,9 @@ class DineInSignupClaimTest extends TestCase
         $this->assertSame($branch->id, (int) session('branch_id'));
         $this->assertNull(session(DineInJoin::SESSION_ACTIVE), 'the intent must be spent by the login');
 
-        // The order shows on the account's order screen, with no card now.
+        // No card for the account.
         $this->get(route('customer.orders'))->assertOk()
-            ->assertSee($order->order_number)
             ->assertDontSee('data-dinein-join-card', false);
-
-        $this->complete($order);
 
         $days = StreakCalendar::completedDays($user, $branch->id);
         $this->assertArrayHasKey('2026-10-15', $days, 'the stamp did not count at the order\'s branch');
@@ -382,10 +389,11 @@ class DineInSignupClaimTest extends TestCase
         $this->postJson(route('customer.dinein-popup-seen'))->assertOk()->assertJson(['recorded' => true]);
         $this->get(route('customer.menu'))->assertOk()->assertDontSee('data-dinein-join-popup', false);
 
-        // The card AND the Spin & Win prompt, both on the same page load.
+        // While the order is in progress there is no card (it would invite a
+        // login that loses the order); the Spin & Win prompt is unaffected.
         $html = $this->get(route('customer.orders'))->assertOk()->getContent();
-        $this->assertStringContainsString('data-dinein-join-card', $html);
-        $this->assertStringContainsString('id="spinPromptModal"', $html, 'the card must not replace the Spin prompt');
+        $this->assertStringNotContainsString('data-dinein-join-card', $html);
+        $this->assertStringContainsString('id="spinPromptModal"', $html, 'the card guard must not remove the Spin prompt');
 
         $rewards = FreeDessertReward::count();
         $awards = LoyaltyAward::count();
@@ -396,8 +404,8 @@ class DineInSignupClaimTest extends TestCase
         $this->assertSame($rewards, FreeDessertReward::count());
         $this->assertSame($awards, LoyaltyAward::count());
 
-        // After completion there is no open order, so no card.
-        $this->get(route('customer.orders'))->assertOk()->assertDontSee('data-dinein-join-card', false);
+        // After completion the card is back (completed today, still claimable).
+        $this->get(route('customer.orders'))->assertOk()->assertSee('data-dinein-join-card', false);
     }
 
     // ══════════ 3. claims that must fail ══════════
@@ -408,8 +416,10 @@ class DineInSignupClaimTest extends TestCase
         $table = $this->table(1);
 
         [$mine] = $this->seatedGuestWithOrder($table);
+        // Logging in is closed while the order is in progress; finished it can be claimed.
+        $this->complete($mine);
 
-        // Another guest's open Dine-In order: ownerless, not in this session.
+        // Another guest's Dine-In order: ownerless, not in this session.
         $theirs = $mine->replicate(['spin_prompted_at']);
         $theirs->order_number = 'ORD-DJC-' . Str::upper(Str::random(8));
         $theirs->save();
@@ -453,6 +463,7 @@ class DineInSignupClaimTest extends TestCase
         $second = $this->customer(['name' => 'Second']);
 
         [$order] = $this->seatedGuestWithOrder($this->table(1));
+        $this->complete($order);
 
         $this->get(route('customer.dinein-join', ['mode' => 'login']));
         $this->login($first)->assertRedirect(route('customer.orders'));
@@ -488,6 +499,8 @@ class DineInSignupClaimTest extends TestCase
         $partyB = $this->customer(['name' => 'Party B']);
 
         [$orderA] = $this->seatedGuestWithOrder($this->table(1));
+        // Party A's order is finished (an ongoing one would close the Log in button).
+        $this->complete($orderA);
         $this->get(route('customer.dinein-join', ['mode' => 'login']))->assertRedirect(route('customer.login'));
         $this->assertSame($orderA->id, session(DineInJoin::SESSION_ORDER));
 
@@ -506,6 +519,7 @@ class DineInSignupClaimTest extends TestCase
     {
         $user = $this->customer();
         [$order] = $this->seatedGuestWithOrder($this->table(1));
+        $this->complete($order);
 
         $this->login($user)->assertRedirect(route('customer.menu'));
 
@@ -529,6 +543,10 @@ class DineInSignupClaimTest extends TestCase
 
         [$order] = $this->seatedGuestWithOrder($this->table($branch->id));
 
+        // Staff finish the order first: while it cooks, sign up is closed.
+        $this->complete($order);
+        $this->assertNull($order->fresh()->user_id);
+
         $this->get(route('customer.dinein-join', ['mode' => 'signup']))->assertRedirect(route('customer.register'));
 
         $email = 'dinein-join-late-' . Str::lower(Str::random(10)) . '@example.test';
@@ -542,8 +560,7 @@ class DineInSignupClaimTest extends TestCase
         ])->assertRedirect(route('customer.email-verification.pending'));
         $user = User::where('email', $email)->firstOrFail();
 
-        // Staff finish the order before the customer has confirmed.
-        $this->complete($order);
+        // Signing up alone attached nothing and Complete paid no account.
         $this->assertNull($order->fresh()->user_id);
         $this->assertSame(0, LoyaltyAward::where('user_id', $user->id)->count(), 'CONTROL: Complete paid a guest order');
 
@@ -607,8 +624,8 @@ class DineInSignupClaimTest extends TestCase
         $user = $this->customer();
         [$order] = $this->seatedGuestWithOrder($this->table(1));
 
-        $this->get(route('customer.dinein-join', ['mode' => 'login']));
         $this->complete($order);
+        $this->get(route('customer.dinein-join', ['mode' => 'login']));
         $this->login($user)->assertSessionHas('success', fn ($m) => str_contains($m, DineInJoin::MSG_CLAIMED_COMPLETED));
         $this->assertSame($user->id, $order->fresh()->user_id);
 
@@ -655,10 +672,23 @@ class DineInSignupClaimTest extends TestCase
         $user = $this->customer();
         [$order] = $this->seatedGuestWithOrder($this->table(1));
 
-        $this->get(route('customer.dinein-join', ['mode' => 'login']));
-        $this->assertSame($order->id, session(DineInJoin::SESSION_ORDER), 'CONTROL: the open order was not pinned');
+        // Open: Log in is closed and nothing is pinned (CONTROL).
+        $this->get(route('customer.dinein-join', ['mode' => 'login']))
+            ->assertSessionHas(DineInJoin::NOTICE_KEY, DineInJoin::MSG_ONGOING_ORDER);
+        $this->assertNull(session(DineInJoin::SESSION_ORDER), 'CONTROL: a blocked join pinned an order');
 
         DB::table('orders')->where('id', $order->id)->update($shape + ['completed_at' => now()]);
+
+        // Cancelled or rejected is no longer ongoing, so Log in is open again,
+        // but there is nothing to claim: it pins nothing...
+        $this->get(route('customer.dinein-join', ['mode' => 'login']))->assertRedirect(route('customer.login'));
+        $this->assertNull(session(DineInJoin::SESSION_ORDER), 'a cancelled order was pinned');
+
+        // ...and even a pin forged into the session is refused at claim time.
+        $this->withSession([
+            DineInJoin::SESSION_ACTIVE => true,
+            DineInJoin::SESSION_ORDER  => $order->id,
+        ]);
 
         $this->login($user)
             ->assertRedirect(route('customer.orders'))
@@ -686,10 +716,10 @@ class DineInSignupClaimTest extends TestCase
 
         [$order, $item] = $this->seatedGuestWithOrder($table);
 
-        $this->get(route('customer.dinein-join', ['mode' => 'login']))->assertRedirect(route('customer.login'));
-
-        // Staff finish the order while the guest is still logging in.
+        // Staff finish the order (23:55); the guest then opens the login...
         $this->complete($order);
+
+        $this->get(route('customer.dinein-join', ['mode' => 'login']))->assertRedirect(route('customer.login'));
 
         // 00:05 Manila on 16 Oct: a new shop day.
         $this->travelTo(CarbonImmutable::parse('2026-10-15 16:05:00', 'UTC'));
@@ -856,9 +886,13 @@ class DineInSignupClaimTest extends TestCase
         $this->chooseBranchReward(1, $this->item(1, 'DJC Reward'), 1, 14);
         $this->setBranchSwitch(1, false);
 
-        $this->seatedGuestWithOrder($this->table(1));
+        [$order] = $this->seatedGuestWithOrder($this->table(1));
 
         $this->get(route('customer.menu'))->assertOk()->assertDontSee('data-dinein-join-popup', false);
+        $this->get(route('customer.orders'))->assertOk()->assertDontSee('data-dinein-join-card', false);
+
+        // Completed: the card would be back, but not where no stamp can be earned.
+        $this->complete($order);
         $this->get(route('customer.orders'))->assertOk()->assertDontSee('data-dinein-join-card', false);
     }
 
@@ -871,6 +905,7 @@ class DineInSignupClaimTest extends TestCase
         $this->assertNotNull($note);
         $this->assertNull($note->user_id);
 
+        $this->complete($order);
         $this->get(route('customer.dinein-join', ['mode' => 'login']));
         $this->login($user);
 
@@ -881,6 +916,7 @@ class DineInSignupClaimTest extends TestCase
     {
         $existing = $this->customer();
         [$order] = $this->seatedGuestWithOrder($this->table(1));
+        $this->complete($order);
 
         $this->get(route('customer.dinein-join', ['mode' => 'signup']));
 
@@ -1126,6 +1162,10 @@ class DineInSignupClaimTest extends TestCase
 
         [$response, $order] = $this->placeDineIn($item);
         $response->assertSessionHasNoErrors();
+
+        // While the order cooks the links only explain why they are closed;
+        // once it is completed they behave exactly as they always did.
+        $this->complete($order);
 
         // The sign-up link behaves like the card's.
         $this->get($signup)->assertRedirect(route('customer.register'));

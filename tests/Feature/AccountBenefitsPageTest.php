@@ -114,16 +114,16 @@ class AccountBenefitsPageTest extends TestCase
         $this->actingAs($user->fresh(), 'customer')->withSession(['branch_id' => 1])
             ->get(route('customer.account'))
             ->assertOk()
-            ->assertSee('Account benefits')
+            ->assertSee('Account Benefits')
             ->assertSee('Vouchers &amp; Rewards', false)
             ->assertDontSee('My Vouchers')
             ->assertSee('Order history')
-            ->assertSee('+11 points at 6 days in a row,', false)
-            ->assertSee('+23 points at 9 days in a row.', false)
-            ->assertSee('+4 points for every completed order.', false)
+            ->assertSee('+11 pts at 6 days,', false)
+            ->assertSee('+23 pts at 9 days.', false)
+            ->assertSee('+4 points per completed order.', false)
             ->assertSee('Received: +17 points.', false)
-            ->assertSee('7 spins with every order, up to 15 a day.', false)
-            ->assertSee('17 pts', false) // the bonus balance
+            ->assertSee('7 spins per order, up to 15 a day.', false)
+            ->assertSeeHtml('17 <span class="text-[22px]">pts</span>') // the bonus balance (the "pts" unit is its own smaller span)
             ->assertSee('Welcome bonus')
             ->assertDontSee('data-testid="verify-to-earn"', false);
     }
@@ -191,7 +191,7 @@ class AccountBenefitsPageTest extends TestCase
             ->assertSee('data-testid="recent-bonuses"', false)
             ->assertSee('6-day streak bonus')
             ->assertSee('Completed order bonus')
-            ->assertSee('15 pts', false);
+            ->assertSeeHtml('15 <span class="text-[22px]">pts</span>');
     }
 
     public function test_viewing_the_page_never_pays_anything(): void
@@ -220,7 +220,7 @@ class AccountBenefitsPageTest extends TestCase
             ->assertOk()
             ->assertSee('Streak Calendar')
             ->assertSee('data-testid="verify-to-earn"', false)
-            ->assertSee('+17 points once you verify your email.', false)
+            ->assertSee('+17 points when you verify your email.', false)
             // No "N more days to the bonus" promise while they cannot earn it.
             ->assertDontSee('-day bonus (+', false);
     }
@@ -273,6 +273,150 @@ class AccountBenefitsPageTest extends TestCase
             ->get(route('customer.game'))
             ->assertOk()
             ->assertDontSee('data-testid="guest-signup-teaser"', false);
+    }
+
+    public function test_the_spin_result_popup_does_not_repeat_the_signup_teaser_the_banner_already_shows(): void
+    {
+        // The banner above the wheel keeps the sentence; the result pop-up
+        // (Try Again / +N Points) no longer builds a second copy from the
+        // spin response, whatever the outcome.
+        $html = $this->get(route('customer.game'))->assertOk()->getContent();
+
+        $this->assertSame(1, substr_count($html, 'data-testid="guest-signup-teaser"'));
+        $this->assertStringNotContainsString('signupTeaserHtml', $html);
+        $this->assertStringNotContainsString('data-signup-teaser', $html);
+        $this->assertStringContainsString("showSpinToast('😅', 'Try Again!', 'Better luck next time!');", $html);
+    }
+
+    // ══════════ the simpler look (item I, Oct 2026) ══════════
+
+    public function test_the_header_card_shows_who_they_are_and_three_real_numbers(): void
+    {
+        config(['loyalty.free_dessert_visit_days' => 7]);
+
+        $user = $this->customer();
+        $user->forceFill(['name' => 'Peach Tester', 'points' => 5, 'bonus_points' => 12])->save();
+        $this->order($user, '2026-10-14 12:00');
+        $this->order($user, '2026-10-15 09:00');
+
+        $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])
+            ->get(route('customer.account'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-testid="account-header"', $html);
+        $this->assertMatchesRegularExpression('/data-testid="account-header-name">Peach Tester</', $html);
+        $this->assertStringContainsString('>' . $user->email . '<', $html);
+        $this->assertStringContainsString('data-testid="account-header-verified"', $html);
+        $this->assertStringNotContainsString('data-testid="account-header-unverified"', $html);
+
+        // Points = spin + bonus, the same figure Vouchers & Rewards shows.
+        $this->assertMatchesRegularExpression('/data-testid="chip-points">17</', $html);
+        // Two completed days in a row at this branch.
+        $this->assertMatchesRegularExpression('/data-testid="chip-streak">2 days</', $html);
+        // Two stamp days of the 7 on the current card.
+        $this->assertMatchesRegularExpression('/data-testid="chip-stamps">2\/7</', $html);
+    }
+
+    public function test_chips_whose_feature_is_not_available_show_a_dash_not_a_made_up_zero(): void
+    {
+        // Stamp card off (config in setUp), and no branch picked: no calendar either.
+        $html = $this->actingAs($this->customer(), 'customer')
+            ->get(route('customer.account'))->assertOk()->getContent();
+
+        $this->assertMatchesRegularExpression('/data-testid="chip-streak">—</', $html);
+        $this->assertMatchesRegularExpression('/data-testid="chip-stamps">—</', $html);
+        $this->assertMatchesRegularExpression('/data-testid="chip-points">0</', $html);
+    }
+
+    public function test_an_unverified_customer_gets_a_not_verified_badge_and_the_resend_button(): void
+    {
+        $html = $this->actingAs($this->customer(false), 'customer')->withSession(['branch_id' => 1])
+            ->get(route('customer.account'))->assertOk()->getContent();
+
+        $this->assertStringContainsString('data-testid="account-header-unverified"', $html);
+        $this->assertStringNotContainsString('data-testid="account-header-verified"', $html);
+        $this->assertStringContainsString('onclick="resendVerification()"', $html);
+        $this->assertStringContainsString('Verify your email to start earning bonus points.', $html);
+    }
+
+    public function test_the_bonus_balance_is_one_banner_not_a_second_copy_in_the_benefits_card(): void
+    {
+        $user = $this->customer();
+        $user->forceFill(['bonus_points' => 12])->save();
+
+        $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])
+            ->get(route('customer.account'))->assertOk()->getContent();
+
+        $this->assertSame(1, substr_count($html, 'data-testid="bonus-points"'));
+        $this->assertMatchesRegularExpression('/data-testid="bonus-banner".*?data-testid="bonus-points">12 <span[^>]*>pts<\/span>/s', $html);
+        // Banner sits above the benefits list: it leads the Overview tab, the
+        // benefits card is in the Rewards tab after it.
+        $this->assertLessThan(strpos($html, 'id="benefits"'), strpos($html, 'data-testid="bonus-banner"'));
+        $overview = strpos($html, 'id="p-overview"');
+        $rewards  = strpos($html, 'id="p-rewards"');
+        $this->assertGreaterThan($overview, strpos($html, 'data-testid="bonus-banner"'));
+        $this->assertLessThan($rewards, strpos($html, 'data-testid="bonus-banner"'), 'the banner is in Overview');
+        $this->assertGreaterThan($rewards, strpos($html, 'id="benefits"'), 'the benefits card is in Rewards');
+    }
+
+    public function test_every_function_of_the_page_is_still_there(): void
+    {
+        config(['loyalty.free_dessert_visit_days' => 7]);
+        $user = $this->customer(false);
+        $this->order($user, '2026-10-15 09:00');
+
+        $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])
+            ->get(route('customer.account'))->assertOk()->getContent();
+
+        // Profile form, password change with both eye toggles, delete, save.
+        $this->assertStringContainsString('action="' . route('customer.account.update') . '"', $html);
+        foreach (['name', 'address', 'contact_number', 'email', 'password', 'current_password'] as $field) {
+            $this->assertStringContainsString('name="' . $field . '"', $html, $field);
+        }
+        $this->assertSame(2, substr_count($html, 'data-password-toggle="'));
+        $this->assertStringContainsString('Save Changes', $html);
+        $this->assertStringContainsString('onclick="confirmDelete()"', $html);
+        $this->assertStringContainsString('onclick="resendVerification()"', $html);
+
+        // Calendar, reward challenge, stamp card, benefits: the same sections.
+        foreach (['data-testid="streak-calendar"', 'data-testid="free-dessert-challenge"', 'data-testid="free-dessert-card"', 'id="benefits"'] as $section) {
+            $this->assertStringContainsString($section, $html, $section);
+        }
+        $this->assertStringContainsString('Day 1 of 7', $html);
+
+        // Four tabs (Oct 2026): all four panels are in the HTML, in the
+        // reference's order, whichever one is showing. Which section sits in
+        // which panel is pinned by AccountSettingsTabsTest.
+        $this->assertStringContainsString('role="tablist"', $html);
+        $positions = [];
+        foreach (['overview', 'rewards', 'profile', 'security'] as $tab) {
+            $this->assertStringContainsString('id="t-' . $tab . '"', $html, "tab $tab");
+            $positions[$tab] = strpos($html, 'id="p-' . $tab . '"');
+            $this->assertNotFalse($positions[$tab], "panel $tab");
+        }
+        $this->assertSame(array_values($positions), collect($positions)->sort()->values()->all(), 'panels are in tab order');
+    }
+
+    public function test_the_long_and_repeated_wording_is_gone(): void
+    {
+        config(['loyalty.free_dessert_visit_days' => 7]);
+
+        $html = $this->actingAs($this->customer(false), 'customer')->withSession(['branch_id' => 1])
+            ->get(route('customer.account'))->assertOk()->getContent();
+
+        foreach ([
+            'discount IDs and account preferences',
+            'Review your changes before saving',
+            "Only completed orders count. Pending or cancelled orders",
+            'Use the Resend button under Account Details below',
+            'Bonus points stay on your account and count toward',
+            'Your personal and contact information',
+            'Each branch has its own Streak Calendar and stamp card',
+        ] as $gone) {
+            $this->assertStringNotContainsString($gone, $html, "still on the page: $gone");
+        }
+
+        // The stamp rule is said once on this page (the stamp card), not three times.
+        $this->assertSame(1, substr_count($html, '1 stamp per day you completed an order'));
     }
 
     public function test_the_points_shown_elsewhere_include_the_bonus_balance(): void

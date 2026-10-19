@@ -741,6 +741,7 @@
 </script>
 
 @include('customer.partials.welcome-popup')
+@include('customer.partials.ongoing-order-prompt')
 @include('customer.partials.idle-timeout')
 @include('customer.partials.menu-ad-popup')
 {{-- Dine-In guests' one-time rewards pop-up (Oct 2026). $dineInJoinPopup is

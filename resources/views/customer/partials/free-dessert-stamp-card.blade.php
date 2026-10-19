@@ -16,6 +16,11 @@
     true there, so the card does not point at itself). Read-only: a reward is
     earned when staff complete an order and spent with its code at checkout.
 
+    Look (Oct 2026 redesign): on the Account page ($fillWidth false) the card
+    follows docs/design-refs/peachy-account-settings.html: the borderless
+    20px card, the dashed stamp tray with tilted filled stamps, and a reward
+    row under it. Vouchers & Rewards ($fillWidth true) keeps its own look.
+
     Phone sizing: text-sm (16px) and up for body text, text-xs (14px) only
     for helper text. Up to 7 stamps sit in one row and 8-12 in two, on a
     minmax(0,1fr) grid so nothing pushes the page sideways at 360px. More
@@ -30,16 +35,19 @@
     $rewardText = $freeDessert['reward_text'] ?? null;
     $readyCount = $freeDessert['available']->count();
     $rewardListHere = $rewardListHere ?? false;
+    // Vouchers & Rewards stacks it with full-width blocks, so it fills the same
+    // column and uses their padding; the Account page keeps its capped card.
+    $fillWidth = $fillWidth ?? false;
     $cardBranch = $freeDessert['branch_name'] ?? 'this branch';
 @endphp
-<section id="free-dessert" class="card-surface w-full max-w-3xl scroll-mt-24 p-3 sm:p-6" aria-labelledby="free-dessert-title" data-testid="free-dessert-card" data-branch="{{ $freeDessert['branch_id'] ?? '' }}">
-    <div class="mb-4 flex items-center gap-3">
-        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-peach-soft text-lg text-peach-red" aria-hidden="true">
-            <i class="bi bi-gift-fill"></i>
+<section id="free-dessert" class="scroll-mt-24 {{ $fillWidth ? 'card-surface w-full p-4 sm:p-5' : 'acct-card p-4 sm:p-[22px]' }}" aria-labelledby="free-dessert-title" data-testid="free-dessert-card" data-branch="{{ $freeDessert['branch_id'] ?? '' }}">
+    <div class="mb-4 flex {{ $fillWidth ? 'items-center' : 'items-start' }} gap-3">
+        <span class="{{ $fillWidth ? 'grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-peach-soft text-lg text-peach-red' : 'acct-icon text-lg' }}" aria-hidden="true">
+            <i class="bi {{ $fillWidth ? 'bi-gift-fill' : 'bi-gift' }}"></i>
         </span>
         <div class="min-w-0">
-            <h2 id="free-dessert-title" class="font-display text-lg font-bold text-peach-deep">Reward stamp card</h2>
-            <p class="inline-flex items-center gap-1 text-sm font-bold text-peach-red" data-testid="free-dessert-branch">
+            <h2 id="free-dessert-title" class="font-display text-lg font-bold {{ $fillWidth ? '' : 'leading-snug ' }}text-peach-deep">{{ $fillWidth ? 'Reward stamp card' : 'Reward Stamp Card' }}</h2>
+            <p class="inline-flex items-center gap-1 {{ $fillWidth ? 'text-sm font-bold text-peach-red' : 'rounded-full border border-peach-soft bg-peach-soft/50 px-2 py-0.5 text-xs font-semibold text-peach-deep' }}" data-testid="free-dessert-branch">
                 <i class="bi bi-shop" aria-hidden="true"></i> {{ $cardBranch }}
             </p>
             <p class="text-sm text-peach-deep/60" data-testid="free-dessert-rule">
@@ -56,20 +64,20 @@
     @endunless
 
     {{-- The current card --}}
-    <div class="mb-4 rounded-2xl bg-peach-soft/60 px-3 py-3">
+    <div class="{{ $fillWidth ? 'mb-4 rounded-2xl bg-peach-soft/60 px-3 py-3' : 'mb-3' }}">
         <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <p class="text-sm font-semibold text-peach-deep/80">Next reward</p>
-            <p class="font-display text-xl font-black text-peach-red" data-testid="free-dessert-stamps">{{ $stamps }} / {{ $perReward }} stamps</p>
+            <p class="text-sm {{ $fillWidth ? 'font-semibold text-peach-deep/80' : 'text-peach-deep/70' }}">Next reward</p>
+            <p class="font-display text-xl {{ $fillWidth ? 'font-black' : 'font-bold' }} text-peach-red" data-testid="free-dessert-stamps">{{ $stamps }} / {{ $perReward }} stamps</p>
         </div>
 
         @if($freeDessert['show_stamps'])
-            <ol class="mt-3 grid gap-1.5 sm:gap-2" style="grid-template-columns: repeat({{ $stampCols }}, minmax(0, 1fr));"
+            <ol class="mt-3 grid {{ $fillWidth ? 'gap-1.5 sm:gap-2' : 'gap-2.5 rounded-[18px] border-2 border-dashed border-peach-rose bg-peach-cream p-3 sm:gap-3 sm:p-[18px]' }}" style="grid-template-columns: repeat({{ $stampCols }}, minmax(0, 1fr));"
                 aria-label="{{ $stamps }} of {{ $perReward }} stamps collected" data-testid="free-dessert-stamp-grid">
                 @for($i = 1; $i <= $perReward; $i++)
                     @php $stamped = $i <= $stamps; $isPrize = $i === $perReward; @endphp
                     <li data-stamp="{{ $stamped ? 'filled' : 'empty' }}"
-                        class="mx-auto grid aspect-square w-full max-w-12 place-items-center rounded-full text-sm font-bold
-                            {{ $stamped ? 'bg-peach-red text-white shadow-sm' : ($isPrize ? 'border-2 border-dashed border-peach-red/50 bg-white text-peach-red' : 'border-2 border-dashed border-peach-deep/20 bg-white text-peach-deep/45') }}">
+                        class="mx-auto grid aspect-square w-full {{ $fillWidth ? 'max-w-12' : 'max-w-16' }} place-items-center rounded-full text-sm {{ $fillWidth ? 'font-bold' : 'font-semibold' }}
+                            {{ $stamped ? ($fillWidth ? 'bg-peach-red text-white shadow-sm' : '-rotate-[8deg] bg-peach-red text-white shadow-[0_6px_14px_-6px_var(--color-peach-red)]') : ($isPrize ? ($fillWidth ? 'border-2 border-dashed border-peach-red/50 bg-white text-peach-red' : 'border-2 border-solid border-peach bg-white text-peach-red') : 'border-2 border-dashed ' . ($fillWidth ? 'border-peach-deep/20' : 'border-peach-rose') . ' bg-white text-peach-deep/45') }}">
                         @if($stamped)
                             <i class="bi bi-check-lg" aria-hidden="true"></i>
                         @elseif($isPrize)
@@ -89,6 +97,7 @@
             </div>
         @endif
 
+        @if($fillWidth)
         <p class="mt-2 text-sm text-peach-deep/70" data-testid="free-dessert-stamps-text">
             @if($freeDessert['counted'] === 0)
                 Complete an order to collect your first stamp.
@@ -96,6 +105,18 @@
                 {{ $stampsLeft }} more {{ $stampsLeft === 1 ? 'stamp' : 'stamps' }} to your next reward.
             @endif
         </p>
+        @else
+        <div class="mt-3.5 flex items-center gap-3 rounded-[14px] bg-peach-soft/60 p-3">
+            <span class="acct-icon h-9 w-9 shrink-0 rounded-full text-base" aria-hidden="true"><i class="bi bi-gift-fill"></i></span>
+            <p class="min-w-0 text-sm text-peach-deep" data-testid="free-dessert-stamps-text">
+                @if($freeDessert['counted'] === 0)
+                    Complete an order to collect your first stamp.
+                @else
+                    {{ $stampsLeft }} more {{ $stampsLeft === 1 ? 'stamp' : 'stamps' }} to your next reward.
+                @endif
+            </p>
+        </div>
+        @endif
     </div>
 
     {{-- A full card that earned nothing yet, because the owner has not chosen

@@ -973,7 +973,7 @@
                     @if(! Auth::guard('customer')->check() && ($signupTeaser = \App\Services\Loyalty::guestTeaser()))
                     <div class="mt-4 rounded-2xl border border-peach-soft bg-peach-soft/40 px-3 py-3" data-testid="guest-signup-teaser">
                         <p class="text-sm font-medium text-peach-deep/80"><i class="bi bi-stars text-peach-red"></i> {{ $signupTeaser }}</p>
-                        <a href="{{ route('customer.register') }}" class="mt-1 inline-flex min-h-11 items-center gap-1.5 py-1 text-sm font-bold leading-relaxed text-peach-red underline decoration-from-font underline-offset-4">
+                        <a href="{{ route('customer.register') }}"{!! \App\Support\DineInJoin::blockAttr() !!} class="mt-1 inline-flex min-h-11 items-center gap-1.5 py-1 text-sm font-bold leading-relaxed text-peach-red underline decoration-from-font underline-offset-4">
                             Create an account <i class="bi bi-arrow-right"></i>
                         </a>
                     </div>
@@ -2952,6 +2952,7 @@ async function confirmOrderNow() {
 }
     </script>
 
+    @include('customer.partials.ongoing-order-prompt')
     @include('customer.partials.idle-timeout')
 
     {{-- Check-only (no $pingsActivity): this page reports whether the table is

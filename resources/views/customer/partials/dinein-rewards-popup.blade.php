@@ -294,14 +294,14 @@
                 @endfor
             </div>
 
-            <a href="{{ route('customer.dinein-join', ['mode' => \App\Support\DineInJoin::MODE_SIGNUP]) }}"
+            <a href="{{ route('customer.dinein-join', ['mode' => \App\Support\DineInJoin::MODE_SIGNUP]) }}"{!! \App\Support\DineInJoin::blockAttr() !!}
                class="dinr__cta" data-dinr-signup>
                 Sign up for free <i class="bi bi-arrow-right" aria-hidden="true"></i>
             </a>
 
             <p class="dinr__login">
                 <span>Already part of the family?</span>
-                <a href="{{ route('customer.dinein-join', ['mode' => \App\Support\DineInJoin::MODE_LOGIN]) }}" data-dinr-login>
+                <a href="{{ route('customer.dinein-join', ['mode' => \App\Support\DineInJoin::MODE_LOGIN]) }}"{!! \App\Support\DineInJoin::blockAttr() !!} data-dinr-login>
                     Log in <i class="bi bi-arrow-right" aria-hidden="true"></i>
                 </a>
             </p>

@@ -126,3 +126,44 @@
     background-color: #fff;
     box-shadow: 0 0 0 4px rgb(244 132 95 / 0.2);
 }
+
+/*
+ * account-settings only (Oct 2026 redesign, docs/design-refs): the page's own
+ * card, icon tile and input. Same tokens as everywhere else, just the
+ * reference's 20px radius, borderless card with a soft two-layer shadow, and
+ * the input with a leading icon (left padding leaves room for it).
+ */
+@utility acct-card {
+    background-color: #fff;
+    border-radius: 1.25rem;
+    box-shadow: 0 1px 2px rgb(139 26 26 / 0.06), 0 12px 32px -12px rgb(139 26 26 / 0.18);
+}
+
+@utility acct-icon {
+    display: grid;
+    height: 2.5rem;
+    width: 2.5rem;
+    flex-shrink: 0;
+    place-items: center;
+    border-radius: 0.75rem;
+    background-color: var(--color-peach-soft);
+    color: var(--color-peach-red);
+}
+
+@utility acct-input {
+    width: 100%;
+    border-radius: 0.875rem;
+    border: 1.5px solid color-mix(in srgb, var(--color-peach-rose) 45%, #fff);
+    background-color: var(--color-peach-cream);
+    padding: 0.8125rem 0.875rem 0.8125rem 2.65rem;
+    /* 16px floor on form fields — also stops iOS Safari zooming on focus. */
+    font-size: 1rem;
+    color: #3b2320;
+    outline: none;
+    transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
+    &:focus {
+        border-color: var(--color-peach);
+        background-color: #fff;
+        box-shadow: 0 0 0 4px rgb(244 132 95 / 0.2);
+    }
+}

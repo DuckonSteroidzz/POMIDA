@@ -6048,6 +6048,58 @@ public function markOrderRefunded(int $id)
 
         return $query;
     }
+    /**
+     * /admin/promotions?tab=...: the Promotions & Rewards address. The three
+     * tabs are separate screens with their own gates, so this only chooses which
+     * one to open: the requested tab when this viewer can reach it, else
+     * Vouchers (which every portal role can). It never reveals whether a tab
+     * the viewer cannot reach exists.
+     */
+    public function showPromotions(Request $request)
+    {
+        $isManager = auth('admin')->user()?->isManager() ?? false;
+
+        $route = match ((string) $request->query('tab')) {
+            'streak-rewards' => $isManager ? 'admin.streak-rewards' : 'admin.vouchers',
+            'ads'            => $isManager ? 'admin.ads' : 'admin.vouchers',
+            default          => 'admin.vouchers',
+        };
+
+        return redirect()->route($route);
+    }
+
+    /**
+     * The voucher list's search / status / scope filters, cleaned. Anything
+     * unrecognised (an unknown status word, a branch the viewer cannot see)
+     * becomes "no filter" rather than an error or, worse, a wider listing:
+     * the viewer's own scope is applied before any of this.
+     *
+     * @return array{q: string, status: string, scope: string}
+     */
+    private function voucherListFilters(Request $request): array
+    {
+        // A query-string array (?q[]=x) is not a search term: treat it as absent.
+        $word = fn (string $key) => is_string($request->query($key)) ? $request->query($key) : '';
+
+        $q = mb_substr(trim($word('q')), 0, 100);
+
+        $status = $word('status');
+        $status = in_array($status, \App\Models\Voucher::LIST_STATUSES, true) ? $status : '';
+
+        $scope = $word('scope');
+        $locked = \App\Services\AdminOrderAccess::lockedBranchId();
+
+        if ($scope !== 'global') {
+            $scope = ctype_digit($scope)
+                && \App\Models\Branch::whereKey((int) $scope)->exists()
+                && ($locked === null || (int) $scope === $locked)
+                    ? (string) (int) $scope
+                    : '';
+        }
+
+        return ['q' => $q, 'status' => $status, 'scope' => $scope];
+    }
+
     public function showVouchers(Request $request)
     {
         // Own branch + global only for a supervisor; unchanged (every
@@ -6057,12 +6109,64 @@ public function markOrderRefunded(int $id)
         // Completed Orders: this used to load every voucher ever created —
         // every code minted by the Spin Wheel and every walk-in issue-code
         // counts against this table forever, so it only grows.
-        $vouchers = $this->scopePromotionListing(
-            \App\Models\Voucher::with('branch')
-        )
+        $listing = $this->scopePromotionListing(\App\Models\Voucher::with('branch'));
+
+        // The list's search box and its two filters (Promotions & Rewards,
+        // Oct 2026). Display only: they narrow what is LISTED, inside the
+        // viewer's own scope, and change nothing about any voucher.
+        $filters = $this->voucherListFilters($request);
+
+        if ($filters['q'] !== '') {
+            $like = '%' . addcslashes($filters['q'], '\%_') . '%';
+            $listing->where(function ($q) use ($like) {
+                $q->where('code', 'like', $like)->orWhere('description', 'like', $like);
+            });
+        }
+
+        $listing->withListStatus($filters['status']);
+
+        if ($filters['scope'] === 'global') {
+            $listing->whereNull('branch_id');
+        } elseif ($filters['scope'] !== '') {
+            $listing->where('branch_id', (int) $filters['scope']);
+        }
+
+        $vouchers = $listing
             ->orderBy('created_at', 'desc')
             ->paginate($this->paginationPerPage($request))
             ->withQueryString();
+
+        // Background refresh (the list's search box and filters fetch this same
+        // address instead of reloading the page): answer with just the results
+        // region. Everything above — the viewer's branch scope, the filters, the
+        // pagination — has already run, and the request came through the same
+        // route middleware, so this is the identical listing the full page would
+        // have shown, minus the page around it. Never cached, and Vary says the
+        // same address has two shapes, so a back/forward or a proxy cannot hand
+        // a bare fragment to a normal page load.
+        if ($request->header('X-Vouchers-Fragment') === '1') {
+            return response()
+                ->view('admin.partials.voucher-list-results', compact('vouchers', 'filters'))
+                ->header('Cache-Control', 'no-store, private')
+                ->header('Vary', 'X-Vouchers-Fragment');
+        }
+
+        // The four cards above the list count EVERYTHING this viewer may see,
+        // whatever the filters say: a supervisor's own branch plus the global
+        // ones, the owner's every voucher.
+        $scoped = fn () => $this->scopePromotionListing(\App\Models\Voucher::query());
+        $voucherStats = [
+            'total'    => $scoped()->count(),
+            'active'   => $scoped()->withListStatus('active')->count(),
+            'on_wheel' => $scoped()->onWheel()->count(),
+            'expired'  => $scoped()->expiredNow()->count(),
+        ];
+
+        // The scope filter offers Global plus the branches this viewer can see.
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+        $scopeBranches = $lockedBranchId === null
+            ? \App\Models\Branch::orderBy('id')->get()
+            : \App\Models\Branch::whereKey($lockedBranchId)->get();
 
         // The owner's branch-scope picker on the Create form. A
         // branch-locked viewer never sees the control, so it is not
@@ -6105,6 +6209,9 @@ public function markOrderRefunded(int $id)
 
         return view('admin.vouchers', compact(
             'vouchers',
+            'voucherStats',
+            'filters',
+            'scopeBranches',
             'branches',
             'rewardQuery',
             'rewardCustomer',

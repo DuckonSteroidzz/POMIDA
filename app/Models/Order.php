@@ -180,6 +180,10 @@ class Order extends Model
             // keep it used.
             if ($order->status === 'cancelled') {
                 \App\Services\FreeDesserts::releaseAfterCancel($order);
+
+                // The Spin & Win points this order's spins won are taken back,
+                // once, through the loyalty_awards ledger. Same four paths.
+                \App\Services\SpinPoints::reverseAfterCancel($order);
             }
         });
     }

@@ -361,9 +361,10 @@ class User extends Authenticatable implements MustVerifyEmail
 
     /**
      * Points the Spin & Win wheel counts towards a voucher: the spin balance
-     * (`points`, reset on every order) plus the account's bonus balance
-     * (`bonus_points`, never reset — see config/loyalty.php). What the
-     * customer is shown as "your points".
+     * (`points`, stacks across orders; lowered only by a wheel voucher win or
+     * a cancelled order's reversal — App\Services\SpinPoints) plus the
+     * account's bonus balance (`bonus_points` — see config/loyalty.php).
+     * What the customer is shown as "your points".
      */
     public function wheelPoints(): int
     {

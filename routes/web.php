@@ -64,20 +64,27 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
 
     // ══════════ AUTH ══════════
 
+    // The four Log in / Create account routes (and the Sign up / Log in join
+    // buttons) are closed to a Dine-In guest with an order still in progress:
+    // signing in would replace the session that proves the order is theirs.
+    // See BlockGuestAuthWhileOrdering. It runs before the throttle so a blocked
+    // attempt spends none of the login budget.
     Route::get('/login', [AuthController::class, 'showLogin'])
+        ->middleware(\App\Http\Middleware\BlockGuestAuthWhileOrdering::class)
         ->name('login');
 
     // Unlimited password guessing was possible here; 10/min per IP still
     // leaves plenty of room for a real customer mistyping a password.
     Route::post('/login', [AuthController::class, 'login'])
-        ->middleware('throttle:customer-login')
+        ->middleware([\App\Http\Middleware\BlockGuestAuthWhileOrdering::class, 'throttle:customer-login'])
         ->name('login.post');
 
     Route::get('/register', [AuthController::class, 'showRegister'])
+        ->middleware(\App\Http\Middleware\BlockGuestAuthWhileOrdering::class)
         ->name('register');
 
     Route::post('/register', [AuthController::class, 'register'])
-        ->middleware('throttle:customer-register')
+        ->middleware([\App\Http\Middleware\BlockGuestAuthWhileOrdering::class, 'throttle:customer-register'])
         ->name('register.post');
 
     Route::get('/terms', [AuthController::class, 'showTerms'])
@@ -89,6 +96,7 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
     // so it carries no limiter of its own; login and register keep theirs.
     Route::get('/join/{mode}', [AuthController::class, 'startDineInJoin'])
         ->whereIn('mode', [\App\Support\DineInJoin::MODE_SIGNUP, \App\Support\DineInJoin::MODE_LOGIN])
+        ->middleware(\App\Http\Middleware\BlockGuestAuthWhileOrdering::class)
         ->name('dinein-join');
 
     // The Dine-In rewards pop-up reports that it really opened, which is what
@@ -514,6 +522,14 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
     Route::post('/help-request', [AuthController::class, 'submitHelpRequest'])
         ->middleware(['throttle.friendly', 'throttle:help-request'])
         ->name('help-request');
+
+    // The Help page and the More page poll this while a request is open, so the
+    // form comes back by itself once staff press Done. Read-only, answers about
+    // THIS session's table and nothing else. Plain throttle, not the friendly
+    // wrapper: a poll that is refused just skips a tick, it must not redirect.
+    Route::get('/help-request/status', [AuthController::class, 'helpRequestStatus'])
+        ->middleware('throttle:help-status')
+        ->name('help-request.status');
 
 });
 
@@ -1065,6 +1081,15 @@ Route::prefix('admin')
             // Every voucher-defining route stays in the role:admin group.
             Route::get('/vouchers', [AdminController::class, 'showVouchers'])
                 ->name('vouchers');
+
+            // Promotions & Rewards (Oct 2026): Vouchers, Streak Rewards and Ads
+            // share one page header and tab bar. This is the page's own address,
+            // /admin/promotions?tab=vouchers|streak-rewards|ads; it only sends the
+            // viewer to the tab's screen. Each tab stays at its old URL with its
+            // own controller and role gate, so a tab the viewer cannot reach is
+            // never reachable from here either (it falls back to Vouchers).
+            Route::get('/promotions', [AdminController::class, 'showPromotions'])
+                ->name('promotions');
 
             // Issue one bearer claim code for a walk-in customer who has no
             // account and never played the wheel. Shared with staff as of

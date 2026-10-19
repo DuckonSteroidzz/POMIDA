@@ -53,7 +53,11 @@
     };
 @endphp
 
-<p class="page-title">Ads Management</p>
+@include('admin.partials.promotions-header', ['active' => 'ads'])
+
+<div class="promo-section">
+    <h2 class="promo-section-title">Ads Management</h2>
+</div>
 
 <div class="content-card" style="margin-bottom:1rem;">
     <p style="font-size:0.9rem;font-weight:700;color:#333;margin-bottom:1rem;">Create New Ad</p>

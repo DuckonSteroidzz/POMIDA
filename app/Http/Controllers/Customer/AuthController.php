@@ -787,7 +787,11 @@ private function switchBranch($branchId): void
         // App\Support\StoreContact.
         $storeInfo = \App\Support\StoreContact::forBranch($branch?->id);
 
-        return view('customer.more', compact('customer', 'branch', 'storeInfo'));
+        // The Need Assistance block shows "request sent" instead of the button
+        // while this table has one open (same lookup as the Help page).
+        $openRequest = session('order_type') === 'dine_in' ? $this->openHelpRequest() : null;
+
+        return view('customer.more', compact('customer', 'branch', 'storeInfo', 'openRequest'));
     }
 
     /**
@@ -820,13 +824,7 @@ private function switchBranch($branchId): void
             && session('branch_id')
             && $tableNumber;
 
-        $openRequest = $canRequestAssistance
-            ? \App\Models\HelpRequest::where('branch_id', session('branch_id'))
-                ->where('table_number', $tableNumber)
-                ->whereIn('status', ['pending', 'assisting'])
-                ->latest('requested_at')
-                ->first()
-            : null;
+        $openRequest = $canRequestAssistance ? $this->openHelpRequest() : null;
 
         return view('customer.help', compact(
             'customer',
@@ -867,9 +865,13 @@ private function switchBranch($branchId): void
             : null;
 
         // Points bonuses only: a stamp card reward is not points (its ledger
-        // row is 0) and has its own card below.
+        // row is 0) and has its own card below, and a spin reversal is a
+        // debit, not a bonus.
         $recentAwards = $customer->loyaltyAwards()
-            ->where('type', '!=', \App\Models\LoyaltyAward::TYPE_FREE_DESSERT)
+            ->whereNotIn('type', array_merge(
+                [\App\Models\LoyaltyAward::TYPE_FREE_DESSERT],
+                \App\Models\LoyaltyAward::DEBIT_TYPES
+            ))
             ->latest('id')->limit(5)->get();
 
         // Stamp card + the progress bar under the calendar, for the same
@@ -2363,6 +2365,70 @@ private function switchBranch($branchId): void
 
     // ══════════ HELP REQUEST ══════════
 
+    /**
+     * The open (pending or being assisted) help request of THIS session's
+     * branch and table, or null. The one lookup behind the Help page, the More
+     * page and the duplicate check's wording; submitHelpRequest() keeps its own
+     * identical query so the write path stays self-contained.
+     */
+    private function openHelpRequest(): ?\App\Models\HelpRequest
+    {
+        $branchId = session('branch_id');
+        $tableNumber = session('table_number');
+
+        if (! $branchId || ! $tableNumber) {
+            return null;
+        }
+
+        return \App\Models\HelpRequest::where('branch_id', $branchId)
+            ->where('table_number', $tableNumber)
+            ->whereIn('status', ['pending', 'assisting'])
+            ->latest('requested_at')
+            ->first();
+    }
+
+    /**
+     * Is this table's help request still open? (Polled by the Help and More
+     * pages while a request is waiting.)
+     *
+     * Scoped exactly like the duplicate-request check in submitHelpRequest():
+     * the branch and table of THIS session, and only for a seated Dine-In
+     * session. It takes no input, so there is no id or table to enumerate, and
+     * it answers with a status word only: no message, no order, no other table.
+     * Read-only and never cached.
+     *
+     *   status 'pending' | 'assisting'  -> open: true  (keep waiting)
+     *   status 'resolved'               -> open: false (staff pressed Done)
+     *   status 'none'                   -> open: false (nothing was ever asked,
+     *                                      or this is not a seated Dine-In session)
+     */
+    public function helpRequestStatus(Request $request)
+    {
+        $branchId = session('branch_id');
+        $tableNumber = session('table_number');
+        $status = 'none';
+
+        if (session('order_type') === 'dine_in' && $branchId && $tableNumber) {
+            $forTable = fn () => \App\Models\HelpRequest::where('branch_id', $branchId)
+                ->where('table_number', $tableNumber);
+
+            // Same question the Help page asks to decide between "please wait"
+            // and the form: is there an open request for this table?
+            $latest = $forTable()->whereIn('status', ['pending', 'assisting'])
+                ->latest('requested_at')->latest('id')->value('status')
+                ?? $forTable()->latest('requested_at')->latest('id')->value('status');
+
+            $status = in_array($latest, ['pending', 'assisting', 'resolved'], true) ? $latest : 'none';
+        }
+
+        return response()
+            ->json([
+                'open'   => in_array($status, ['pending', 'assisting'], true),
+                'status' => $status,
+            ])
+            ->header('Cache-Control', 'no-store, private');
+    }
+
     public function submitHelpRequest(Request $request)
     {
         $orderType = session('order_type');
@@ -3125,12 +3191,13 @@ private function switchBranch($branchId): void
          * BONUS POINTS COUNT TOWARDS THE WHEEL VOUCHER (Oct 2026).
          *
          * Registered-customer bonuses (App\Services\Loyalty) live in
-         * users.bonus_points, which placeOrder() does not reset. They are
-         * added here — read fresh, since a bonus may have been credited since
-         * this request loaded the user — so they do the one thing points can
-         * do: bring the next wheel voucher closer. A voucher's cost is taken
-         * from the spin balance first (it would be reset at the next order
-         * anyway) and only the remainder from the bonus balance.
+         * users.bonus_points. They are added here — read fresh, since a
+         * bonus may have been credited since this request loaded the user —
+         * so they do the one thing points can do: bring the next wheel
+         * voucher closer. A voucher's cost is taken from the spin balance
+         * first and only the remainder from the bonus balance. (Neither
+         * balance is reset when an order is placed any more — see
+         * App\Services\SpinPoints.)
          */
         $bonusPoints = (int) \App\Models\User::whereKey($user->id)->value('bonus_points');
 

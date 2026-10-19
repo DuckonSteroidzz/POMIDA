@@ -914,7 +914,7 @@ class StreakRewardsPerBranchTest extends TestCase
         $this->completedOrderOn($other, '2026-10-15', 2);
         $html = $this->actingAs($other, 'customer')->withSession(['branch_id' => 2])->get(route('customer.account'))->assertOk()->getContent();
         $this->assertMatchesRegularExpression('/data-testid="current-streak">\s*1 day\s*</', $html);
-        $this->assertMatchesRegularExpression('/Streak bonus \(orders at any branch count\):\s*1 more day\s*in a row to the 3-day bonus \(\+10 points\)\./', $html);
+        $this->assertMatchesRegularExpression('/Streak bonus \(any branch\):\s*1 more day\s*in a row to the 3-day bonus \(\+10 points\)\./', $html);
     }
 
     // ══════════ the legacy ledger keys ══════════

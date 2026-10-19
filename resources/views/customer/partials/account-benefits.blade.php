@@ -1,62 +1,54 @@
 {{--
-    Account benefits — Account page, registered customers only.
+    Account benefits + Recent bonuses — Account page, registered customers only.
 
-    Every number here is read from config/loyalty.php (bonuses) or the Spin &
-    Win constants in AuthController (spins), passed in as $loyalty by
-    AuthController::showAccount(). Nothing is hard-coded, so this card cannot
+    Two cards that sit side by side from 1100px up (7 + 5 of 12 columns) and
+    stack below it. They are direct children of the page's 12-column grid
+    (account-settings.blade.php), so the spans live here.
+
+    Every number in the benefits card is read from config/loyalty.php (bonuses)
+    or the Spin & Win constants in AuthController (spins), passed in as $loyalty
+    by AuthController::showAccount(). Nothing is hard-coded, so this card cannot
     advertise a figure the server does not pay. A bonus set to 0 in the config
     is simply not listed.
+
+    Recent bonuses: $recentAwards (points bonuses only; spin reversals and
+    stamp-card rewards are filtered out by the controller). With none yet the
+    card says so, so the benefits card never sits beside a hole.
 --}}
 @php
     $milestones = $loyalty['milestones'];
 @endphp
-<section id="benefits" class="card-surface w-full max-w-3xl p-3 sm:p-6" aria-labelledby="benefits-title">
-    <div class="mb-4 flex items-center gap-3">
-        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-peach-soft text-lg text-peach-red">
+<section id="benefits" class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[1100px]:col-span-7" aria-labelledby="benefits-title">
+    <div class="mb-4 flex items-start gap-3">
+        <span class="acct-icon text-lg">
             <i class="bi bi-gift"></i>
         </span>
         <div class="min-w-0">
-            <h2 id="benefits-title" class="font-display text-lg font-bold text-peach-deep">Account benefits</h2>
-            <p class="text-sm text-peach-deep/60">What you get for ordering with an account.</p>
+            <h2 id="benefits-title" class="font-display text-lg font-bold leading-snug text-peach-deep">Account Benefits</h2>
+            <p class="text-sm text-peach-deep/60">What you earn with an account.</p>
         </div>
     </div>
 
-    @unless($loyalty['verified'])
-        <p class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800" data-testid="verify-to-earn">
-            <i class="bi bi-envelope-exclamation"></i>
-            Verify your email address to start earning bonus points. Use the Resend button under Account Details below.
-        </p>
-    @endunless
-
-    {{-- Balance --}}
-    <div class="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-2xl bg-peach-soft/60 px-3 py-3">
-        <p class="text-sm font-semibold text-peach-deep/80">Bonus points</p>
-        <p class="font-display text-xl font-black text-peach-red" data-testid="bonus-points">{{ number_format($loyalty['bonus_points']) }} pts</p>
-        <p class="w-full text-sm text-peach-deep/60">
-            Bonus points stay on your account and count toward Spin &amp; Win vouchers
-            together with the points you spin.
-        </p>
-    </div>
-
-    <ul class="grid gap-2 sm:grid-cols-2" role="list">
-        <li>
-            <a href="{{ route('customer.vouchers') }}" class="flex min-h-11 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3 no-underline transition hover:border-peach">
-                <i class="bi bi-ticket-perforated mt-0.5 text-lg text-peach-red"></i>
+    {{-- The bonus balance is the hero at the top of the page (partials/account-header). --}}
+    <ul class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3" role="list">
+        <li class="min-w-0">
+            <a href="{{ route('customer.vouchers') }}" class="flex h-full items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 no-underline transition hover:-translate-y-0.5 hover:border-peach-rose">
+                <span class="acct-icon text-lg"><i class="bi bi-ticket-perforated"></i></span>
                 <span class="min-w-0">
-                    <span class="block text-base font-bold text-peach-deep">Vouchers &amp; Rewards</span>
-                    <span class="block text-sm text-peach-deep/70">Vouchers you win and rewards you earn are saved to your account.</span>
+                    <span class="block text-base font-semibold text-peach-deep">Vouchers &amp; Rewards</span>
+                    <span class="block text-sm text-peach-deep/70">Saved to your account.</span>
                 </span>
             </a>
         </li>
 
         @if($milestones)
-        <li class="flex items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3">
-            <i class="bi bi-fire mt-0.5 text-lg text-peach-red"></i>
+        <li class="flex min-w-0 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4">
+            <span class="acct-icon text-lg"><i class="bi bi-fire"></i></span>
             <span class="min-w-0">
-                <span class="block text-base font-bold text-peach-deep">Streak bonuses</span>
+                <span class="block text-base font-semibold text-peach-deep">Streak bonuses</span>
                 <span class="block text-sm text-peach-deep/70" data-testid="benefit-streak">
                     @foreach($milestones as $days => $points)
-                        +{{ $points }} points at {{ $days }} days in a row{{ $loop->last ? '.' : ',' }}
+                        +{{ $points }} pts at {{ $days }} days{{ $loop->last ? '.' : ',' }}
                     @endforeach
                     Once per streak.
                 </span>
@@ -71,29 +63,27 @@
         @php $benefitBranch = \App\Services\FreeDesserts::sessionBranch(); @endphp
         @if($benefitBranch && \App\Services\FreeDesserts::active($benefitBranch->id))
         @php $benefitReward = \App\Services\StreakRewardSettings::current($benefitBranch->id)['description']; @endphp
-        <li>
-            <a href="#free-dessert" class="flex min-h-11 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3 no-underline transition hover:border-peach">
-                <i class="bi bi-gift mt-0.5 text-lg text-peach-red"></i>
+        <li class="min-w-0">
+            <a href="#free-dessert" class="flex h-full items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 no-underline transition hover:-translate-y-0.5 hover:border-peach-rose">
+                <span class="acct-icon text-lg"><i class="bi bi-gift"></i></span>
                 <span class="min-w-0">
-                    <span class="block text-base font-bold text-peach-deep">Stamp card reward</span>
-                    <span class="block text-sm text-peach-deep/70" data-testid="benefit-free-dessert">A reward{{ $benefitReward ? ' (' . $benefitReward . ')' : '' }} for every {{ \App\Services\FreeDesserts::visitDays($benefitBranch->id) }} stamps at {{ $benefitBranch->name }}. 1 stamp per day you completed an order there.</span>
+                    <span class="block text-base font-semibold text-peach-deep">Stamp card reward</span>
+                    <span class="block text-sm text-peach-deep/70" data-testid="benefit-free-dessert">A reward{{ $benefitReward ? ' (' . $benefitReward . ')' : '' }} every {{ \App\Services\FreeDesserts::visitDays($benefitBranch->id) }} stamps.</span>
                 </span>
             </a>
         </li>
         @endif
 
         @if($loyalty['welcome_points'] > 0)
-        <li class="flex items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3">
-            <i class="bi bi-stars mt-0.5 text-lg text-peach-red"></i>
+        <li class="flex min-w-0 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4">
+            <span class="acct-icon text-lg"><i class="bi bi-stars"></i></span>
             <span class="min-w-0">
-                <span class="block text-base font-bold text-peach-deep">Welcome bonus</span>
+                <span class="block text-base font-semibold text-peach-deep">Welcome bonus</span>
                 <span class="block text-sm text-peach-deep/70" data-testid="benefit-welcome">
                     @if($loyalty['welcome_paid'])
                         <i class="bi bi-check-circle-fill text-green-700"></i> Received: +{{ $loyalty['welcome_points'] }} points.
-                    @elseif(! $loyalty['verified'])
-                        +{{ $loyalty['welcome_points'] }} points once you verify your email.
                     @else
-                        +{{ $loyalty['welcome_points'] }} points for new accounts when they verify their email.
+                        +{{ $loyalty['welcome_points'] }} points when you verify your email.
                     @endif
                 </span>
             </span>
@@ -101,50 +91,64 @@
         @endif
 
         @if($loyalty['order_points'] > 0)
-        <li class="flex items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3">
-            <i class="bi bi-bag-check mt-0.5 text-lg text-peach-red"></i>
+        <li class="flex min-w-0 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4">
+            <span class="acct-icon text-lg"><i class="bi bi-bag-check"></i></span>
             <span class="min-w-0">
-                <span class="block text-base font-bold text-peach-deep">Order bonus</span>
-                <span class="block text-sm text-peach-deep/70" data-testid="benefit-order">+{{ $loyalty['order_points'] }} points for every completed order.</span>
+                <span class="block text-base font-semibold text-peach-deep">Order bonus</span>
+                <span class="block text-sm text-peach-deep/70" data-testid="benefit-order">+{{ $loyalty['order_points'] }} points per completed order.</span>
             </span>
         </li>
         @endif
 
-        <li class="flex items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3">
-            <i class="bi bi-dice-5 mt-0.5 text-lg text-peach-red"></i>
+        <li class="flex min-w-0 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4">
+            <span class="acct-icon text-lg"><i class="bi bi-dice-5"></i></span>
             <span class="min-w-0">
-                <span class="block text-base font-bold text-peach-deep">Spin &amp; Win</span>
+                <span class="block text-base font-semibold text-peach-deep">Spin &amp; Win</span>
                 <span class="block text-sm text-peach-deep/70" data-testid="benefit-spins">
-                    {{ $loyalty['spins_per_order'] }} spins with every order, up to {{ $loyalty['spins_per_day'] }} a day.
+                    {{ $loyalty['spins_per_order'] }} spins per order, up to {{ $loyalty['spins_per_day'] }} a day.
                 </span>
             </span>
         </li>
 
-        <li>
-            <a href="{{ route('customer.orders', ['tab' => 'history']) }}" class="flex min-h-11 items-start gap-3 rounded-2xl border border-peach-soft bg-white p-3 no-underline transition hover:border-peach">
-                <i class="bi bi-receipt mt-0.5 text-lg text-peach-red"></i>
+        <li class="min-w-0">
+            <a href="{{ route('customer.orders', ['tab' => 'history']) }}" class="flex h-full items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 no-underline transition hover:-translate-y-0.5 hover:border-peach-rose">
+                <span class="acct-icon text-lg"><i class="bi bi-receipt"></i></span>
                 <span class="min-w-0">
-                    <span class="block text-base font-bold text-peach-deep">Order history</span>
-                    <span class="block text-sm text-peach-deep/70">Every past order and receipt, on any device.</span>
+                    <span class="block text-base font-semibold text-peach-deep">Order history</span>
+                    <span class="block text-sm text-peach-deep/70">Past orders and receipts.</span>
                 </span>
             </a>
         </li>
     </ul>
+</section>
+
+<section class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[1100px]:col-span-5" aria-labelledby="recent-bonuses-title">
+    <div class="mb-3 flex items-start gap-3">
+        <span class="acct-icon text-lg">
+            <i class="bi bi-graph-up-arrow"></i>
+        </span>
+        <div class="min-w-0">
+            <h2 id="recent-bonuses-title" class="font-display text-lg font-bold leading-snug text-peach-deep">Recent Bonuses</h2>
+            <p class="text-sm text-peach-deep/60">Your latest points activity.</p>
+        </div>
+    </div>
 
     @if($recentAwards->isNotEmpty())
-        <div class="mt-4">
-            <h3 class="mb-2 text-base font-bold text-peach-deep">Recent bonuses</h3>
-            <ul class="divide-y divide-peach-soft rounded-2xl border border-peach-soft bg-white" role="list" data-testid="recent-bonuses">
-                @foreach($recentAwards as $award)
-                    <li class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm">
-                        <span class="min-w-0 text-peach-deep">
+        <ul class="flex flex-col divide-y divide-peach-soft" role="list" data-testid="recent-bonuses">
+            @foreach($recentAwards as $award)
+                <li class="flex items-center justify-between gap-3 px-1 py-3">
+                    <span class="flex min-w-0 items-center gap-3">
+                        <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-peach-soft/60 text-peach-red" aria-hidden="true"><i class="bi bi-check-lg"></i></span>
+                        <span class="min-w-0 text-base text-peach-deep">
                             {{ $award->label() }}
-                            <span class="block text-peach-deep/60">{{ \App\Support\ShopDay::format($award->created_at, 'M j, Y') }}</span>
+                            <span class="block text-sm text-peach-deep/60">{{ \App\Support\ShopDay::format($award->created_at, 'M j, Y') }}</span>
                         </span>
-                        <span class="shrink-0 font-bold text-green-700">+{{ $award->points }}</span>
-                    </li>
-                @endforeach
-            </ul>
-        </div>
+                    </span>
+                    <span class="shrink-0 rounded-full bg-[#e4f5ea] px-2.5 py-0.5 text-sm font-bold text-green-700">+{{ $award->points }}</span>
+                </li>
+            @endforeach
+        </ul>
+    @else
+        <p class="py-3 text-sm text-peach-deep/60" data-testid="recent-bonuses-empty">No bonuses yet.</p>
     @endif
 </section>

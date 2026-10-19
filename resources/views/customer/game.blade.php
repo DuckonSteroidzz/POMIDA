@@ -541,7 +541,7 @@
         @if(! Auth::guard('customer')->check() && ($signupTeaser = \App\Services\Loyalty::guestTeaser()))
         <div class="mb-5 flex flex-col gap-3 rounded-2xl border border-peach-soft bg-white px-4 py-3 sm:flex-row sm:items-center sm:justify-between" data-testid="guest-signup-teaser">
             <p class="text-sm font-medium text-peach-deep/80"><i class="bi bi-stars text-peach-red"></i> {{ $signupTeaser }}</p>
-            <a href="{{ route('customer.register') }}" class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-peach-red px-5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+            <a href="{{ route('customer.register') }}"{!! \App\Support\DineInJoin::blockAttr() !!} class="inline-flex min-h-11 shrink-0 items-center justify-center gap-2 rounded-full bg-peach-red px-5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                 <i class="bi bi-person-plus"></i> Create account
             </a>
         </div>
@@ -989,11 +989,11 @@
                     line += '<br>' + data.points_needed +
                         ' more pts to win: ' + esc(data.next_voucher) + '!';
                 }
-                showSpinToast('⭐', '+' + won.points + ' Points!', line + signupTeaserHtml(data));
+                showSpinToast('⭐', '+' + won.points + ' Points!', line);
                 if (window.celebrateWin) window.celebrateWin();
                 releaseSpinButton();
             } else {
-                showSpinToast('😅', 'Try Again!', 'Better luck next time!' + signupTeaserHtml(data));
+                showSpinToast('😅', 'Try Again!', 'Better luck next time!');
                 releaseSpinButton();
             }
 
@@ -1010,14 +1010,6 @@
 
         /* The win panel builds HTML from a server response, so anything from it
            is escaped before it goes in. */
-        /* Guests only: the server adds signup_teaser (built from
-           config/loyalty.php) to a guest spin result; a signed-in result has
-           none, so this returns nothing for them. */
-        function signupTeaserHtml(data) {
-            if (!data || !data.signup_teaser) return '';
-            return '<span class="mt-2 block font-semibold text-peach-red" data-signup-teaser>' + esc(data.signup_teaser) + '</span>';
-        }
-
         function esc(v) {
             var d = document.createElement('div');
             d.textContent = v == null ? '' : String(v);
@@ -1289,6 +1281,7 @@
         }
     </script>
 
+    @include('customer.partials.ongoing-order-prompt')
     @include('customer.partials.idle-timeout')
 </body>
 

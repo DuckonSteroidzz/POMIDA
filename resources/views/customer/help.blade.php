@@ -91,13 +91,13 @@
 
         {{-- Result of the assistance form (submitHelpRequest redirects back here). --}}
         @if(session('success'))
-            <div role="status" class="mb-4 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
+            <div role="status" data-help-flash class="mb-4 flex items-start gap-3 rounded-2xl border border-green-200 bg-green-50 p-4 text-sm font-semibold text-green-800">
                 <i class="bi bi-check-circle mt-0.5"></i>
                 <span class="min-w-0 flex-1">{{ session('success') }}</span>
             </div>
         @endif
         @if(session('error'))
-            <div role="alert" class="mb-4 flex items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 text-sm font-semibold text-peach-deep">
+            <div role="alert" data-help-flash class="mb-4 flex items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 text-sm font-semibold text-peach-deep">
                 <i class="bi bi-exclamation-circle mt-0.5 text-peach-red"></i>
                 <span class="min-w-0 flex-1">{{ session('error') }}</span>
             </div>
@@ -124,11 +124,18 @@
                     </div>
                 </div>
 
-                <div class="p-5 sm:p-6">
+                {{-- data-help-region: while a request is open the page polls
+                     customer.help-request.status and, once staff press Done, swaps this
+                     body for the server's fresh one (the form) with a short thank-you. --}}
+                <div class="p-5 sm:p-6" data-help-region
+                     data-help-status-url="{{ route('customer.help-request.status') }}"
+                     data-help-open="{{ $openRequest ? '1' : '0' }}"
+                     data-help-text-pending="Your request was sent. Please wait &mdash; staff will be with you shortly."
+                     data-help-text-assisting="Staff are on their way to Table {{ $tableNumber }}.">
                     @if($openRequest)
                         <div class="flex items-start gap-3 rounded-2xl border border-peach-soft bg-peach-cream p-4">
                             <i class="bi bi-bell-fill mt-0.5 text-peach-red"></i>
-                            <p class="min-w-0 flex-1 text-sm font-semibold text-peach-deep">
+                            <p class="min-w-0 flex-1 text-sm font-semibold text-peach-deep" data-help-message>
                                 @if($openRequest->status === 'assisting')
                                     Staff are on their way to Table {{ $tableNumber }}.
                                 @else
@@ -319,6 +326,10 @@
     </main>
 
     @include('customer.partials.navbar')
+
+    @if($canRequestAssistance)
+        @include('customer.partials.help-status-poll')
+    @endif
 
     @include('customer.partials.idle-timeout')
 

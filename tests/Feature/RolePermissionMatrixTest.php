@@ -575,6 +575,10 @@ class RolePermissionMatrixTest extends TestCase
             // Streak Rewards moved to its own sidebar link (Oct 2026); staff
             // must not see it, same as the other manager-tier links above.
             'staff / no streak rewards link' => ['staff', 'admin.home', 'admin.streak-rewards', []],
+            // The tabs moved into Promotions & Rewards: staff open its Vouchers tab
+            // and must not be offered the other two there either.
+            'staff / no ads tab'             => ['staff', 'admin.vouchers', 'admin.ads', []],
+            'staff / no streak rewards tab'  => ['staff', 'admin.vouchers', 'admin.streak-rewards', []],
 
             // Staff — page-level controls.
             //
@@ -663,8 +667,10 @@ class RolePermissionMatrixTest extends TestCase
             // Vouchers — staff read the list only.
             'staff / no create voucher'    => ['staff', 'admin.vouchers', 'Create New Voucher', false],
             'manager / has create voucher' => ['supervisor', 'admin.vouchers', 'Create New Voucher', true],
-            'manager / no spin wheel card' => ['supervisor', 'admin.vouchers', 'Spin Wheel Game', false],
-            'owner / has spin wheel card'  => ['admin', 'admin.vouchers', 'Spin Wheel Game', true],
+            // The card's title is "Spin Wheel" since the Promotions & Rewards page
+            // (Oct 2026); its testid is what names it unambiguously.
+            'manager / no spin wheel card' => ['supervisor', 'admin.vouchers', 'data-testid="spin-wheel-bar"', false],
+            'owner / has spin wheel card'  => ['admin', 'admin.vouchers', 'data-testid="spin-wheel-bar"', true],
             // Streak Rewards is its own page now (split off Vouchers & Game,
             // Oct 2026): the master switch, the owner's branch selector and
             // overview, a manager's own branch form and switch, and the code
@@ -715,7 +721,9 @@ class RolePermissionMatrixTest extends TestCase
     {
         return [
             'manager sees analytics link'  => ['supervisor', 'admin.home', 'admin.analytics'],
-            'manager sees ads link'        => ['supervisor', 'admin.home', 'admin.ads'],
+            // Ads and Streak Rewards are tabs of Promotions & Rewards now, not
+            // sidebar links (Oct 2026): a manager's way to them is the tab bar.
+            'manager sees ads tab'         => ['supervisor', 'admin.vouchers', 'admin.ads'],
             'manager sees staff accounts'  => ['supervisor', 'admin.home', 'admin.users'],
             'manager sees create voucher'  => ['supervisor', 'admin.vouchers', 'admin.vouchers.store'],
             'manager sees add inventory'   => ['supervisor', 'admin.inventory', 'admin.inventory.store'],
@@ -727,7 +735,7 @@ class RolePermissionMatrixTest extends TestCase
             'owner sees branches link'     => ['admin', 'admin.home', 'admin.branches'],
             'owner sees spin wheel'        => ['admin', 'admin.vouchers', 'admin.game.toggle'],
             'owner sees streak switch'     => ['admin', 'admin.streak-rewards', 'admin.streak.toggle'],
-            'manager sees streak rewards link' => ['supervisor', 'admin.home', 'admin.streak-rewards'],
+            'manager sees streak rewards tab' => ['supervisor', 'admin.vouchers', 'admin.streak-rewards'],
             'staff still see summary'      => ['staff', 'admin.home', 'admin.summary'],
             'staff still see vouchers'     => ['staff', 'admin.home', 'admin.vouchers'],
         ];

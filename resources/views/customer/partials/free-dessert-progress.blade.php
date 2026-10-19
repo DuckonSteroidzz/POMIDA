@@ -11,9 +11,13 @@
     usable there is waiting the bar gives way to a "Reward ready" state that
     links to its code on Vouchers & Rewards.
 
+    Layout (Oct 2026 redesign): the top card of the right-hand column of the
+    Account page's Overview grid (the stamp card is under it); the card, icon
+    tile and gradient bar follow docs/design-refs/peachy-account-settings.html.
+
     Phone sizing: 16px text, 14px (text-xs) helper line only; the bar is a
-    flex-1 min-w-0 track beside a fixed icon, so it shrinks at 360px instead
-    of pushing the page sideways.
+    full-width track, so it shrinks at 360px instead of pushing the page
+    sideways.
 --}}
 @if($freeDessert['enabled'] ?? false)
 @php
@@ -23,19 +27,22 @@
     $challengeReady = $freeDessert['available'];
     $challengeBranch = $freeDessert['branch_name'] ?? 'this branch';
 @endphp
-<section class="card-surface w-full max-w-3xl p-3 sm:p-6" aria-labelledby="free-dessert-challenge-title" data-testid="free-dessert-challenge" data-branch="{{ $freeDessert['branch_id'] ?? '' }}">
-    <p class="mb-2 inline-flex items-center gap-1 text-sm font-bold text-peach-red" data-testid="free-dessert-challenge-branch">
-        <i class="bi bi-shop" aria-hidden="true"></i> {{ $challengeBranch }}
-    </p>
+<section class="acct-card p-4 sm:p-[22px]" aria-labelledby="free-dessert-challenge-title" data-testid="free-dessert-challenge" data-branch="{{ $freeDessert['branch_id'] ?? '' }}">
+    <div class="mb-4 flex items-start gap-3">
+        <span class="acct-icon text-lg" aria-hidden="true"><i class="bi bi-star"></i></span>
+        <div class="min-w-0">
+            <p class="inline-flex items-center gap-1 rounded-full border border-peach-soft bg-peach-soft/50 px-2 py-0.5 text-xs font-semibold text-peach-deep" data-testid="free-dessert-challenge-branch">
+                <i class="bi bi-shop" aria-hidden="true"></i> {{ $challengeBranch }}
+            </p>
+            <h2 id="free-dessert-challenge-title" class="mt-1 font-display text-lg font-bold leading-snug text-peach-deep">{{ $challengeReady->isNotEmpty() ? ($challengeReady->count() === 1 ? 'Reward ready' : $challengeReady->count() . ' rewards ready') : 'Reward Challenge' }}</h2>
+        </div>
+    </div>
     @if($challengeReady->isNotEmpty())
         <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-3" data-testid="free-dessert-ready">
             <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-green-700 text-lg text-white" aria-hidden="true">
                 <i class="bi bi-gift-fill"></i>
             </span>
             <div class="min-w-0 flex-1">
-                <h2 id="free-dessert-challenge-title" class="font-display text-lg font-bold text-peach-deep">
-                    {{ $challengeReady->count() === 1 ? 'Reward ready' : $challengeReady->count() . ' rewards ready' }}
-                </h2>
                 <p class="text-sm text-peach-deep/70">
                     {{ $challengeReady->first()->description() }}.
                     @if($challengeReady->first()->expires_at)
@@ -49,22 +56,16 @@
             </a>
         </div>
     @else
-        <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
-            <h2 id="free-dessert-challenge-title" class="font-display text-lg font-bold text-peach-deep">Reward challenge</h2>
-            <p class="font-display text-xl font-black text-peach-red" data-testid="free-dessert-day">Day {{ $challengeDay }} of {{ $challengeDays }}</p>
+        <div class="flex items-baseline justify-between gap-x-3">
+            <span class="text-sm text-peach-deep/70">Progress</span>
+            <p class="font-display text-xl font-bold text-peach-red" data-testid="free-dessert-day">Day {{ $challengeDay }} of {{ $challengeDays }}</p>
         </div>
-        <div class="mt-3 flex items-center gap-2">
-            <div class="h-3 min-w-0 flex-1 overflow-hidden rounded-full bg-peach-soft" role="progressbar"
-                 aria-valuemin="0" aria-valuemax="{{ $challengeDays }}" aria-valuenow="{{ $challengeDay }}"
-                 aria-label="Days toward your next reward">
-                <div class="h-full rounded-full bg-peach-red" style="width: {{ round($challengeDay / $challengeDays * 100) }}%"></div>
-            </div>
-            <span class="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-peach-soft text-base text-peach-red" aria-hidden="true">
-                <i class="bi bi-gift-fill"></i>
-            </span>
+        <div class="mb-2 mt-3 h-3 overflow-hidden rounded-full bg-peach-soft" role="progressbar"
+             aria-valuemin="0" aria-valuemax="{{ $challengeDays }}" aria-valuenow="{{ $challengeDay }}"
+             aria-label="Days toward your next reward">
+            <div class="h-full rounded-full bg-gradient-to-r from-peach-red to-peach-rose" style="width: {{ round($challengeDay / $challengeDays * 100) }}%"></div>
         </div>
-        <p class="mt-2 text-xs text-peach-deep/70" data-testid="free-dessert-day-text">
-            1 stamp per day you completed an order at {{ $challengeBranch }}, any days.
+        <p class="text-xs text-peach-deep/70" data-testid="free-dessert-day-text">
             {{ $challengeLeft }} more {{ $challengeLeft === 1 ? 'day' : 'days' }} to a reward.
         </p>
     @endif

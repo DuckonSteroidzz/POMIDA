@@ -399,11 +399,11 @@ class AdminListPaginationTest extends TestCase
         }
     }
 
-    /** The "All Vouchers (n)" heading through the end of its table. */
+    /** The Vouchers list card (was the "All Vouchers (n)" heading) through the end of its table. */
     private function voucherTable(string $html): string
     {
-        $start = strpos($html, 'All Vouchers (');
-        $this->assertNotFalse($start, 'the All Vouchers table is gone');
+        $start = strpos($html, 'data-testid="voucher-list-card"');
+        $this->assertNotFalse($start, 'the Vouchers list is gone');
         $end = strpos($html, '</table>', $start);
         $this->assertNotFalse($end);
 

@@ -89,12 +89,21 @@ final class DineInJoin
     /** Statuses an order may still be claimed in: the same "open" set the Orders page uses. */
     public const OPEN_STATUSES = ['pending', 'preparing', 'serving'];
 
+    /** Statuses after which an order is no longer in progress. */
+    public const FINISHED_STATUSES = ['completed', 'cancelled', 'rejected'];
+
     /** Copy shared by the card, the login page and the flash after login. */
     public const MSG_CLAIMED = 'This order is now on your account. It will count toward your stamp card when it is completed.';
 
     public const MSG_CLAIMED_COMPLETED = 'This order is now on your account and counts toward your stamp card.';
 
-    public const MSG_TOO_LATE = 'This order was completed on an earlier day, so it cannot earn a stamp. Your next orders will.';
+    /** Shown in place of Log in / Create account while a guest order is in progress. */
+    public const MSG_ONGOING_ORDER = 'You have an ongoing order. Please complete or cancel it before creating a new account or logging in.';
+
+    /** Flash key the route guard sets and the in-page prompt reads. */
+    public const NOTICE_KEY = 'ongoing_order_notice';
+
+    public const MSG_TOO_LATE ='This order was completed on an earlier day, so it cannot earn a stamp. Your next orders will.';
 
     /**
      * A Dine-In guest is in this browser: no account signed in, and the
@@ -105,6 +114,60 @@ final class DineInJoin
         return ! Auth::guard('customer')->check()
             && session('order_type') === 'dine_in'
             && filled(session('table_number'));
+    }
+
+    /**
+     * The order that must finish before this browser may log in or sign up:
+     * a Dine-In GUEST's own order that is still in progress (anything not
+     * completed, cancelled or rejected), found through the same session-owned
+     * list the claim uses (App\Support\GuestOrders). Logging in replaces the
+     * session, so the guest would lose sight of an order staff are still
+     * working on. Never for a signed-in customer or a pick-up session.
+     *
+     * Once per request: the Orders card, the buttons and the route guard all
+     * ask, and the answer cannot change inside one request.
+     */
+    public static function ongoingOrder(): ?Order
+    {
+        if (! self::isDineInGuest()) {
+            return null;
+        }
+
+        $ids = GuestOrders::ids();
+
+        if (! $ids) {
+            return null;
+        }
+
+        $attributes = request()->attributes;
+        $key = 'dinein_join.ongoing:' . implode(',', $ids);
+
+        if (! $attributes->has($key)) {
+            $attributes->set($key, Order::whereIn('id', $ids)
+                ->whereNull('user_id')
+                ->where('type', 'dine_in')
+                ->whereNotIn('status', self::FINISHED_STATUSES)
+                ->orderByDesc('id')
+                ->first());
+        }
+
+        return $attributes->get($key);
+    }
+
+    /** Is guest Log in / Create account closed to this browser right now? */
+    public static function blocksGuestAuth(): bool
+    {
+        return self::ongoingOrder() !== null;
+    }
+
+    /**
+     * Markup for a Log in / Sign up link: the page script opens the "ongoing
+     * order" prompt instead of following it. Empty when nothing is blocked,
+     * so the link behaves exactly as before.
+     */
+    public static function blockAttr(): string
+    {
+        return self::blocksGuestAuth() ? ' data-ongoing-order-block' : '';
     }
 
     /**
@@ -194,21 +257,21 @@ final class DineInJoin
     }
 
     /**
-     * The order the Orders page card is about, or null for no card: the
-     * newest open, ownerless Dine-In order among the ones the page lists.
-     *
-     * @param  Collection<int, Order>  $currentOrders
+     * The order the Orders page card is about, or null for no card: this
+     * session's newest ownerless Dine-In order that was COMPLETED today. While
+     * any guest order is still in progress there is no card (logging in would
+     * lose it, see ongoingOrder()); it comes back when that order is
+     * completed, and a cancelled or rejected order never offers one. The order
+     * comes from the session-owned list, not from what the page happens to
+     * list, because a completed order is no longer an "active" one.
      */
-    public static function cardOrder(Collection $currentOrders): ?Order
+    public static function cardOrder(): ?Order
     {
-        if (! self::isDineInGuest()) {
+        if (! self::isDineInGuest() || self::blocksGuestAuth()) {
             return null;
         }
 
-        $order = $currentOrders
-            ->filter(fn (Order $o) => self::claimable($o))
-            ->sortByDesc('id')
-            ->first();
+        $order = self::claimableOrders()->first();
 
         return $order && self::stampsOnAt((int) $order->branch_id) ? $order : null;
     }
@@ -323,15 +386,6 @@ final class DineInJoin
     private static function completedToday(Order $order): bool
     {
         return $order->status === 'completed' && ShopDay::isToday($order->completed_at);
-    }
-
-    /** A guest order this flow may attach to an account. */
-    private static function claimable(Order $order): bool
-    {
-        return $order->user_id === null
-            && $order->type === 'dine_in'
-            && (in_array($order->status, self::OPEN_STATUSES, true) || self::completedToday($order))
-            && GuestOrders::owns((int) $order->id);
     }
 
     /** @return Collection<int, Order> this session's claimable orders, newest first */

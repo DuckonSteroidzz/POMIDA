@@ -518,7 +518,7 @@
                 </a>
 
                 <a
-                    href="{{ route('customer.login', ['order_type' => 'pick_up']) }}"
+                    href="{{ route('customer.login', ['order_type' => 'pick_up']) }}"{!! \App\Support\DineInJoin::blockAttr() !!}
                     class="action-button btn-pickup"
                 >
                     <i class="bi bi-bag"></i>
@@ -648,6 +648,7 @@
         });
     </script>
 
+    @include('customer.partials.ongoing-order-prompt')
 </body>
 
 </html>

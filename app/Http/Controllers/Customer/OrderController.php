@@ -1215,13 +1215,12 @@ class OrderController extends Controller
              */
             \App\Services\TableOccupancy::attachOrder($order);
 
-            // Reset points (only if logged in)
-            if (Auth::guard('customer')->check()) {
-                /** @var \App\Models\User $user */
-                $user = Auth::guard('customer')->user();
-                $user->points = 0;
-                $user->save();
-            }
+            // Points are NOT reset here (Oct 2026). This used to set
+            // users.points to 0 on every signed-in order, which wiped the spin
+            // points of earlier orders the moment the next one was placed. The
+            // balance stacks across orders and only goes down when a wheel
+            // voucher is won or the order the spins were won on is cancelled
+            // (App\Services\SpinPoints).
 
 // PWD/Senior orders must wait for staff verification.
 // Send the customer to the cart page because its existing
@@ -1717,7 +1716,7 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
             // Dine-In guests: "Want a stamp for this order?" card, inline on
             // the page (never a modal, so the Spin prompt is not blocked).
             // See App\Support\DineInJoin.
-            $joinCardOrder = \App\Support\DineInJoin::cardOrder($currentOrders);
+            $joinCardOrder = \App\Support\DineInJoin::cardOrder();
 
             return view('customer.orders', compact(
                 'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt', 'joinCardOrder'

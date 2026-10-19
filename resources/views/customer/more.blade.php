@@ -97,12 +97,12 @@
                     </div>
 
                     <div class="mt-5 grid gap-2.5 sm:grid-cols-2">
-                        <a href="{{ route('customer.login') }}"
+                        <a href="{{ route('customer.login') }}"{!! \App\Support\DineInJoin::blockAttr() !!}
                            class="inline-flex items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-3 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                             <i class="bi bi-box-arrow-in-right"></i>
                             Log In
                         </a>
-                        <a href="{{ route('customer.register') }}"
+                        <a href="{{ route('customer.register') }}"{!! \App\Support\DineInJoin::blockAttr() !!}
                            class="inline-flex items-center justify-center gap-2 rounded-full border border-peach-soft bg-white px-5 py-3 text-sm font-bold text-peach-red no-underline transition hover:bg-peach-soft">
                             <i class="bi bi-person-plus"></i>
                             Create Account
@@ -162,7 +162,7 @@
                     <i class="bi bi-chevron-right text-peach-red/50"></i>
                 </a>
 
-                <form action="{{ route('customer.logout') }}" method="POST" class="contents">
+                <form action="{{ route('customer.logout') }}" method="POST" class="contents" data-logout-form>
                 @csrf
 
                 <button
@@ -209,15 +209,36 @@
                     </div>
                 </div>
 
-                <div class="p-5 sm:p-6">
-                    <button
-                        type="button"
-                        onclick="openHelpModal()"
-                        class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-3 text-sm font-bold text-white transition hover:bg-peach-deep"
-                    >
-                        <i class="bi bi-bell"></i>
-                        Request Assistance
-                    </button>
+                {{-- data-help-region: while a request is open this shows "request sent"
+                     and polls for staff pressing Done, then the button comes back by itself
+                     (partials/help-status-poll). --}}
+                @php $tableForHelp = session('table_number'); @endphp
+                <div class="p-5 sm:p-6" data-help-region
+                     data-help-status-url="{{ route('customer.help-request.status') }}"
+                     data-help-open="{{ !empty($openRequest) ? '1' : '0' }}"
+                     data-help-text-pending="Your request was sent. Please wait &mdash; staff will be with you shortly."
+                     data-help-text-assisting="Staff are on their way to Table {{ $tableForHelp }}.">
+                    @if(!empty($openRequest))
+                        <div class="flex items-start gap-3 rounded-2xl border border-peach-soft bg-peach-cream p-4">
+                            <i class="bi bi-bell-fill mt-0.5 text-peach-red"></i>
+                            <p class="min-w-0 flex-1 text-sm font-semibold text-peach-deep" data-help-message>
+                                @if($openRequest->status === 'assisting')
+                                    Staff are on their way to Table {{ $tableForHelp }}.
+                                @else
+                                    Your request was sent. Please wait &mdash; staff will be with you shortly.
+                                @endif
+                            </p>
+                        </div>
+                    @else
+                        <button
+                            type="button"
+                            onclick="openHelpModal()"
+                            class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-3 text-sm font-bold text-white transition hover:bg-peach-deep"
+                        >
+                            <i class="bi bi-bell"></i>
+                            Request Assistance
+                        </button>
+                    @endif
                 </div>
             </section>
         @endif
@@ -362,7 +383,14 @@
             document.body.style.overflow = '';
         }
     </script>
+    @include('customer.partials.help-status-poll')
     @endif
+
+    @auth('customer')
+        @include('customer.partials.logout-confirm')
+    @endauth
+
+    @include('customer.partials.ongoing-order-prompt')
 
     @include('customer.partials.idle-timeout')
 

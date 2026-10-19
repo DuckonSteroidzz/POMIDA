@@ -11,12 +11,6 @@
         padding: 0.25rem 0 2rem;
     }
 
-    @media (min-width: 1000px) {
-        .pc-wrap.has-notifications {
-            margin-right: 355px;
-        }
-    }
-
     .pc-wrap h1, .pc-wrap .pc-title { font-family: 'Fraunces', Georgia, serif; letter-spacing: -0.01em; }
 
     /* Header */
@@ -45,7 +39,11 @@
     }
     .pc-count { background: #C0392B; color: #fff; border-radius: 999px; padding: 0.1rem 0.6rem; font-size: 0.72rem; font-weight: 700; }
 
-    /* ── Subtle overlay notifications ── */
+    /* ── Subtle overlay notifications ──
+       A floating layer: fixed to the viewport under the bell, above the page
+       (z-index 1050), and out of the layout. The board must not reserve room for
+       it or shrink beside it — it used to (a right margin on .pc-wrap), which
+       pushed the order board aside every time a customer asked for help. */
     .pc-toasts {
         position: fixed;
         top: 6.9rem;
@@ -652,12 +650,6 @@
     }
 
     /* Responsive */
-    @media (max-width: 999px) {
-        .pc-wrap.has-notifications {
-            margin-right: 0;
-        }
-    }
-
     @media (max-width: 768px) {
         .pc-grid {
             grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
@@ -783,7 +775,7 @@
     }
 </style>
 
-        <div class="pc-wrap {{ isset($helpRequests) && $helpRequests->count() > 0 ? 'has-notifications' : '' }}">
+        <div class="pc-wrap">
 
             <div class="pc-header">
                 <div>
@@ -1825,17 +1817,6 @@
                             current.innerHTML = fresh.innerHTML;
                         }
                     });
-
-                    // Keep the sidebar-gap class in step without touching
-                    // anything else on .pc-wrap.
-                    var freshWrap = doc.querySelector('.pc-wrap');
-                    var currentWrap = document.querySelector('.pc-wrap');
-                    if (freshWrap && currentWrap) {
-                        currentWrap.classList.toggle(
-                            'has-notifications',
-                            freshWrap.classList.contains('has-notifications')
-                        );
-                    }
 
                     pageLoadedAt = Date.now();
                     updateLastUpdated();

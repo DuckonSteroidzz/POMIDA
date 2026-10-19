@@ -645,7 +645,7 @@ class FreeDessertRewardTest extends TestCase
         $this->assertStringContainsString('Reward ready', $account);
         $this->assertStringContainsString('Collect 3 stamps for a reward: ' . $what . '. 1 stamp per day you completed an order at Main Branch.', $account);
         $this->assertStringContainsString('0 / 3 stamps', $account);
-        $this->assertStringContainsString('A reward (' . $what . ') for every 3 stamps at Main Branch. 1 stamp per day you completed an order there.', $account);
+        $this->assertStringContainsString('A reward (' . $what . ') every 3 stamps.', $account);
         $this->assertSame(3, substr_count($account, 'data-stamp="'));
         $this->assertStringNotContainsString('7 stamps', $account);
 
@@ -1247,7 +1247,7 @@ class FreeDessertRewardTest extends TestCase
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')
             ->assertOk()
             ->assertSee('data-testid="benefit-free-dessert"', false)
-            ->assertSee('A reward (Free ' . $this->defaultRewardItem->name . ') for every 7 stamps at Main Branch. 1 stamp per day you completed an order there.')
+            ->assertSee('A reward (Free ' . $this->defaultRewardItem->name . ') every 7 stamps.')
             ->assertDontSee('in a row. Once per streak.');
 
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/help')

@@ -32,6 +32,18 @@ return Application::configure(basePath: dirname(__DIR__))
         );
 
         /*
+         * The ongoing-order guard on the customer login / register routes has to
+         * run BEFORE their throttle, or a guest tapping Log in on a stale page
+         * spends the login budget and gets a bare 429 instead of the message. The
+         * same priority-list rule as above: ThrottleRequests is listed, so
+         * anything unlisted would be sorted behind it.
+         */
+        $middleware->prependToPriorityList(
+            \Illuminate\Routing\Middleware\ThrottleRequests::class,
+            \App\Http\Middleware\BlockGuestAuthWhileOrdering::class
+        );
+
+        /*
          * Global, not route-scoped, so it also sees a 404 from an unmatched
          * route — no route-group middleware ever attaches to those. Purely
          * observational: see App\Http\Middleware\LogHttpErrors's own

@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account Settings · Peachy Cakes & Deli Cafe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  Laravel Blade notes:
+  - Wrap the form section in: <form method="POST" action="{{ route('customer.account.update') }}"> @csrf @method('PUT')
+  - Replace sample values with your variables, e.g. {{ $customer->name }}, {{ $bonusPoints }}, @foreach($recentBonuses as $b)
+  - Delete form: <form method="POST" action="{{ route('customer.account.destroy') }}"> @csrf @method('DELETE')
+  Sample values below mirror the current page so the design can be previewed.
+-->
+<style>
+:root{
+  --cream:#fff8f1;--white:#fff;--peach-50:#fff1e8;--peach-100:#ffe2d1;--peach-200:#fbc9ad;
+  --peach-300:#f6a988;--coral:#e8664f;--coral-600:#c8432f;--coral-700:#a3321f;
+  --ink:#4a1d14;--ink-soft:#8a5446;--line:#f6dccd;--ok:#2f8a5b;
+  --shadow:0 1px 2px rgba(163,50,31,.06),0 12px 32px -12px rgba(163,50,31,.18);
+  --radius:20px;--display:"Fraunces",Georgia,serif;--body:"Outfit",system-ui,sans-serif;
+}
+[hidden]{display:none!important}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--body);color:var(--ink);min-height:100vh;
+  background:radial-gradient(1200px 600px at 0% 0%,#fde3cc 0%,transparent 60%),radial-gradient(900px 600px at 100% 100%,#f7b4a0 0%,transparent 60%),linear-gradient(135deg,#fbe0c8,#f4aa94)}
+button,input{font:inherit;color:inherit}
+a{color:inherit}
+:focus-visible{outline:3px solid var(--coral);outline-offset:2px;border-radius:10px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+svg{width:18px;height:18px;flex-shrink:0;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* top nav */
+.topbar{position:sticky;top:0;z-index:20;background:rgba(255,248,241,.85);backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.topbar-in{max-width:1240px;margin:auto;padding:12px 20px;display:flex;align-items:center;gap:16px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none}
+.brand-dot{width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#ffc59e,var(--coral));box-shadow:inset -3px -3px 0 rgba(0,0,0,.08)}
+.brand b{font-family:var(--display);font-size:20px;color:var(--coral-600);display:block;line-height:1}
+.brand small{font-size:9px;letter-spacing:.2em;color:var(--ink-soft);text-transform:uppercase}
+.navlinks{margin-left:auto;display:flex;gap:4px;align-items:center}
+.navlinks a{display:flex;gap:6px;align-items:center;padding:8px 12px;border-radius:999px;text-decoration:none;font-size:14px;font-weight:500}
+.navlinks a:hover{background:var(--peach-100)}
+.navlinks .cart{background:var(--coral-600);color:#fff}
+.navlinks .cart:hover{background:var(--coral-700)}
+.bell{position:relative}.bell i{position:absolute;top:6px;right:8px;width:8px;height:8px;border-radius:50%;background:var(--coral)}
+@media(max-width:720px){.navlinks a span{display:none}.navlinks a{padding:9px}}
+
+/* layout */
+.wrap{max-width:1240px;margin:auto;padding:28px 20px 60px;display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+@media(max-width:640px){.wrap{padding:18px 14px 60px}}
+
+/* account header: profile + tabs under the title */
+.acct{display:flex;flex-direction:column;gap:12px;margin-bottom:22px}
+.profile{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:18px 20px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;border-left:6px solid var(--coral)}
+.avatar{width:58px;height:58px;border-radius:50%;flex-shrink:0;background:linear-gradient(135deg,var(--peach-200),var(--coral));display:grid;place-items:center;font-family:var(--display);font-size:22px;color:#fff;box-shadow:0 6px 14px -6px var(--coral-600)}
+.pinfo{min-width:0;flex:1}
+.profile h2{font-family:var(--display);font-size:20px;line-height:1.1}
+.profile p{font-size:13px;color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.badge{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:3px 10px;border-radius:999px;margin-top:6px}
+.badge.ok{background:#e4f5ea;color:var(--ok)}
+.badge.warn{background:var(--peach-100);color:var(--coral-700)}
+.mini{display:flex;gap:8px;margin-left:auto}
+.mini div{background:var(--peach-50);border-radius:14px;padding:8px 14px;text-align:center;min-width:72px}
+.mini b{display:block;font-family:var(--display);font-size:18px;color:var(--coral-600);line-height:1.1}
+.mini span{font-size:11px;color:var(--ink-soft)}
+.tabs{background:var(--white);border-radius:999px;box-shadow:var(--shadow);padding:5px;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tab{flex:1;display:flex;align-items:center;justify-content:center;gap:8px;padding:10px 14px;border-radius:999px;border:0;background:none;cursor:pointer;font-weight:500;font-size:14px;white-space:nowrap;transition:.2s}
+.tab:hover{background:var(--peach-50)}
+.tab[aria-selected=true]{background:linear-gradient(120deg,var(--coral),var(--coral-600));color:#fff;box-shadow:0 6px 14px -6px var(--coral-600)}
+.tab .count{font-size:11px;background:var(--peach-100);color:var(--coral-700);border-radius:999px;padding:1px 7px}
+.tab[aria-selected=true] .count{background:rgba(255,255,255,.25);color:#fff}
+@media(max-width:640px){
+  .profile{padding:14px;gap:12px}
+  .avatar{width:48px;height:48px;font-size:18px}
+  .mini{width:100%;margin:0}
+  .mini div{flex:1;min-width:0;padding:8px 4px}
+  .tabs{border-radius:16px}
+  .tab{flex-direction:column;gap:3px;font-size:12px;padding:8px 6px;border-radius:12px}
+  .tab .count{display:none}
+}
+
+/* main */
+.head{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+.head h1{font-family:var(--display);font-size:clamp(28px,4vw,40px);color:var(--coral-700);line-height:1.05}
+.head p{color:var(--ink-soft);margin-top:6px}
+.panel{display:none;animation:fade .35s ease}
+.panel.active{display:block}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.grid{display:grid;gap:20px;grid-template-columns:repeat(12,minmax(0,1fr))}
+.c12{grid-column:span 12}.c7{grid-column:span 7}.c5{grid-column:span 5}.c6{grid-column:span 6}
+@media(max-width:1100px){.c7,.c5{grid-column:span 12}}
+@media(max-width:640px){.c6{grid-column:span 12}}
+.card{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
+.card-h{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
+.ic{width:40px;height:40px;border-radius:12px;background:var(--peach-100);color:var(--coral-600);display:grid;place-items:center;flex-shrink:0}
+.card-h h3{font-family:var(--display);font-size:18px}
+.card-h p{font-size:13px;color:var(--ink-soft)}
+.chip{display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--coral-700);background:var(--peach-50);border:1px solid var(--line);padding:2px 8px;border-radius:999px}
+.chip svg{width:13px;height:13px}
+
+/* hero points */
+.hero{background:linear-gradient(130deg,var(--coral-600),var(--coral) 55%,var(--peach-300));color:#fff;position:relative;overflow:hidden}
+.hero::after{content:"";position:absolute;right:-60px;top:-60px;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,.12)}
+.hero .big{font-family:var(--display);font-size:56px;line-height:1}
+.hero .row{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;position:relative;z-index:1}
+.hero p{opacity:.9;max-width:460px;font-size:14px}
+.btn{display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;border-radius:999px;padding:11px 20px;font-weight:600;font-size:14px;text-decoration:none;transition:.2s}
+.btn-light{background:#fff;color:var(--coral-700)}.btn-light:hover{background:var(--cream)}
+.btn-primary{background:var(--coral-600);color:#fff;box-shadow:0 10px 20px -10px var(--coral-600)}.btn-primary:hover{background:var(--coral-700)}
+.btn-ghost{background:#fff;border:1.5px solid var(--peach-200);color:var(--coral-700)}.btn-ghost:hover{background:var(--peach-50)}
+.btn-danger{background:#fff;border:1.5px solid #f3b6aa;color:#b42318}.btn-danger:hover{background:#fdecea}
+
+/* streak */
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.stat{background:var(--peach-50);border-radius:14px;padding:12px;text-align:center}
+.stat span{font-size:12px;color:var(--ink-soft)}
+.stat b{display:block;font-family:var(--display);font-size:24px;color:var(--coral-600)}
+.note{font-size:13px;color:var(--ink-soft);display:flex;gap:6px;align-items:flex-start;background:var(--cream);padding:10px 12px;border-radius:12px}
+.note svg{width:16px;height:16px;color:var(--coral)}
+.cal-h{display:flex;align-items:center;justify-content:space-between;margin:14px 0 8px}
+.cal-h b{font-family:var(--display)}
+.icon-btn{width:34px;height:34px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;display:grid;place-items:center}
+.icon-btn:hover{background:var(--peach-50)}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center}
+.cal .dow{font-size:11px;font-weight:600;color:var(--ink-soft);padding:4px 0}
+.day{aspect-ratio:1;max-height:48px;display:grid;place-items:center;border-radius:12px;font-size:14px;margin:auto;width:100%}
+.day.done{background:var(--coral-600);color:#fff;font-weight:700}
+.day.today{outline:2px solid var(--coral);outline-offset:-2px;font-weight:700}
+.legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12px;color:var(--ink-soft);margin-top:12px}
+.legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:-1px}
+
+/* challenge + stamps */
+.progress{height:12px;border-radius:999px;background:var(--peach-100);overflow:hidden;margin:12px 0 8px}
+.progress span{display:block;height:100%;border-radius:inherit;background:linear-gradient(90deg,var(--coral-600),var(--peach-300))}
+.ch-top{display:flex;justify-content:space-between;align-items:baseline}
+.ch-top b{font-family:var(--display);font-size:22px;color:var(--coral-600)}
+.stamps{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;background:var(--cream);border:2px dashed var(--peach-200);border-radius:18px;padding:18px;margin-top:6px}
+.stamp{aspect-ratio:1;max-width:64px;width:100%;margin:auto;border-radius:50%;border:2px dashed var(--peach-300);display:grid;place-items:center;font-weight:600;color:var(--ink-soft);background:#fff}
+.stamp.on{background:var(--coral-600);border:2px solid var(--coral-600);color:#fff;transform:rotate(-8deg);box-shadow:0 6px 14px -6px var(--coral-600)}
+.stamp.gift{border-style:solid;border-color:var(--coral);color:var(--coral)}
+.reward{display:flex;gap:12px;align-items:center;background:var(--peach-50);border-radius:14px;padding:12px;margin-top:14px;font-size:14px}
+
+/* benefits */
+.benefits{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.benefit{border:1px solid var(--line);border-radius:16px;padding:16px;display:flex;gap:12px;transition:.2s}
+.benefit:hover{border-color:var(--peach-300);transform:translateY(-2px)}
+.benefit h4{font-size:15px;font-weight:600}
+.benefit p{font-size:13px;color:var(--ink-soft);margin-top:2px}
+.list{list-style:none;display:flex;flex-direction:column}
+.list li{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 4px;border-bottom:1px solid var(--line)}
+.list li:last-child{border-bottom:0}
+.list .l{display:flex;gap:12px;align-items:center;min-width:0}
+.list .dot{width:36px;height:36px;border-radius:50%;background:var(--peach-50);color:var(--coral-600);display:grid;place-items:center;flex-shrink:0}
+.list small{display:block;color:var(--ink-soft);font-size:12px}
+.plus{font-weight:700;color:var(--ok);background:#e4f5ea;padding:3px 10px;border-radius:999px;font-size:13px}
+
+/* form */
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.full{grid-column:1/-1}
+@media(max-width:640px){.fields{grid-template-columns:1fr}}
+label.lbl{display:block;font-size:13px;font-weight:600;margin-bottom:6px}
+label.lbl em{font-style:normal;font-weight:400;color:var(--ink-soft)}
+.inp{position:relative}
+.inp>svg{position:absolute;left:14px;top:50%;transform:translateY(-50%);color:var(--peach-300)}
+.inp input{width:100%;padding:13px 44px 13px 42px;border:1.5px solid var(--line);border-radius:14px;background:var(--cream);transition:.2s;font-size:15px}
+.inp input:focus{outline:0;border-color:var(--coral);background:#fff;box-shadow:0 0 0 4px var(--peach-100)}
+.eye{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:none;cursor:pointer;padding:6px;color:var(--ink-soft);border-radius:8px}
+.verify{display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap;padding:16px;border-radius:16px;background:var(--peach-50);border:1px solid var(--line)}
+.verify.ok{background:#eef8f2;border-color:#cfe9da}
+.actionbar{position:sticky;bottom:16px;margin-top:20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;background:rgba(255,255,255,.92);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:18px;padding:12px 14px;box-shadow:var(--shadow)}
+.actionbar p{font-size:13px;color:var(--ink-soft)}
+.actionbar .btns{display:flex;gap:8px;margin-left:auto}
+
+.flash{display:flex;gap:10px;align-items:center;background:#eef8f2;color:var(--ok);border:1px solid #cfe9da;border-radius:14px;padding:12px 16px;margin-bottom:16px;font-weight:500}
+.error{color:#b42318;font-size:12px;margin-top:4px}
+
+/* modal */
+dialog{border:0;border-radius:22px;padding:26px;max-width:420px;width:calc(100% - 32px);margin:auto;box-shadow:var(--shadow)}
+dialog::backdrop{background:rgba(74,29,20,.45);backdrop-filter:blur(3px)}
+dialog h3{font-family:var(--display);font-size:22px;margin:10px 0 6px}
+dialog p{color:var(--ink-soft);font-size:14px}
+dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar-in">
+    <a href="#" class="btn btn-ghost" style="padding:7px 12px" aria-label="Back to more options"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>More</a>
+    <a href="#" class="brand" aria-label="Peachy home"><span class="brand-dot"></span><span><b>Peachy</b><small>Cakes &amp; Deli Cafe</small></span></a>
+    <nav class="navlinks" aria-label="Main">
+      <a href="#"><svg viewBox="0 0 24 24"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg><span>Orders</span></a>
+      <a href="#"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span>Menu</span></a>
+      <a href="#"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg><span>Spin &amp; Win</span></a>
+      <a href="#" class="cart"><svg viewBox="0 0 24 24"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.7 13.4a2 2 0 0 0 2 1.6h9.7a2 2 0 0 0 2-1.6L23 6H6"/></svg><span>Cart</span></a>
+      <a href="#" class="bell" aria-label="Notifications"><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg><i></i></a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+  <div>
+    <div class="head">
+      <div>
+        <h1>Account Settings</h1>
+        <p>Manage your details, discount IDs and account preferences.</p>
+      </div>
+      <span class="chip"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V7l7-4 7 4v14M9 21v-6h6v6"/></svg>Branch 1</span>
+    </div>
+
+    <div class="acct">
+      <section class="profile" aria-label="Your profile">
+        <div class="avatar" aria-hidden="true">TC</div>
+        <div class="pinfo"><h2>Test Customer</h2><p>testcustomer@peachycafe.com</p>
+        <span class="badge warn" id="verifyBadge"><svg viewBox="0 0 24 24" style="width:13px;height:13px"><circle cx="12" cy="12" r="9"/><path d="M12 8v4M12 16h.01"/></svg>Email not verified</span></div>
+        <div class="mini">
+          <div><b>8</b><span>Points</span></div>
+          <div><b>1</b><span>Streak</span></div>
+          <div><b>1/8</b><span>Stamps</span></div>
+        </div>
+      </section>
+      <nav class="tabs" role="tablist" aria-label="Account sections">
+      <button class="tab" role="tab" aria-selected="true" aria-controls="p-overview" id="t-overview"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>Overview</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="p-rewards" id="t-rewards"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18M7.5 8a2.5 2.5 0 1 1 4.5-1.5V8M16.5 8A2.5 2.5 0 1 0 12 6.5"/></svg>Rewards<span class="count">8 pts</span></button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="p-profile" id="t-profile"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>Profile</button>
+      <button class="tab" role="tab" aria-selected="false" aria-controls="p-security" id="t-security"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>Security</button>
+    </nav>
+    </div>
+    <!-- @if(session('status')) -->
+    <div class="flash" id="flash" hidden><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg><span>Your changes have been saved.</span></div>
+    <!-- @endif -->
+
+    <!-- OVERVIEW -->
+    <section class="panel active" id="p-overview" role="tabpanel" aria-labelledby="t-overview">
+      <div class="grid">
+        <div class="card hero c12">
+          <div class="row">
+            <div>
+              <span style="font-size:13px;opacity:.85;font-weight:500">Bonus points</span>
+              <div class="big">8 <span style="font-size:22px">pts</span></div>
+              <p>Bonus points stay on your account and count toward Spin &amp; Win vouchers together with the points you spin.</p>
+            </div>
+            <a href="#" class="btn btn-light"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>Go to Spin &amp; Win</a>
+          </div>
+        </div>
+
+        <div class="card c7">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
+            <div><h3>Streak Calendar</h3><p>Days you completed an order at <span class="chip">Branch 1</span></p></div></div>
+          <div class="stats">
+            <div class="stat"><span>Current streak</span><b>1 day</b></div>
+            <div class="stat"><span>Best streak</span><b>1 day</b></div>
+          </div>
+          <div class="note"><svg viewBox="0 0 24 24"><path d="M6 9H4.5a2.5 2.5 0 0 1 0-5H6M18 9h1.5a2.5 2.5 0 0 0 0-5H18M4 22h16M10 14.7V17c0 .6-.5 1-1 1.2C7.8 18.8 7 20.2 7 22M14 14.7V17c0 .6.5 1 1 1.2 1.2.6 2 2 2 3.8M18 2H6v7a6 6 0 0 0 12 0z"/></svg>Streak bonus (orders at any branch count): 2 more days in a row to the 3-day bonus (+10 points).</div>
+          <div class="cal-h">
+            <button class="icon-btn" id="prevM" aria-label="Previous month"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <b id="monthLbl" aria-live="polite">October 2026</b>
+            <button class="icon-btn" id="nextM" aria-label="Next month"><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <div class="cal" id="cal" role="grid" aria-label="Order streak calendar"></div>
+          <div class="legend"><span><i style="background:var(--coral-600)"></i>Completed order at Branch 1</span><span><i style="border:2px solid var(--coral)"></i>Today</span><span id="monthCount">1 day this month</span></div>
+          <p style="font-size:12px;color:var(--ink-soft);margin-top:6px">Only completed orders count. Pending or cancelled orders don't mark a day.</p>
+        </div>
+
+        <div class="c5" style="display:flex;flex-direction:column;gap:20px">
+          <div class="card">
+            <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 2 15 8.5l7 1-5 5 1.2 7L12 18l-6.2 3.5L7 14.5l-5-5 7-1z"/></svg></div>
+              <div><span class="chip">Branch 1</span><h3 style="margin-top:4px">Reward Challenge</h3></div></div>
+            <div class="ch-top"><span style="font-size:14px;color:var(--ink-soft)">Progress</span><b>Day 1 of 8</b></div>
+            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="8" aria-valuenow="1" aria-label="Reward challenge progress"><span style="width:12.5%"></span></div>
+            <p style="font-size:13px;color:var(--ink-soft)">1 stamp per day you completed an order at Branch 1, any days. <b style="color:var(--coral-700)">7 more days</b> to a reward.</p>
+          </div>
+          <div class="card">
+            <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18"/></svg></div>
+              <div><h3>Reward Stamp Card</h3><p>1 stamp per day you completed an order at Branch 1.</p></div></div>
+            <div class="ch-top"><span style="font-size:14px;color:var(--ink-soft)">Next reward</span><b>1 / 8 stamps</b></div>
+            <div class="stamps" id="stamps" aria-label="1 of 8 stamps collected"></div>
+            <div class="reward"><div class="ic">🍰</div><div><b>Free Chocolate Ganache Cake ala-Mode</b><br><small style="color:var(--ink-soft)">7 more stamps to your next reward.</small></div></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- REWARDS -->
+    <section class="panel" id="p-rewards" role="tabpanel" aria-labelledby="t-rewards">
+      <div class="grid">
+        <div class="card c7">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M20 12v10H4V12M2 7h20v5H2zM12 22V7"/></svg></div>
+            <div><h3>Account Benefits</h3><p>What you get for ordering with an account.</p></div></div>
+          <div class="benefits">
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 1 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/></svg></div><div><h4>Vouchers &amp; Rewards</h4><p>Vouchers you win and rewards you earn are saved to your account.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.2 1.4 1.3 2.7 2.5 2.7z"/></svg></div><div><h4>Streak bonuses</h4><p>+10 points at 3 days in a row. Once per streak.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18"/></svg></div><div><h4>Stamp card reward</h4><p>A reward (Free Chocolate Ganache Cake ala-Mode) for every 8 stamps at Branch 1. 1 stamp per day you completed an order there.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="m12 3-1.9 5.8L4 10l5 3.6L7.2 20 12 16.4 16.8 20 15 13.6l5-3.6-6.1-1.2z"/></svg></div><div><h4>Welcome bonus</h4><p>+10 points for new accounts when they verify their email.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></div><div><h4>Order bonus</h4><p>+3 points for every completed order.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="12" cy="12" r="1"/></svg></div><div><h4>Spin &amp; Win</h4><p>7 spins with every order, up to 15 a day.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zM14 2v6h6M16 13H8M16 17H8"/></svg></div><div><h4>Order history</h4><p>Every past order and receipt, on any device.</p></div></div>
+          </div>
+        </div>
+        <div class="card c5">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M3 3v18h18M7 14l4-4 4 4 5-5"/></svg></div>
+            <div><h3>Recent Bonuses</h3><p>Your latest points activity.</p></div></div>
+          <ul class="list">
+            <!-- @forelse($recentBonuses as $bonus) -->
+            <li><div class="l"><span class="dot"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div>Completed order bonus<small>Oct 19, 2026</small></div></div><span class="plus">+3</span></li>
+            <li><div class="l"><span class="dot"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div>Completed order bonus<small>Oct 19, 2026</small></div></div><span class="plus">+3</span></li>
+            <li><div class="l"><span class="dot"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div>Completed order bonus<small>Oct 15, 2026</small></div></div><span class="plus">+3</span></li>
+            <li><div class="l"><span class="dot"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><div>Completed order bonus<small>Oct 15, 2026</small></div></div><span class="plus">+3</span></li>
+            <!-- @empty <li>No bonuses yet.</li> @endforelse -->
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- FORM spans Profile + Security so a single Save submits everything -->
+    <form id="accountForm" method="POST" action="#" novalidate>
+      <!-- @csrf @method('PUT') -->
+      <section class="panel" id="p-profile" role="tabpanel" aria-labelledby="t-profile">
+        <div class="card">
+          <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg></div>
+            <div><h3>Account Details</h3><p>Your personal and contact information.</p></div></div>
+          <div class="fields">
+            <div class="full"><label class="lbl" for="name">Name</label><div class="inp"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg><input id="name" name="name" value="Test Customer" autocomplete="name" required></div></div>
+            <div class="full"><label class="lbl" for="address">Address</label><div class="inp"><svg viewBox="0 0 24 24"><path d="M21 10c0 7-9 13-9 13S3 17 3 10a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg><input id="address" name="address" placeholder="House no., street, city" autocomplete="street-address"></div></div>
+            <div><label class="lbl" for="contact">Contact</label><div class="inp"><svg viewBox="0 0 24 24"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg><input id="contact" name="contact" type="tel" placeholder="09XX XXX XXXX" autocomplete="tel"></div></div>
+            <div><label class="lbl" for="email">Email address</label><div class="inp"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg><input id="email" name="email" type="email" value="testcustomer@peachycafe.com" autocomplete="email" required></div></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel" id="p-security" role="tabpanel" aria-labelledby="t-security">
+        <div class="grid">
+          <div class="card c12">
+            <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg></div>
+              <div><h3>Email Verification</h3><p>Verify your email to unlock the +10 welcome bonus.</p></div></div>
+            <div class="verify" id="verifyBox">
+              <div><b id="verifyTitle">Your email isn't verified yet</b><p style="font-size:13px;color:var(--ink-soft)" id="verifyText">We'll send a verification link to testcustomer@peachycafe.com.</p></div>
+              <!-- In Blade, make this a separate form posting to route('verification.send') -->
+              <button type="button" class="btn btn-primary" id="resendBtn"><svg viewBox="0 0 24 24"><path d="m22 2-7 20-4-9-9-4z"/></svg>Send verification email</button>
+            </div>
+          </div>
+          <div class="card c12">
+            <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg></div>
+              <div><h3>Password Management</h3><p>Leave the new password blank to keep your current one.</p></div></div>
+            <div class="fields">
+              <div><label class="lbl" for="password">New password <em>(leave blank to keep current)</em></label><div class="inp"><svg viewBox="0 0 24 24"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg><input id="password" name="password" type="password" autocomplete="new-password"><button type="button" class="eye" aria-label="Show password" data-eye="password"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div></div>
+              <div><label class="lbl" for="current_password">Current password <em>(needed only to change email or password)</em></label><div class="inp"><svg viewBox="0 0 24 24"><path d="M21 2l-2 2m-7.6 7.6a5.5 5.5 0 1 1-7.8 7.8 5.5 5.5 0 0 1 7.8-7.8zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg><input id="current_password" name="current_password" type="password" autocomplete="current-password"><button type="button" class="eye" aria-label="Show password" data-eye="current_password"><svg viewBox="0 0 24 24"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8S1 12 1 12z"/><circle cx="12" cy="12" r="3"/></svg></button></div><p class="error" id="cpErr" hidden>Enter your current password to change your email or password.</p></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="actionbar" id="actionbar" hidden>
+        <p>Review your changes before saving. Deleting your account is permanent.</p>
+        <div class="btns">
+          <button type="button" class="btn btn-danger" id="delBtn"><svg viewBox="0 0 24 24"><path d="M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>Delete Account</button>
+          <button type="submit" class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Save Changes</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</main>
+
+<dialog id="delDialog" aria-labelledby="delTitle">
+  <div class="ic" style="background:#fdecea;color:#b42318"><svg viewBox="0 0 24 24"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0zM12 9v4M12 17h.01"/></svg></div>
+  <h3 id="delTitle">Delete your account?</h3>
+  <p>This permanently removes your profile, points, stamps and order history. This can't be undone.</p>
+  <!-- <form method="POST" action="{{ route('customer.account.destroy') }}"> @csrf @method('DELETE') -->
+  <form method="dialog" class="row">
+    <button class="btn btn-ghost" value="cancel">Cancel</button>
+    <button class="btn btn-primary" style="background:#b42318" value="confirm">Yes, delete</button>
+  </form>
+</dialog>
+
+<script>
+// Tabs
+const tabs=[...document.querySelectorAll('.tab')],panels=[...document.querySelectorAll('.panel')],bar=document.getElementById('actionbar');
+function show(id){tabs.forEach(t=>t.setAttribute('aria-selected',t.getAttribute('aria-controls')===id));
+  panels.forEach(p=>p.classList.toggle('active',p.id===id));
+  bar.hidden=!(id==='p-profile'||id==='p-security');history.replaceState(null,'','#'+id.slice(2));}
+tabs.forEach((t,i)=>{t.onclick=()=>show(t.getAttribute('aria-controls'));
+  t.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowRight'){tabs[(i+1)%tabs.length].focus()}if(e.key==='ArrowUp'||e.key==='ArrowLeft'){tabs[(i-1+tabs.length)%tabs.length].focus()}}});
+const h=location.hash.slice(1);if(h&&document.getElementById('p-'+h))show('p-'+h);
+
+// Calendar (replace with @json($streakDays) in Blade)
+const doneDays=['2026-10-19'];const today=new Date(2026,9,19);let view=new Date(2026,9,1);
+function iso(d){return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function render(){const c=document.getElementById('cal');c.innerHTML='';
+  ['S','M','T','W','T','F','S'].forEach(d=>c.insertAdjacentHTML('beforeend',`<div class="dow">${d}</div>`));
+  const y=view.getFullYear(),m=view.getMonth(),first=new Date(y,m,1).getDay(),n=new Date(y,m+1,0).getDate();let count=0;
+  for(let i=0;i<first;i++)c.insertAdjacentHTML('beforeend','<div></div>');
+  for(let d=1;d<=n;d++){const dt=new Date(y,m,d),k=iso(dt),done=doneDays.includes(k);if(done)count++;
+    const t=k===iso(today);c.insertAdjacentHTML('beforeend',`<div class="day${done?' done':''}${t?' today':''}" aria-label="${dt.toDateString()}${done?', order completed':''}${t?', today':''}">${d}</div>`)}
+  document.getElementById('monthLbl').textContent=view.toLocaleString('en',{month:'long',year:'numeric'});
+  document.getElementById('monthCount').textContent=count+' day'+(count===1?'':'s')+' this month';
+  document.getElementById('nextM').disabled=view.getMonth()===today.getMonth()&&view.getFullYear()===today.getFullYear();
+  document.getElementById('nextM').style.opacity=document.getElementById('nextM').disabled?.4:1;}
+prevM.onclick=()=>{view.setMonth(view.getMonth()-1);render()};nextM.onclick=()=>{if(!nextM.disabled){view.setMonth(view.getMonth()+1);render()}};render();
+
+// Stamps
+const got=1,total=8,s=document.getElementById('stamps');
+for(let i=1;i<=total;i++){s.insertAdjacentHTML('beforeend',i<=got?`<div class="stamp on" aria-label="Stamp ${i} collected">✓</div>`:i===total?`<div class="stamp gift" aria-label="Reward stamp">🎁</div>`:`<div class="stamp" aria-label="Stamp ${i}">${i}</div>`)}
+
+// Password eye
+document.querySelectorAll('[data-eye]').forEach(b=>b.onclick=()=>{const i=document.getElementById(b.dataset.eye);const show=i.type==='password';i.type=show?'text':'password';b.setAttribute('aria-label',show?'Hide password':'Show password')});
+
+// Verification demo
+resendBtn.onclick=()=>{resendBtn.innerHTML='Link sent ✓';resendBtn.disabled=true;verifyText.textContent='Check your inbox for the verification link.'};
+
+// Save (demo validation: current password required when changing email/password)
+const origEmail=email.value;
+accountForm.onsubmit=e=>{const need=password.value||email.value!==origEmail;
+  if(need&&!current_password.value){e.preventDefault();cpErr.hidden=false;show('p-security');current_password.focus();return}
+  cpErr.hidden=true;if(accountForm.getAttribute('action')==='#'){e.preventDefault();flash.hidden=false;window.scrollTo({top:0,behavior:'smooth'});setTimeout(()=>flash.hidden=true,3000)}};
+
+// Delete
+delBtn.onclick=()=>delDialog.showModal();
+</script>
+</body>
+</html>
