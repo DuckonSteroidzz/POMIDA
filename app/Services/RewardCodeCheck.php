@@ -21,9 +21,11 @@ use App\Support\ShopDay;
  *    BRANCH (reward.branch_id) — the only branch it can be used at, so it is
  *    the one their counter may see. Any other code — another branch's, or
  *    one from before rewards were per branch (branch_id NULL, issuer
- *    unknown: fail-safe) — answers only "This code belongs to another
- *    branch." with no status, customer, reward, dates or order. A branchless
- *    supervisor (lockedBranchId() = 0) therefore never sees any details.
+ *    unknown: fail-safe) — answers exactly like a code that does not exist
+ *    (Oct 2026; it used to say "This code belongs to another branch.", which
+ *    still told a supervisor that another branch's code was real). A
+ *    branchless supervisor (lockedBranchId() = 0) therefore never sees any
+ *    details.
  *  - Staff and customers never reach this: the route is in the
  *    role:admin,supervisor group, and customers have no admin session.
  *
@@ -36,7 +38,6 @@ class RewardCodeCheck
     public const STATE_EXPIRED = 'expired';
     public const STATE_NOT_SET = 'not_set';
     public const STATE_NOT_FOUND = 'not_found';
-    public const STATE_OTHER_BRANCH = 'other_branch';
 
     /**
      * @param  int|null  $lockedBranchId  AdminOrderAccess::lockedBranchId(): null = owner
@@ -58,11 +59,12 @@ class RewardCodeCheck
             return ['state' => self::STATE_NOT_FOUND, 'code' => $code];
         }
 
-        // The NULL issuer is tested on its own first, so a null can never be
-        // cast into a match with a branchless supervisor's 0.
+        // Outside a supervisor's branch: the same answer as no such code. The
+        // NULL issuer is tested on its own first, so a null can never be cast
+        // into a match with a branchless supervisor's 0.
         if ($lockedBranchId !== null
             && ($reward->branch_id === null || (int) $reward->branch_id !== $lockedBranchId)) {
-            return ['state' => self::STATE_OTHER_BRANCH, 'code' => $code, 'restricted' => true];
+            return ['state' => self::STATE_NOT_FOUND, 'code' => $code];
         }
 
         $state = match (true) {
@@ -75,7 +77,6 @@ class RewardCodeCheck
         $result = [
             'state'      => $state,
             'code'       => $code,
-            'restricted' => false,
             'customer'   => $reward->user?->name ?? 'Unknown customer',
             'reward'     => $reward->description(),
             'issued_by'  => $reward->branchName(),

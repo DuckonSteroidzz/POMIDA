@@ -15,8 +15,7 @@
     @vite(['resources/css/app.css'])
     <style>
         @layer base {
-            /* Keeps a focused field from landing under the sticky Delete / Save bar. */
-            html { -webkit-text-size-adjust: 100%; scroll-padding-bottom: 9rem; }
+            html { -webkit-text-size-adjust: 100%; }
             body {
                 font-family: var(--font-body);
                 background:
@@ -107,7 +106,7 @@
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
                 <div class="flex min-w-0 items-center gap-2">
-                    @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'More'])
+                    @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'Back', 'ariaLabel' => 'Back'])
                     <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
                         <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
                         <span class="min-w-0">
@@ -117,45 +116,9 @@
                     </a>
                 </div>
 
-                {{-- Header actions: kept in ONE grid cell so the 2-column
-                     header grid does not push the cart onto a second row.
-                     Mirrors customer/partials/desktop-nav. --}}
-                @php $desktopCartCount = collect(session('cart', []))->sum('quantity'); @endphp
-                <div class="flex items-center justify-end gap-3 md:gap-4">
-                <nav class="hidden items-center gap-1 md:flex">
-                    <a href="{{ route('customer.orders') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('orders') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
-                        <i class="bi bi-receipt"></i> Orders
-                    </a>
-                    <a href="{{ route('customer.menu') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('menu') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
-                        <i class="bi bi-grid"></i> Menu
-                    </a>
-                    <a href="{{ route('customer.game') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('game') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
-                        <i class="bi bi-dice-5"></i> Spin &amp; Win
-                    </a>
-                    @if(session('order_type') !== 'dine_in')
-                    <a href="{{ route('customer.more') }}" class="rounded-full px-3 py-2 text-[1rem] font-semibold no-underline transition {{ \App\Support\CustomerNav::isActive('more') ? 'bg-peach-soft text-peach-red' : 'text-peach-deep/70 hover:bg-peach-soft hover:text-peach-red' }}">
-                        <i class="bi bi-three-dots"></i> More
-                    </a>
-                    @endif
-                    <a href="{{ route('customer.cart') }}" class="relative ml-2 inline-flex items-center gap-2 rounded-full bg-peach-red px-4 py-2 text-[1rem] font-bold text-white no-underline transition hover:bg-peach-deep">
-                        <i class="bi bi-cart"></i> Cart
-                        @if($desktopCartCount > 0)
-                        <span class="grid h-5 min-w-5 place-items-center rounded-full bg-white px-1 text-[0.8125rem] font-black text-peach-red">{{ $desktopCartCount }}</span>
-                        @endif
-                    </a>
-                </nav>
-
-                {{-- Notifications --}}
-                @include('customer.partials.notification-bell')
-
-                {{-- Mobile cart shortcut --}}
-                <a href="{{ route('customer.cart') }}" class="relative grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-red text-white no-underline md:hidden">
-                    <i class="bi bi-cart text-lg"></i>
-                    @if($desktopCartCount > 0)
-                    <span class="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border-2 border-peach-cream bg-peach-deep px-1 text-[0.8125rem] font-black text-white">{{ $desktopCartCount }}</span>
-                    @endif
-                </a>
-                </div>
+                {{-- The standard customer header actions (nav links, bell, mobile
+                     cart), the same partial the More page uses. --}}
+                @include('customer.partials.desktop-nav')
             </div>
 
         </div>
@@ -450,11 +413,9 @@
                 {{-- Discount IDs are intentionally not stored in the customer account. --}}
 
                 {{-- ---------- ACTIONS ---------- --}}
-                {{-- Sticky at the bottom of the screen while the form is in view.
-                     On a phone it sits just above the fixed bottom nav (about 5.5rem
-                     tall plus the home-indicator inset), and html scroll-padding
-                     keeps a focused field from landing underneath it. --}}
-                <div class="sticky bottom-[calc(5.5rem+env(safe-area-inset-bottom))] z-30 flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-peach-soft bg-white/90 p-3 shadow-[0_1px_2px_rgb(139_26_26/0.06),0_12px_32px_-12px_rgb(139_26_26/0.18)] backdrop-blur-md md:bottom-4" data-testid="account-action-bar">
+                {{-- A normal block at the end of the form, shown on every tab
+                     (it sits outside the tab panels, inside the same form). --}}
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-peach-soft bg-white p-3 shadow-sm" data-testid="account-action-bar">
                     <p class="hidden text-sm text-peach-deep/60 sm:block">Deleting your account is permanent.</p>
                     <div class="flex w-full gap-2 sm:ml-auto sm:w-auto">
                         <button type="button" onclick="confirmDelete()"

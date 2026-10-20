@@ -207,12 +207,14 @@ class FreeDessertRaceTest extends TestCase
         // Seven committed stamp days (the workers only see committed rows).
         // FDRACE- numbers, so tearDown() deletes them.
         foreach (range(1, self::VISIT_DAYS) as $day) {
-            Order::create([
+            $stamp = Order::create([
                 'order_number' => 'FDRACE-STAMP-' . strtoupper(Str::random(6)), 'user_id' => $this->userId, 'branch_id' => 1,
                 'type' => 'pick_up', 'status' => 'completed', 'payment_method' => 'cash', 'payment_status' => 'paid',
                 'subtotal' => 100, 'total' => 100,
                 'completed_at' => sprintf('2026-10-%02d 04:00:00', $day),
             ]);
+            // A stamp day is the day the order was PLACED (created_at, not fillable).
+            \DB::table('orders')->where('id', $stamp->id)->update(['created_at' => sprintf('2026-10-%02d 04:00:00', $day)]);
         }
         $this->assertSame(self::VISIT_DAYS, FreeDesserts::countedDays(User::find($this->userId), 1));
 

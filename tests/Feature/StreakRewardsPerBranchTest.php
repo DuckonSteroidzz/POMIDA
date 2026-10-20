@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Http\Controllers\Admin\StreakRewardController;
 use App\Models\Branch;
 use App\Models\Category;
 use App\Models\FreeDessertReward;
@@ -155,7 +156,7 @@ class StreakRewardsPerBranchTest extends TestCase
 
     private function completedOrderOn(User $user, string $manilaDay, int $branchId): Order
     {
-        return Order::create([
+        $order = Order::create([
             'order_number'   => 'SRB-' . strtoupper(Str::random(8)),
             'user_id'        => $user->id,
             'branch_id'      => $branchId,
@@ -167,6 +168,11 @@ class StreakRewardsPerBranchTest extends TestCase
             'total'          => 100,
             'completed_at'   => $this->manila($manilaDay . ' 12:00:00'),
         ]);
+
+        // A stamp day is the day the order was PLACED (created_at, not fillable).
+        DB::table('orders')->where('id', $order->id)->update(['created_at' => $this->manila($manilaDay . ' 12:00:00')]);
+
+        return $order->fresh();
     }
 
     /** Completed orders at $branchId on $count October days from $firstDay, $step days apart (every other day by default). */
@@ -527,7 +533,7 @@ class StreakRewardsPerBranchTest extends TestCase
         $this->actingAs($admin, 'admin')->post(route('admin.streak.rewards.update'), $this->settingsPayload('default', $this->voucher(2)))
             ->assertSessionHasErrors(['voucher_id' => 'Choose a voucher for all branches.'], null, 'streakRewards');
         $this->actingAs($admin, 'admin')->post(route('admin.streak.rewards.update'), $this->settingsPayload('default', $this->item(2)))
-            ->assertSessionHasErrors(['menu_item_id' => 'Free menu item is set per branch. Choose a voucher discount for all branches instead.'], null, 'streakRewards');
+            ->assertSessionHasErrors(['menu_item_id' => StreakRewardController::ITEM_PER_BRANCH_MESSAGE], null, 'streakRewards');
 
         $this->assertSame([], $this->rows(), 'a refused save wrote something');
 
@@ -764,7 +770,9 @@ class StreakRewardsPerBranchTest extends TestCase
 
         $start = strpos($html, 'data-testid="reward-check-result"');
         $this->assertNotFalse($start, 'no check result on the page');
-        $end = strpos($html, 'Create New Voucher', $start);
+        // The result ends with the checker card; the Branch Overview after it
+        // names rewards legitimately.
+        $end = strpos($html, '</section>', $start);
 
         return substr($html, $start, $end === false ? null : $end - $start);
     }
@@ -785,10 +793,14 @@ class StreakRewardsPerBranchTest extends TestCase
         $this->assertStringContainsString('Gabriela Silang', $html);
         $this->assertStringContainsString('Free SRB Checked Cake', $html);
 
+        // Another branch's code (or one whose issuer is unknown) answers
+        // exactly like a code that does not exist: a supervisor cannot even
+        // learn that it is real.
         foreach ([$otherCode, $legacy] as $notTheirs) {
             $html = $this->check($supervisor, $notTheirs->displayCode());
-            $this->assertStringContainsString('data-state="other_branch"', $html);
-            $this->assertStringContainsString('This code belongs to another branch.', $html);
+            $this->assertStringContainsString('data-state="not_found"', $html);
+            $this->assertStringContainsString('No reward has this code.', $html);
+            $this->assertStringNotContainsString('another branch', $html);
             $this->assertStringNotContainsString('Gabriela Silang', $html);
             $this->assertStringNotContainsString('Free SRB Checked Cake', $html);
             $this->assertStringNotContainsString('Valid — can be used', $html);
@@ -804,7 +816,8 @@ class StreakRewardsPerBranchTest extends TestCase
 
         // A supervisor with no branch sees nobody's details.
         $html = $this->check($this->portalUser('supervisor', null), $ownCode->displayCode());
-        $this->assertStringContainsString('data-state="other_branch"', $html);
+        $this->assertStringContainsString('data-state="not_found"', $html);
+        $this->assertStringNotContainsString('Gabriela Silang', $html);
     }
 
     // ══════════ H. the customer pages ══════════

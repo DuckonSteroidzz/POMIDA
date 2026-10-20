@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Streak Rewards — Peachy Cakes & Deli Cafe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --maroon:#8a1c1c; --maroon-soft:#a8322a; --coral:#f0805f; --coral-dark:#e2683f;
+    --red:#d63b2f; --green:#16b34a; --cream:#fffaf5; --card:#ffffff;
+    --line:#f3dccd; --muted:#7a5a50; --chip:#fdf0e8; --ok-chip:#e8f6ec; --ok:#1d7a3e;
+    --shadow:0 2px 0 rgba(138,28,28,.04),0 8px 24px -12px rgba(138,28,28,.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Karla,system-ui,sans-serif;color:var(--maroon);
+    background:linear-gradient(135deg,#f9d9b4 0%,#f6c3a4 55%,#f2b39c 100%);min-height:100vh}
+  button,input,select{font:inherit;color:inherit}
+
+  .wrap{max-width:1120px;margin:0 auto;padding:36px 20px 56px}
+
+  /* Page head */
+  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:20px}
+  h1{font-family:"DM Serif Display",serif;font-weight:400;font-size:32px;line-height:1}
+  .head p{color:var(--muted);margin-top:8px}
+  .btn-ghost{background:rgba(255,255,255,.7);border:1px solid var(--line);border-radius:999px;
+    padding:9px 16px;font-weight:600;font-size:13px;color:var(--muted);cursor:pointer;transition:border-color .15s,color .15s}
+  .btn-ghost:hover{border-color:var(--coral);color:var(--red)}
+
+  /* Master banner */
+  .banner{display:flex;align-items:center;gap:14px;background:linear-gradient(90deg,#fde3cd,#fbd8bf);
+    border:1px solid #f6cbae;border-radius:16px;padding:16px 20px;box-shadow:var(--shadow);margin-bottom:20px}
+  .banner .em{font-size:22px}
+  .banner h2{font-size:17px;font-weight:700}
+  .banner p{font-size:13px;color:var(--muted);margin-top:3px}
+  .banner .spacer{flex:1}
+
+  /* Switch */
+  .switch{position:relative;display:inline-block;width:46px;height:26px;flex:none}
+  .switch input{opacity:0;width:0;height:0}
+  .switch .knob{position:absolute;inset:0;background:#e7c4b4;border-radius:999px;transition:background .18s}
+  .switch .knob::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;
+    background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .18s}
+  .switch input:checked + .knob{background:var(--coral)}
+  .switch input:checked + .knob::after{transform:translateX(20px)}
+
+  /* Main layout: settings + code checker */
+  .main{display:grid;grid-template-columns:minmax(0,7fr) minmax(0,5fr);gap:20px}
+  @media (max-width:900px){.main{grid-template-columns:1fr}}
+  .card{background:var(--card);border-radius:18px;padding:22px;box-shadow:var(--shadow)}
+  .card-head{display:flex;align-items:baseline;gap:10px}
+  .card-head h3{font-size:17px;font-weight:700}
+  .card-sub{font-size:13px;color:var(--muted);margin-top:4px}
+  .divider{border:0;border-top:1px dashed var(--line);margin:16px 0}
+
+  /* Branch pills */
+  .pills{display:flex;gap:8px;flex-wrap:wrap}
+  .pill{border:1px solid var(--line);background:#fff;border-radius:999px;padding:8px 15px;font-size:13px;
+    font-weight:600;color:var(--muted);cursor:pointer;transition:border-color .15s,background .15s,color .15s}
+  .pill:hover{border-color:var(--coral)}
+  .pill.on{background:var(--red);border-color:var(--red);color:#fff}
+
+  /* On/Off row */
+  .setrow{display:flex;align-items:center;gap:14px;background:var(--chip);border-radius:12px;padding:13px 16px}
+  .setrow .txt b{font-size:14px}
+  .setrow .txt span{display:block;font-size:12px;color:var(--muted);margin-top:2px}
+  .setrow .spacer{flex:1}
+
+  /* Fields */
+  .fields{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:16px}
+  @media (max-width:520px){.fields{grid-template-columns:1fr}}
+  label.f{display:block;font-size:13px;font-weight:700}
+  label.f em{color:var(--red);font-style:normal}
+  .fields input{width:100%;margin-top:7px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff}
+  .fields input:focus{outline:none;border-color:var(--coral)}
+  .hint{font-size:12px;color:var(--muted);margin-top:7px;line-height:1.45}
+
+  /* Reward segmented */
+  .flabel{font-size:13px;font-weight:700;margin-top:16px}
+  .seg{display:flex;background:var(--chip);border-radius:12px;padding:4px;margin-top:8px}
+  .seg button{flex:1;border:0;background:none;padding:9px 10px;border-radius:9px;font-weight:600;font-size:13px;
+    color:var(--muted);cursor:pointer;transition:background .15s,color .15s}
+  .seg button.on{background:#fff;color:var(--red);box-shadow:0 1px 4px rgba(0,0,0,.08);font-weight:700}
+
+  select.voucher{width:100%;margin-top:8px;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;cursor:pointer}
+  .check{display:flex;align-items:center;gap:9px;margin-top:14px;font-size:13px;font-weight:600;cursor:pointer}
+  .check input{width:16px;height:16px;accent-color:var(--red)}
+  .fineprint{font-size:12px;color:var(--muted);margin-top:10px}
+
+  /* Stamp progress */
+  .stamps{display:flex;gap:7px;margin-top:14px}
+  .stamp{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;font-size:13px;font-weight:700;
+    background:var(--coral);color:#fff}
+  .stamp.empty{background:#fff;border:1.5px dashed #f0b59d;color:#e8b39e}
+  .stamp.gift{background:#fff;border:1.5px dashed #f0b59d;font-size:15px}
+
+  .save{display:flex;justify-content:flex-end;margin-top:18px}
+  .btn-primary{background:linear-gradient(90deg,var(--coral),var(--coral-dark));border:0;border-radius:12px;
+    padding:12px 22px;font-weight:700;font-size:14px;color:#fff;cursor:pointer;box-shadow:0 6px 16px -6px rgba(226,104,63,.6);
+    transition:transform .15s,box-shadow .15s}
+  .btn-primary:hover{transform:translateY(-1px)}
+
+  /* Code checker */
+  .checker .inputrow{display:flex;gap:10px;margin-top:14px}
+  .checker input{flex:1;min-width:0;border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:14px}
+  .checker input:focus{outline:none;border-color:var(--coral)}
+  .checker .btn-primary{padding:10px 20px;border-radius:10px}
+  .try{font-size:12px;color:var(--muted);margin-top:10px}
+  .checker{display:flex;flex-direction:column}
+  .result{margin-top:auto;padding-top:16px;border-top:1px dashed var(--line)}
+  .resultbox{background:var(--chip);border-radius:12px;padding:13px 15px;font-size:13px;line-height:1.6}
+  .resultbox b{color:var(--ok)}
+
+  /* Branch Overview — full-width vertical list */
+  .overview{margin-top:20px}
+  .overview.hidden{display:none}
+  .band-head{display:flex;align-items:baseline;gap:12px;margin-bottom:12px}
+  .band-head h3{font-size:17px;font-weight:700}
+  .band-head p{font-size:13px;color:var(--muted)}
+  .branch-band{background:var(--card);border-radius:18px;box-shadow:var(--shadow);padding:4px 22px}
+  .branch-row{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:14px;padding:15px 0}
+  .branch-row + .branch-row{border-top:1px dashed var(--line)}
+  .b-name{display:flex;align-items:center;gap:10px;min-width:0}
+  .b-name b{font-size:15px}
+  .badge{font-size:11px;font-weight:700;letter-spacing:.02em;border-radius:999px;padding:4px 10px;white-space:nowrap}
+  .badge.override{background:var(--chip);color:var(--red)}
+  .badge.defaults{background:#fdf3e3;color:#a05e12}
+  .badge.on{background:var(--ok-chip);color:var(--ok)}
+  .b-detail{grid-column:1/-1;font-size:12.5px;color:var(--muted);margin-top:2px;line-height:1.5}
+  .branch-row .switch{width:40px;height:23px}
+  .branch-row .switch .knob::after{width:17px;height:17px}
+  .branch-row .switch input:checked + .knob::after{transform:translateX(17px)}
+  /* Right column: checker + paged overview, stretches to match left card */
+  .side{display:flex;flex-direction:column;gap:20px;min-width:0}
+  .side .checker{flex:1}
+  .overview.card{margin-top:0}
+  .overview .b-list{min-height:0}
+  .pager{display:flex;align-items:center;gap:6px;margin-top:auto;padding-top:14px;border-top:1px dashed var(--line)}
+  .pager .info{font-size:12px;color:var(--muted);margin-right:auto}
+  .pager button{min-width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:var(--card);font-size:13px;font-weight:600;cursor:pointer;color:inherit}
+  .pager button.on{background:var(--coral);border-color:var(--coral);color:#fff}
+  .pager button:disabled{opacity:.4;cursor:default}
+  .overview{display:flex;flex-direction:column}
+  .result{margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="head">
+    <div>
+      <h1>🔥 Streak Rewards</h1>
+      <p>Configure stamp-card rewards and review branch settings.</p>
+    </div>
+    <button class="btn-ghost" id="toggleOverview">Hide Branch Overview</button>
+  </div>
+
+  <!-- Master calendar banner -->
+  <section class="banner">
+    <span class="em">📅</span>
+    <div>
+      <h2>Master Streak Calendar</h2>
+      <p>Turns the stamp card off for every branch. Already-earned rewards still work.</p>
+    </div>
+    <span class="spacer"></span>
+    <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+  </section>
+
+  <div class="main">
+    <!-- Streak rewards settings -->
+    <section class="card">
+      <div class="card-head"><h3>🔥 Streak Rewards</h3></div>
+      <p class="card-sub">Set what a full stamp card gives, and turn it on or off.</p>
+      <hr class="divider">
+
+      <div class="pills">
+        <button class="pill on">🌐 All Branches</button>
+        <button class="pill">📍 Makati</button>
+        <button class="pill">📍 BGC Taguig</button>
+        <button class="pill">📍 Quezon City</button>
+      </div>
+
+      <div class="setrow" style="margin-top:16px">
+        <div class="txt"><b>On/Off</b><span>Global default for every branch</span></div>
+        <span class="spacer"></span>
+        <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+      </div>
+
+      <div class="fields">
+        <div>
+          <label class="f">Days needed <em>*</em></label>
+          <input type="number" value="7">
+          <p class="hint">How many different days with a completed order earn one reward.</p>
+        </div>
+        <div>
+          <label class="f">Valid for (days) <em>*</em></label>
+          <input type="number" value="14">
+          <p class="hint">How many days a reward can be used after it's earned.</p>
+        </div>
+      </div>
+
+      <p class="flabel">Reward <em style="color:var(--red)">*</em></p>
+      <div class="seg">
+        <button>🍰 Free menu item</button>
+        <button class="on">🎟 Voucher discount</button>
+      </div>
+
+      <p class="flabel">Voucher</p>
+      <select class="voucher"><option>PEACHY50 — ₱50 off</option><option>PEACHY100 — ₱100 off</option></select>
+
+      <label class="check"><input type="checkbox"> Also make all branches use this (removes each branch's own settings).</label>
+      <p class="fineprint">Rewards already earned are not changed.</p>
+
+      <div class="stamps">
+        <span class="stamp">1</span><span class="stamp">2</span><span class="stamp">3</span><span class="stamp">4</span>
+        <span class="stamp empty">5</span><span class="stamp empty">6</span><span class="stamp gift">🎁</span>
+      </div>
+
+      <div class="save"><button class="btn-primary">Save Streak Settings</button></div>
+    </section>
+
+    <div class="side">
+    <section class="card checker">
+      <div class="card-head"><h3>🔍 Reward Code Checker</h3></div>
+      <p class="card-sub">Verify a customer's streak reward code</p>
+      <hr class="divider">
+      <div class="inputrow">
+        <input type="text" placeholder="E.G. STRK-7Q2M">
+        <button class="btn-primary">Check</button>
+      </div>
+      <p class="try">Try: STRK-7Q2M, STRK-K9PL, STRK-USED</p>
+      <div class="result">
+        <div class="resultbox">✓ <b>STRK-7Q2M is valid</b> — 5 of 7 days stamped · Reward: PEACHY50 (₱50 off) · expires in 9 days</div>
+      </div>
+    </section>
+
+    <section class="card overview" id="branchOverview">
+      <div class="card-head"><h3>🏪 Branch Overview</h3></div>
+      <p class="card-sub">Global defaults vs branch overrides</p>
+      <hr class="divider">
+      <div class="b-list" id="bList">
+        <div class="branch-row">
+          <div class="b-name"><b>🌐 Global defaults</b><span class="badge on">ON</span></div>
+          
+          <p class="b-detail">7 days · Voucher PEACHY50 · valid 14d</p>
+        </div>
+        <div class="branch-row">
+          <div class="b-name"><b>📍 Makati</b><span class="badge override">Branch override</span></div>
+          <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+          <p class="b-detail">5 days · Free Caramel Latte · valid 7d</p>
+        </div>
+        <div class="branch-row">
+          <div class="b-name"><b>📍 BGC Taguig</b><span class="badge defaults">Uses defaults</span></div>
+          <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+          <p class="b-detail">7 days · Voucher PEACHY50 · valid 14d</p>
+        </div>
+        <div class="branch-row">
+          <div class="b-name"><b>📍 Quezon City</b><span class="badge override">Branch override</span></div>
+          <label class="switch"><input type="checkbox"><span class="knob"></span></label>
+          <p class="b-detail">7 days · Voucher QCHELLO · valid 14d</p>
+        </div>
+        <div class="branch-row">
+          <div class="b-name"><b>📍 Ortigas</b><span class="badge defaults">Uses defaults</span></div>
+          <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+          <p class="b-detail">7 days · Voucher PEACHY50 · valid 14d</p>
+        </div>
+        <div class="branch-row">
+          <div class="b-name"><b>📍 Alabang</b><span class="badge override">Branch override</span></div>
+          <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+          <p class="b-detail">6 days · Free Peach Tart · valid 10d</p>
+        </div>
+        <div class="branch-row">
+          <div class="b-name"><b>📍 Pasig</b><span class="badge defaults">Uses defaults</span></div>
+          <label class="switch"><input type="checkbox" checked><span class="knob"></span></label>
+          <p class="b-detail">7 days · Voucher PEACHY50 · valid 14d</p>
+        </div>
+      </div>
+      <div class="pager" id="pager"></div>
+    </section>
+    </div>
+  </div>
+</div>
+
+<script>
+  var overview = document.getElementById('branchOverview');
+  var toggle = document.getElementById('toggleOverview');
+  toggle.addEventListener('click', function () {
+    var hidden = overview.classList.toggle('hidden');
+    toggle.textContent = hidden ? 'Show Branch Overview' : 'Hide Branch Overview';
+  });
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#bList .branch-row'));
+  var per = 3, page = 1, pages = Math.ceil(rows.length / per), pager = document.getElementById('pager');
+  function render() {
+    rows.forEach(function (r, i) { r.style.display = (i >= (page-1)*per && i < page*per) ? '' : 'none'; });
+    var a = (page-1)*per+1, b = Math.min(page*per, rows.length);
+    var h = '<span class="info">' + a + '–' + b + ' of ' + rows.length + '</span>';
+    h += '<button data-p="' + (page-1) + '"' + (page===1?' disabled':'') + '>‹</button>';
+    for (var p = 1; p <= pages; p++) h += '<button data-p="' + p + '"' + (p===page?' class="on"':'') + '>' + p + '</button>';
+    h += '<button data-p="' + (page+1) + '"' + (page===pages?' disabled':'') + '>›</button>';
+    pager.innerHTML = h;
+  }
+  pager.addEventListener('click', function (e) {
+    var p = e.target.getAttribute('data-p'); if (!p || e.target.disabled) return; page = +p; render();
+  });
+  render();
+</script>
+</body>
+</html>

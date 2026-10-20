@@ -5945,33 +5945,41 @@ public function markOrderRefunded(int $id)
     }
 
     /**
-     * A redirect refusing this action, or null when the actor may proceed.
+     * Refuse this action unless the actor may MANAGE the record; returns
+     * normally when they may.
      *
      * $record is any voucher/ad (anything carrying a nullable branch_id).
-     * Returns null for the owner unconditionally — lockedBranchId() is null for
-     * them, so neither arm below runs and nothing about their existing reach
-     * changes.
+     * The owner is never refused — lockedBranchId() is null for them, so
+     * neither arm below runs and nothing about their existing reach changes.
+     *
+     * HOW A REFUSAL LOOKS (Oct 2026). These used to redirect back to the list
+     * with an error flash. Nothing on the page ever offers these actions out of
+     * scope, so every refusal here is a typed or replayed request, and it now
+     * answers like one:
+     *   - company-wide row -> 403. The supervisor can SEE it (read-only, so
+     *     staff can quote it at the counter), so pretending it does not exist
+     *     would be a lie; they just may not change it.
+     *   - another branch's -> 404, AdminOrderAccess's convention for a record
+     *     outside the viewer's branch: "not yours" and "no such id" look the
+     *     same, so probing ids learns nothing about another branch.
      */
-    private function promotionScopeRefusal($record, string $route, string $noun)
+    private function promotionScopeRefusal($record, string $noun): void
     {
         $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
 
         if ($lockedBranchId === null) {
-            return null;
+            return;
         }
 
         // Global row. Checked FIRST and on its own — see the block comment.
         if ($record->branch_id === null) {
-            return redirect()->route($route)
-                ->with('error', 'Company-wide ' . $noun . 's can only be managed by the owner.');
+            abort(403, 'Company-wide ' . $noun . 's can only be managed by the owner.');
         }
 
         if ((int) $record->branch_id !== $lockedBranchId) {
-            return redirect()->route($route)
-                ->with('error', 'You can only manage ' . $noun . 's belonging to your own branch.');
+            throw (new \Illuminate\Database\Eloquent\ModelNotFoundException())
+                ->setModel(get_class($record), [$record->getKey()]);
         }
-
-        return null;
     }
 
     /**
@@ -6003,8 +6011,7 @@ public function markOrderRefunded(int $id)
      * Refuses as a 404, following AdminOrderAccess's convention for an
      * attacker-supplied record id: "no such voucher" and "not your voucher" then
      * look identical from outside, so probing sequential ids learns nothing.
-     * (promotionScopeRefusal's chatty redirect is right for its own callers,
-     * where the row came off a page the user was already looking at.)
+     * promotionScopeRefusal() answers another branch's row the same way.
      */
     private function refusePromotionOutsideBranch($record): void
     {
@@ -6074,9 +6081,13 @@ public function markOrderRefunded(int $id)
      * becomes "no filter" rather than an error or, worse, a wider listing:
      * the viewer's own scope is applied before any of this.
      *
+     * $viewingBranchId: the owner's "Viewing:" branch (null = All Branches).
+     * Viewing one branch, a scope filter naming a DIFFERENT branch would only
+     * ever list nothing, so it is dropped too.
+     *
      * @return array{q: string, status: string, scope: string}
      */
-    private function voucherListFilters(Request $request): array
+    private function voucherListFilters(Request $request, ?int $viewingBranchId = null): array
     {
         // A query-string array (?q[]=x) is not a search term: treat it as absent.
         $word = fn (string $key) => is_string($request->query($key)) ? $request->query($key) : '';
@@ -6093,6 +6104,7 @@ public function markOrderRefunded(int $id)
             $scope = ctype_digit($scope)
                 && \App\Models\Branch::whereKey((int) $scope)->exists()
                 && ($locked === null || (int) $scope === $locked)
+                && ($viewingBranchId === null || (int) $scope === $viewingBranchId)
                     ? (string) (int) $scope
                     : '';
         }
@@ -6100,21 +6112,51 @@ public function markOrderRefunded(int $id)
         return ['q' => $q, 'status' => $status, 'scope' => $scope];
     }
 
+    /**
+     * Narrow a voucher query to the owner's "Viewing:" branch: the vouchers
+     * that apply there, i.e. that branch's own plus the company-wide ones.
+     * A no-op for All Branches, and for a branch-locked viewer (whose listing
+     * scopePromotionListing() has already narrowed to exactly that).
+     */
+    private function scopeVoucherViewing($query, ?int $viewingBranchId)
+    {
+        if ($viewingBranchId !== null) {
+            $query->where(function ($q) use ($viewingBranchId) {
+                $q->whereNull('branch_id')
+                    ->orWhere('branch_id', $viewingBranchId);
+            });
+        }
+
+        return $query;
+    }
+
     public function showVouchers(Request $request)
     {
-        // Own branch + global only for a supervisor; unchanged (every
-        // row) for the owner and for staff's read-only counter list.
+        // The owner's "Viewing:" branch — the bar at the top of the page,
+        // shared with Streak Rewards and every other admin page
+        // (App\Support\ViewingBranch). ?branch=all|<id> sets it, so the list
+        // can switch in the background and the URL can be bookmarked; without
+        // it the remembered choice stands. Always null for staff and
+        // supervisors, whose bar is a fixed label of their own branch.
+        $viewingBranch = \App\Support\ViewingBranch::resolve($request->query('branch'));
+        $viewingBranchId = $viewingBranch?->id;
+
+        // Own branch + global only for a supervisor (and staff); for the
+        // owner, every row — or, viewing one branch, the ones that apply there.
         //
         // Real server-side pagination (2026-09-14) for the same reason as
         // Completed Orders: this used to load every voucher ever created —
         // every code minted by the Spin Wheel and every walk-in issue-code
         // counts against this table forever, so it only grows.
-        $listing = $this->scopePromotionListing(\App\Models\Voucher::with('branch'));
+        $listing = $this->scopeVoucherViewing(
+            $this->scopePromotionListing(\App\Models\Voucher::with('branch')),
+            $viewingBranchId
+        );
 
         // The list's search box and its two filters (Promotions & Rewards,
         // Oct 2026). Display only: they narrow what is LISTED, inside the
         // viewer's own scope, and change nothing about any voucher.
-        $filters = $this->voucherListFilters($request);
+        $filters = $this->voucherListFilters($request, $viewingBranchId);
 
         if ($filters['q'] !== '') {
             $like = '%' . addcslashes($filters['q'], '\%_') . '%';
@@ -6136,31 +6178,37 @@ public function markOrderRefunded(int $id)
             ->paginate($this->paginationPerPage($request))
             ->withQueryString();
 
-        // Background refresh (the list's search box and filters fetch this same
-        // address instead of reloading the page): answer with just the results
-        // region. Everything above — the viewer's branch scope, the filters, the
-        // pagination — has already run, and the request came through the same
-        // route middleware, so this is the identical listing the full page would
-        // have shown, minus the page around it. Never cached, and Vary says the
-        // same address has two shapes, so a back/forward or a proxy cannot hand
-        // a bare fragment to a normal page load.
-        if ($request->header('X-Vouchers-Fragment') === '1') {
-            return response()
-                ->view('admin.partials.voucher-list-results', compact('vouchers', 'filters'))
-                ->header('Cache-Control', 'no-store, private')
-                ->header('Vary', 'X-Vouchers-Fragment');
-        }
-
-        // The four cards above the list count EVERYTHING this viewer may see,
-        // whatever the filters say: a supervisor's own branch plus the global
-        // ones, the owner's every voucher.
-        $scoped = fn () => $this->scopePromotionListing(\App\Models\Voucher::query());
+        // The four cards above the list count EVERYTHING this viewer may see
+        // in the branch they are viewing, whatever the filters say: a
+        // supervisor's own branch plus the global ones; the owner's every
+        // voucher, or one branch's own plus the global ones.
+        $scoped = fn () => $this->scopeVoucherViewing(
+            $this->scopePromotionListing(\App\Models\Voucher::query()),
+            $viewingBranchId
+        );
         $voucherStats = [
             'total'    => $scoped()->count(),
             'active'   => $scoped()->withListStatus('active')->count(),
             'on_wheel' => $scoped()->onWheel()->count(),
             'expired'  => $scoped()->expiredNow()->count(),
         ];
+
+        // Background refresh (the list's search box, filters and the "Viewing:"
+        // bar fetch this same address instead of reloading the page): answer
+        // with just the results region, which also carries the four counts for
+        // the cards above it (they change with the Viewing branch). Everything
+        // above — the viewer's branch scope, the filters, the pagination — has
+        // already run, and the request came through the same route middleware,
+        // so this is the identical listing the full page would have shown, minus
+        // the page around it. Never cached, and Vary says the same address has
+        // two shapes, so a back/forward or a proxy cannot hand a bare fragment
+        // to a normal page load.
+        if ($request->header('X-Vouchers-Fragment') === '1') {
+            return response()
+                ->view('admin.partials.voucher-list-results', compact('vouchers', 'filters', 'voucherStats'))
+                ->header('Cache-Control', 'no-store, private')
+                ->header('Vary', 'X-Vouchers-Fragment');
+        }
 
         // The scope filter offers Global plus the branches this viewer can see.
         $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
@@ -6211,6 +6259,7 @@ public function markOrderRefunded(int $id)
             'vouchers',
             'voucherStats',
             'filters',
+            'viewingBranchId',
             'scopeBranches',
             'branches',
             'rewardQuery',
@@ -6268,9 +6317,7 @@ public function markOrderRefunded(int $id)
          * another branch's — and this is what stops a hand-crafted PUT, not the
          * absence of the button on the page.
          */
-        if ($refusal = $this->promotionScopeRefusal($voucher, 'admin.vouchers', 'voucher')) {
-            return $refusal;
-        }
+        $this->promotionScopeRefusal($voucher, 'voucher');
 
         $validated = $request->validate([
             'code' => 'required|string|max:50|unique:vouchers,code,' . $voucher->id,
@@ -6504,9 +6551,7 @@ public function markOrderRefunded(int $id)
 
         // "Activate/Deactivate Vouchers", same LIMITED rule as editing one:
         // switching a company-wide promotion off is a company-wide act.
-        if ($refusal = $this->promotionScopeRefusal($voucher, 'admin.vouchers', 'voucher')) {
-            return $refusal;
-        }
+        $this->promotionScopeRefusal($voucher, 'voucher');
 
         $voucher->is_active = !$voucher->is_active;
         $voucher->save();
@@ -6847,9 +6892,7 @@ public function markOrderRefunded(int $id)
 
         // "Manage Advertisements" is the whole CRUD for a supervisor, but only
         // within their own branch. A company-wide ad is the owner's.
-        if ($refusal = $this->promotionScopeRefusal($ad, 'admin.ads', 'ad')) {
-            return $refusal;
-        }
+        $this->promotionScopeRefusal($ad, 'ad');
 
         $validated = $request->validate([
             'title' => 'required|string|max:255',
@@ -6897,9 +6940,7 @@ public function markOrderRefunded(int $id)
     {
         $ad = \App\Models\Ad::findOrFail($id);
 
-        if ($refusal = $this->promotionScopeRefusal($ad, 'admin.ads', 'ad')) {
-            return $refusal;
-        }
+        $this->promotionScopeRefusal($ad, 'ad');
 
         $ad->is_active = !$ad->is_active;
         $ad->save();
@@ -6924,9 +6965,7 @@ public function markOrderRefunded(int $id)
          * VOUCHERS stays Y | N | N and is unchanged: that route never leaves
          * the owner-only group, and nothing here touches it.
          */
-        if ($refusal = $this->promotionScopeRefusal($ad, 'admin.ads', 'ad')) {
-            return $refusal;
-        }
+        $this->promotionScopeRefusal($ad, 'ad');
 
         // Nothing references ads, so this one is only ever a crash risk from
         // the filesystem or a dropped connection — still worth the net.

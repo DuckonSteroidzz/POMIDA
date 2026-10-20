@@ -136,10 +136,12 @@ class Loyalty
             $paid[] = LoyaltyAward::TYPE_ORDER_BONUS;
         }
 
-        // The run that ends on the day THIS order was completed. That is today
-        // in practice; anchoring on the order rather than the clock keeps the
-        // answer right for a completion that straddles midnight.
-        $completedDay = CarbonImmutable::instance($order->completed_at ?? now())
+        // The run that contains the day THIS order was PLACED — the day
+        // StreakCalendar credits it to — not the day staff completed it (an
+        // order placed 23:50 and completed 00:10 belongs to the earlier day).
+        // The whole run, so a late completion that joins days already marked
+        // after it still sees the full length.
+        $placedDay = CarbonImmutable::instance($order->created_at ?? $order->completed_at ?? now())
             ->setTimezone(StreakCalendar::timezone())->startOfDay();
 
         // The owner's Streak Calendar switch (Setting::streakCalendarEnabled)
@@ -148,7 +150,7 @@ class Loyalty
         // orders, so a streak that kept going while it was off is paid at the
         // next completion — once, as always.
         $run = \App\Models\Setting::streakCalendarEnabled()
-            ? StreakCalendar::runEndingOn(StreakCalendar::completedDays($user), $completedDay)
+            ? StreakCalendar::runContaining(StreakCalendar::completedDays($user), $placedDay)
             : null;
 
         if ($run !== null) {

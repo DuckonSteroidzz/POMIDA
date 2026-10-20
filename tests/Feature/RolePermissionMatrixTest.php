@@ -675,8 +675,8 @@ class RolePermissionMatrixTest extends TestCase
             // Oct 2026): the master switch, the owner's branch selector and
             // overview, a manager's own branch form and switch, and the code
             // check — all live there instead.
-            'manager / no streak card'     => ['supervisor', 'admin.streak-rewards', 'Streak Calendar on/off', false],
-            'owner / has streak card'      => ['admin', 'admin.streak-rewards', 'Streak Calendar on/off', true],
+            'manager / no streak card'     => ['supervisor', 'admin.streak-rewards', 'Master Streak Calendar', false],
+            'owner / has streak card'      => ['admin', 'admin.streak-rewards', 'Master Streak Calendar', true],
             'owner / has streak rewards form'   => ['admin', 'admin.streak-rewards', 'data-testid="streak-rewards-form"', true],
             'owner / has branch selector'       => ['admin', 'admin.streak-rewards', 'data-testid="streak-rewards-selector"', true],
             'manager / has streak rewards form' => ['supervisor', 'admin.streak-rewards', 'data-testid="streak-rewards-form"', true],

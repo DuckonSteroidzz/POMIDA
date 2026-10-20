@@ -59,12 +59,16 @@ class StreakCalendarTest extends TestCase
         return CarbonImmutable::parse($local, 'Asia/Manila')->utc()->format('Y-m-d H:i:s');
     }
 
-    private function order(User $user, string $manilaTime, string $status = 'completed'): Order
+    /**
+     * $manilaTime is when the order was PLACED (created_at). completed_at is the
+     * same instant unless $completedAt says staff finished it later.
+     */
+    private function order(User $user, string $manilaTime, string $status = 'completed', ?string $completedAt = null, int $branchId = 1): Order
     {
-        return Order::create([
+        $order = Order::create([
             'order_number'   => 'STK-' . strtoupper(Str::random(8)),
             'user_id'        => $user->id,
-            'branch_id'      => 1,
+            'branch_id'      => $branchId,
             'type'           => 'pick_up',
             'status'         => $status,
             'payment_method' => 'cash',
@@ -73,8 +77,13 @@ class StreakCalendarTest extends TestCase
             'total'          => 100,
             // Set even on the non-completed fixtures, so a test proves the
             // STATUS is what excludes them, not a missing timestamp.
-            'completed_at'   => $this->manila($manilaTime),
+            'completed_at'   => $this->manila($completedAt ?? $manilaTime),
         ]);
+
+        // created_at is not fillable (Order::create() silently drops it).
+        DB::table('orders')->where('id', $order->id)->update(['created_at' => $this->manila($manilaTime)]);
+
+        return $order->fresh();
     }
 
     private function today(): CarbonImmutable
@@ -210,6 +219,92 @@ class StreakCalendarTest extends TestCase
         $this->order($user, '2026-10-14 21:00');
 
         $this->assertSame(['2026-10-14' => true], StreakCalendar::completedDays($user));
+    }
+
+    // ══════════ a day is the day the order was PLACED ══════════
+
+    /**
+     * The tester's report ("I did not order on Oct 20, yet it is marked"): an
+     * order placed 23:50 Manila on Oct 14 and completed by staff at 00:10 on
+     * Oct 15 used to mark Oct 15 — a day the customer never ordered on.
+     */
+    public function test_an_order_placed_before_midnight_and_completed_after_it_marks_the_day_it_was_placed(): void
+    {
+        $user = $this->customer();
+        $this->order($user, '2026-10-14 23:50', 'completed', '2026-10-15 00:10');
+
+        $this->assertSame(['2026-10-14' => true], StreakCalendar::completedDays($user));
+    }
+
+    public function test_the_tester_scenario_two_marked_days_for_one_real_order_day_is_a_one_day_streak(): void
+    {
+        $user = $this->customer();
+        $this->order($user, '2026-10-14 10:00');
+        $this->order($user, '2026-10-14 23:50', 'completed', '2026-10-15 00:10');
+
+        $cal = StreakCalendar::forAccountPage($user, '2026-10', $this->today(), 1);
+
+        $marked = collect($cal['weeks'])->flatten(1)->where('active', true)->pluck('date')->all();
+        $this->assertSame(['2026-10-14'], $marked);
+        $this->assertSame(1, $cal['active_in_month']);
+        $this->assertSame(1, $cal['best']);
+        // Today (the 15th) has no order placed on it: yesterday's run is alive but not today.
+        $this->assertSame(1, $cal['current']['length']);
+        $this->assertFalse($cal['current']['alive_today']);
+
+        $today = collect($cal['weeks'])->flatten(1)->firstWhere('today', true);
+        $this->assertFalse($today['active'], 'today is highlighted as today, never as a completed day by itself');
+    }
+
+    public function test_an_order_placed_today_but_completed_tomorrow_marks_today_not_tomorrow(): void
+    {
+        $user = $this->customer();
+        $this->order($user, '2026-10-15 23:55', 'completed', '2026-10-16 00:05');
+
+        $this->assertSame(['2026-10-15' => true], StreakCalendar::completedDays($user));
+    }
+
+    public function test_an_order_placed_days_before_it_was_completed_marks_the_placed_day_only(): void
+    {
+        $user = $this->customer();
+        $this->order($user, '2026-10-10 12:00', 'completed', '2026-10-13 09:00');
+
+        $this->assertSame(['2026-10-10' => true], StreakCalendar::completedDays($user));
+    }
+
+    public function test_calendar_current_best_and_the_stamp_card_all_agree_on_the_placed_day(): void
+    {
+        $user = $this->customer();
+        $this->order($user, '2026-10-13 12:00');
+        $this->order($user, '2026-10-14 23:50', 'completed', '2026-10-15 00:10');
+
+        $days = StreakCalendar::completedDays($user, 1);
+
+        $this->assertSame(['2026-10-13', '2026-10-14'], array_keys($days));
+        $this->assertSame(['2026-10-13', '2026-10-14'], \App\Services\FreeDesserts::stampDays($user, 1));
+        $this->assertSame(2, \App\Services\FreeDesserts::countedDays($user, 1));
+        $this->assertSame(2, StreakCalendar::best($days));
+        $this->assertSame(2, StreakCalendar::forAccountPage($user, null, $this->today(), 1)['current']['length']);
+    }
+
+    public function test_another_branchs_late_completion_is_not_counted_at_this_branch(): void
+    {
+        $user = $this->customer();
+        $this->order($user, '2026-10-14 23:50', 'completed', '2026-10-15 00:10', 2);
+
+        $this->assertSame([], StreakCalendar::completedDays($user, 1));
+        $this->assertSame(['2026-10-14' => true], StreakCalendar::completedDays($user, 2));
+    }
+
+    public function test_the_run_containing_a_day_extends_in_both_directions(): void
+    {
+        $days = ['2026-10-12' => true, '2026-10-13' => true, '2026-10-14' => true, '2026-10-20' => true];
+        $day  = CarbonImmutable::parse('2026-10-13', 'Asia/Manila');
+
+        $run = StreakCalendar::runContaining($days, $day);
+
+        $this->assertSame(['length' => 3, 'start' => '2026-10-12', 'end' => '2026-10-14'], $run);
+        $this->assertNull(StreakCalendar::runContaining($days, CarbonImmutable::parse('2026-10-16', 'Asia/Manila')));
     }
 
     // ══════════ only completed orders count ══════════

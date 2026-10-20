@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Your Orders — Peachy Cakes & Deli Cafe</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=Karla:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --maroon:#8a1c1c; --maroon-soft:#a8322a; --coral:#f0805f; --coral-dark:#e2683f;
+    --red:#d63b2f; --green:#16b34a; --cream:#fffaf5; --card:#ffffff;
+    --line:#f3dccd; --muted:#7a5a50; --chip:#fdf0e8; --ok-chip:#e8f6ec; --ok:#1d7a3e;
+    --shadow:0 2px 0 rgba(138,28,28,.04),0 8px 24px -12px rgba(138,28,28,.25);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:Karla,system-ui,sans-serif;color:var(--maroon);
+    background:linear-gradient(135deg,#f9d9b4 0%,#f6c3a4 55%,#f2b39c 100%);min-height:100vh}
+  button,input,select{font:inherit;color:inherit}
+  .wrap{max-width:1000px;margin:0 auto;padding:0 20px}
+
+  /* Header */
+  header{background:var(--cream);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+  header .wrap{display:flex;align-items:center;justify-content:space-between;height:78px}
+  .brand{display:flex;align-items:center;gap:12px;text-decoration:none;color:inherit}
+  .brand .logo{width:44px;height:44px;border-radius:50%;background:#fde4d6;display:grid;place-items:center;font-size:22px}
+  .brand b{font-family:"DM Serif Display",serif;font-size:26px;font-weight:400;display:block;line-height:1}
+  .brand small{font-size:11px;letter-spacing:.3em;color:var(--maroon-soft)}
+  nav{display:flex;align-items:center;gap:6px}
+  nav a{padding:8px 12px;border-radius:999px;text-decoration:none;color:var(--maroon);font-weight:600;font-size:14px}
+  nav a.active{background:#fde0d2;color:var(--red)}
+  nav a:hover{background:#fdebe1}
+  .cart{background:var(--red);color:#fff!important;padding:9px 16px}
+  .bell{position:relative;width:40px;height:40px;border-radius:50%;border:1px solid var(--line);display:grid;place-items:center;background:#fff}
+  .bell i{position:absolute;top:-4px;right:-4px;background:var(--red);color:#fff;font-style:normal;font-size:10px;font-weight:700;width:16px;height:16px;border-radius:50%;display:grid;place-items:center}
+
+  /* Title */
+  .head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin:36px 0 20px;flex-wrap:wrap}
+  h1{font-family:"DM Serif Display",serif;font-weight:400;font-size:34px;line-height:1}
+  .head p{color:var(--muted);margin-top:8px}
+  .btn-ghost{background:#fff;border:1px solid var(--line);border-radius:999px;padding:10px 18px;font-weight:600;color:var(--muted);cursor:pointer}
+  .btn-ghost:hover{border-color:var(--coral)}
+
+  /* Filter bar */
+  .filters{background:rgba(255,250,245,.85);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:16px;
+    padding:12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;box-shadow:var(--shadow);margin-bottom:24px}
+  .seg{display:flex;background:var(--chip);border-radius:999px;padding:4px}
+  .seg button{border:0;background:none;padding:7px 14px;border-radius:999px;font-weight:600;font-size:13px;cursor:pointer;color:var(--muted)}
+  .seg button.on{background:#fff;color:var(--red);box-shadow:0 1px 4px rgba(0,0,0,.08)}
+  .range{display:flex;align-items:center;gap:6px;font-size:13px;color:var(--muted)}
+  .range input,.filters select{border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 10px;font-size:13px}
+  .spacer{flex:1}
+  .count{font-size:13px;color:var(--muted)}
+  .reset{border:0;background:none;color:var(--red);font-weight:700;font-size:13px;cursor:pointer}
+
+  /* Groups & cards */
+  .group-label{font-size:12px;letter-spacing:.2em;font-weight:700;text-transform:uppercase;margin:22px 0 10px;color:var(--maroon-soft)}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+  .card{background:var(--card);border-radius:16px;padding:18px;display:flex;gap:14px;box-shadow:var(--shadow);
+    border:1px solid transparent;transition:transform .15s,border-color .15s}
+  .card:hover{transform:translateY(-2px);border-color:var(--line)}
+  .icon{width:36px;height:36px;border-radius:10px;flex:none;display:grid;place-items:center;color:#fff;font-weight:700;align-self:center}
+  .icon.x{background:var(--red)} .icon.ok{background:var(--green)}
+  .body{flex:1;min-width:0}
+  .row{display:flex;justify-content:space-between;gap:8px;align-items:baseline}
+  .id{font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .price{font-family:"DM Serif Display",serif;font-size:20px;white-space:nowrap}
+  .meta{font-size:12px;color:var(--muted);margin-top:4px;line-height:1.5}
+  .meta .st{font-weight:700;letter-spacing:.04em}
+  .st.cancelled{color:var(--red)} .st.completed{color:var(--ok)}
+  .actions{display:flex;flex-direction:column;gap:10px;margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:var(--muted);white-space:nowrap}
+  .chip::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--coral);flex:none}
+  .chip.rated{color:var(--ok);font-weight:600}
+  .chip.rated::before{background:var(--green)}
+  .stars{letter-spacing:1px;color:#f5a623;font-size:12px}
+  .stars span{color:#ead9cf}
+  .links{display:flex;gap:8px}
+  .receipt,.rate{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 14px;border-radius:10px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer;white-space:nowrap;transition:background .15s,border-color .15s,color .15s}
+  .receipt{color:var(--maroon);border:1px solid var(--line);background:#fff}
+  .receipt:hover{border-color:var(--coral);color:var(--red)}
+  .rate{background:var(--coral);color:#fff;border:1px solid transparent}
+  .rate:hover{background:var(--coral-dark)}
+  .empty{text-align:center;padding:60px 20px;background:rgba(255,255,255,.6);border-radius:16px;color:var(--muted)}
+
+  /* Pagination */
+  .pager{display:flex;justify-content:center;align-items:center;gap:6px;margin:32px 0 60px;flex-wrap:wrap}
+  .pager button{min-width:38px;height:38px;border-radius:10px;border:1px solid var(--line);background:#fff;font-weight:700;cursor:pointer;padding:0 12px}
+  .pager button.on{background:var(--red);color:#fff;border-color:var(--red)}
+  .pager button:disabled{opacity:.4;cursor:not-allowed}
+  @media (max-width:760px){nav a:not(.cart){display:none}}
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <a class="brand" href="#"><span class="logo">🍑</span><span><b>Peachy</b><small>CAKES &amp; DELI CAFE</small></span></a>
+    <nav>
+      <a href="#">Menu</a><a href="#" class="active">Orders</a><a href="#">Spin &amp; Win</a><a href="#">More</a>
+      <a href="#" class="cart">Cart</a><span class="bell">🔔<i>6</i></span>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <div class="head">
+    <div><h1>Your Orders</h1><p>Track what's cooking and revisit past visits.</p></div>
+    <button class="btn-ghost">🛍 Current Order</button>
+  </div>
+
+  <div class="filters">
+    <div class="seg" id="preset">
+      <button data-p="all" class="on">All</button>
+      <button data-p="today">Today</button>
+      <button data-p="7">7 days</button>
+      <button data-p="30">30 days</button>
+    </div>
+    <div class="range">
+      <input type="date" id="from" aria-label="From date" /> – <input type="date" id="to" aria-label="To date" />
+    </div>
+    <select id="status" aria-label="Status">
+      <option value="all">All statuses</option><option value="COMPLETED">Completed</option><option value="CANCELLED">Cancelled</option>
+    </select>
+    <select id="perPage" aria-label="Per page">
+      <option value="6">6 / page</option><option value="9" selected>9 / page</option><option value="12">12 / page</option>
+    </select>
+    <span class="spacer"></span>
+    <span class="count" id="count"></span>
+    <button class="reset" id="reset">Reset</button>
+  </div>
+
+  <div id="list"></div>
+  <div class="pager" id="pager"></div>
+</main>
+
+<script>
+  // Sample data (today = Oct 20, 2026 to match the screenshot)
+  const TODAY = new Date(2026, 9, 20);
+  const orders = [
+    ["ORD-20261020-DHVVAQ","2026-10-20T01:10",100,"CANCELLED",null],
+    ["ORD-20261020-NQ7K2P","2026-10-20T01:09",100,"COMPLETED",0],
+    ["ORD-20261020-OX4M9T","2026-10-20T00:50",100,"COMPLETED",0],
+    ["ORD-20261019-GMVTIT","2026-10-19T12:35",300,"CANCELLED",null],
+    ["ORD-20261019-OOBCOF","2026-10-19T12:34",300,"CANCELLED",null],
+    ["ORD-20261019-TUN8RS","2026-10-19T12:27",300,"COMPLETED",0],
+    ["ORD-20261019-TIAO3B","2026-10-19T12:19",100,"COMPLETED",0],
+    ["ORD-20261015-M32AQX","2026-10-15T22:23",400,"COMPLETED",3],
+    ["ORD-20261015-3F2X7V","2026-10-15T22:18",150,"COMPLETED",5],
+    ["ORD-20261003-AXLWPE","2026-10-03T14:02",150,"CANCELLED",null],
+    ["ORD-20261001-KP9DLA","2026-10-01T09:40",250,"COMPLETED",4],
+    ["ORD-20260928-ZQ1MNB","2026-09-28T18:15",520,"COMPLETED",5],
+    ["ORD-20260921-BT7YHC","2026-09-21T11:05",180,"COMPLETED",4],
+    ["ORD-20260910-WE3RTY","2026-09-10T16:44",90,"CANCELLED",null],
+    ["ORD-20260902-LM8NOP","2026-09-02T13:30",310,"COMPLETED",5],
+  ].map(([id,dt,total,status,rating])=>({id,date:new Date(dt),total,status,rating,items:1}));
+
+  const $ = s => document.querySelector(s);
+  const state = { from:null, to:null, status:"all", page:1, per:9 };
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+  const dayKey = d => iso(d);
+  const peso = n => "₱" + n.toFixed(2);
+  const time = d => d.toLocaleTimeString("en-US",{hour:"2-digit",minute:"2-digit"});
+
+  function label(d){
+    const diff = Math.round((new Date(TODAY.getFullYear(),TODAY.getMonth(),TODAY.getDate()) - new Date(d.getFullYear(),d.getMonth(),d.getDate()))/864e5);
+    if(diff===0) return "Today"; if(diff===1) return "Yesterday";
+    return d.toLocaleDateString("en-US",{month:"short",day:"2-digit",year:"numeric"});
+  }
+
+  function card(o){
+    const done = o.status==="COMPLETED";
+    let chip = "";
+    if(done) chip = o.rating ? `<span class="chip rated"><span class="stars">${"★".repeat(o.rating)}<span>${"★".repeat(5-o.rating)}</span></span>${o.rating}/5</span>` : `<span class="chip">Not rated yet</span>`;
+    return `<article class="card">
+      <div class="icon ${done?"ok":"x"}">${done?"✓":"✕"}</div>
+      <div class="body">
+        <div class="row"><span class="id" title="${o.id}">${o.id}</span><span class="price">${peso(o.total)}</span></div>
+        <div class="meta">${o.items} item(s) • <span class="st ${o.status.toLowerCase()}">${o.status}</span><br>${time(o.date)}</div>
+        <div class="actions">${chip}
+          <div class="links"><a class="receipt" href="#">View receipt</a>${done && !o.rating ? `<button class="rate">★ Rate meal</button>`:""}</div>
+        </div>
+      </div></article>`;
+  }
+
+  function render(){
+    const f = orders.filter(o=>{
+      const k = dayKey(o.date);
+      if(state.from && k < state.from) return false;
+      if(state.to && k > state.to) return false;
+      if(state.status!=="all" && o.status!==state.status) return false;
+      return true;
+    }).sort((a,b)=>b.date-a.date);
+
+    const pages = Math.max(1, Math.ceil(f.length/state.per));
+    state.page = Math.min(state.page, pages);
+    const slice = f.slice((state.page-1)*state.per, state.page*state.per);
+    $("#count").textContent = `${f.length} order${f.length===1?"":"s"}`;
+
+    if(!slice.length){ $("#list").innerHTML = `<div class="empty">No orders in this range. Try a different date.</div>`; $("#pager").innerHTML=""; return; }
+
+    const groups = {};
+    slice.forEach(o=>{ const l=label(o.date); (groups[l] ||= []).push(o); });
+    $("#list").innerHTML = Object.entries(groups).map(([l,os])=>
+      `<div class="group-label">${l}</div><div class="grid">${os.map(card).join("")}</div>`).join("");
+
+    let p = `<button ${state.page===1?"disabled":""} data-go="${state.page-1}">‹ Prev</button>`;
+    for(let i=1;i<=pages;i++) p += `<button class="${i===state.page?"on":""}" data-go="${i}">${i}</button>`;
+    p += `<button ${state.page===pages?"disabled":""} data-go="${state.page+1}">Next ›</button>`;
+    $("#pager").innerHTML = pages>1 ? p : "";
+  }
+
+  function setPreset(p){
+    document.querySelectorAll("#preset button").forEach(b=>b.classList.toggle("on", b.dataset.p===p));
+    if(p==="all"){ state.from=state.to=null; }
+    else { const d=new Date(TODAY); if(p!=="today") d.setDate(d.getDate()-(+p-1)); state.from=iso(d); state.to=iso(TODAY); }
+    $("#from").value = state.from||""; $("#to").value = state.to||"";
+    state.page=1; render();
+  }
+
+  $("#preset").onclick = e => e.target.dataset.p && setPreset(e.target.dataset.p);
+  $("#from").onchange = e => { state.from=e.target.value||null; state.page=1; document.querySelectorAll("#preset button").forEach(b=>b.classList.remove("on")); render(); };
+  $("#to").onchange = e => { state.to=e.target.value||null; state.page=1; document.querySelectorAll("#preset button").forEach(b=>b.classList.remove("on")); render(); };
+  $("#status").onchange = e => { state.status=e.target.value; state.page=1; render(); };
+  $("#perPage").onchange = e => { state.per=+e.target.value; state.page=1; render(); };
+  $("#pager").onclick = e => { const g=e.target.dataset.go; if(g){ state.page=+g; render(); window.scrollTo({top:0,behavior:"smooth"}); } };
+  $("#reset").onclick = () => { $("#status").value="all"; state.status="all"; setPreset("all"); };
+  render();
+</script>
+</body>
+</html>

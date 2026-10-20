@@ -205,7 +205,7 @@ class FreeDessertRewardTest extends TestCase
 
     private function completedOrderOn(User $user, string $manilaDay, int $branchId = 1): Order
     {
-        return Order::create([
+        $order = Order::create([
             'order_number'   => 'FDS-' . strtoupper(Str::random(8)),
             'user_id'        => $user->id,
             'branch_id'      => $branchId,
@@ -217,6 +217,11 @@ class FreeDessertRewardTest extends TestCase
             'total'          => 100,
             'completed_at'   => $this->manila($manilaDay . ' 12:00:00'),
         ]);
+
+        // A stamp day is the day the order was PLACED (created_at, not fillable).
+        DB::table('orders')->where('id', $order->id)->update(['created_at' => $this->manila($manilaDay . ' 12:00:00')]);
+
+        return $order->fresh();
     }
 
     private function pendingOrder(User $user, int $branchId = 1): Order
@@ -268,8 +273,9 @@ class FreeDessertRewardTest extends TestCase
     {
         $order = $this->completedOrderOn($user, substr($manilaDateTime, 0, 10));
         $order->forceFill(['completed_at' => $this->manila($manilaDateTime)])->save();
+        DB::table('orders')->where('id', $order->id)->update(['created_at' => $this->manila($manilaDateTime)]);
 
-        return $order;
+        return $order->fresh();
     }
 
     /** Completed orders on $count consecutive Manila days from $firstDay. */

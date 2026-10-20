@@ -839,14 +839,16 @@ class StreakRewardsTest extends TestCase
             ->assertSee('data-state="used"', false)
             ->assertSee($ownOrder->order_number);
 
-        // Issued by ANOTHER branch (used there): "belongs to another branch" and nothing else.
+        // Issued by ANOTHER branch (used there): the same answer as a code
+        // that does not exist, and nothing else.
         $elsewhere = $this->grantAt($user, 2, $this->item(2, 100), 1);
         [, $otherOrder] = $this->place($user, $this->cart($this->item(2, 100)), ['reward_code' => $elsewhere->displayCode()], 2);
         $this->assertNotNull($otherOrder);
 
         $html = $this->check($supervisor, $elsewhere->displayCode())->assertOk()->getContent();
-        $this->assertStringContainsString('data-state="other_branch"', $html);
-        $this->assertStringContainsString('This code belongs to another branch.', $html);
+        $this->assertStringContainsString('data-state="not_found"', $html);
+        $this->assertStringContainsString('No reward has this code.', $html);
+        $this->assertStringNotContainsString('another branch', $html);
         $this->assertStringNotContainsString('Already used', $html);
         $this->assertStringNotContainsString($otherOrder->order_number, $html);
         $this->assertStringNotContainsString('Juan Luna', $html);

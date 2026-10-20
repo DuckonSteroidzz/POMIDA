@@ -165,6 +165,17 @@ class SupervisorPromotionScopeTest extends TestCase
         return $kind === 'global' ? null : $this->otherBranch()->id;
     }
 
+    /**
+     * How a refused write answers (Oct 2026). Nothing on the page offers these
+     * actions out of scope, so a refusal is always a typed request: a
+     * company-wide row is one they can see but not change (403); another
+     * branch's answers like a missing id (404), so probing learns nothing.
+     */
+    private function refusalStatus(string $kind): int
+    {
+        return $kind === 'global' ? 403 : 404;
+    }
+
     // ═════════════ 1. CREATION IS AUTO-SCOPED ═════════════
 
     /** A supervisor's new voucher lands in their own branch, with no field. */
@@ -265,7 +276,7 @@ class SupervisorPromotionScopeTest extends TestCase
 
         $this->actingAs($manager, 'admin')
             ->put(route('admin.vouchers.update', $voucher->id), $this->voucherPayload())
-            ->assertRedirect(route('admin.vouchers'));
+            ->assertStatus($this->refusalStatus($kind));
 
         $this->assertSame(
             $before,
@@ -287,7 +298,7 @@ class SupervisorPromotionScopeTest extends TestCase
 
         $this->actingAs($manager, 'admin')
             ->put(route('admin.vouchers.toggle', $voucher->id))
-            ->assertRedirect(route('admin.vouchers'));
+            ->assertStatus($this->refusalStatus($kind));
 
         $this->assertTrue(
             (bool) Voucher::find($voucher->id)->is_active,
@@ -368,7 +379,7 @@ class SupervisorPromotionScopeTest extends TestCase
 
         $this->actingAs($manager, 'admin')
             ->put(route('admin.ads.update', $ad->id), $this->adPayload())
-            ->assertRedirect(route('admin.ads'));
+            ->assertStatus($this->refusalStatus($kind));
 
         $this->assertSame(
             $before,
@@ -385,7 +396,7 @@ class SupervisorPromotionScopeTest extends TestCase
 
         $this->actingAs($manager, 'admin')
             ->put(route('admin.ads.toggle', $ad->id))
-            ->assertRedirect(route('admin.ads'));
+            ->assertStatus($this->refusalStatus($kind));
 
         $this->assertTrue(
             (bool) Ad::find($ad->id)->is_active,
@@ -406,7 +417,7 @@ class SupervisorPromotionScopeTest extends TestCase
 
         $this->actingAs($manager, 'admin')
             ->delete(route('admin.ads.delete', $ad->id))
-            ->assertRedirect(route('admin.ads'));
+            ->assertStatus($this->refusalStatus($kind));
 
         $this->assertNotNull(
             Ad::find($ad->id),

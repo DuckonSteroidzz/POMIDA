@@ -158,8 +158,6 @@
         }
     </style>
     <style>
-        .rating-needed{display:inline-flex;align-items:center;gap:.3rem;margin-top:.35rem;padding:.22rem .5rem;border-radius:999px;background:#fff4ef;color:#C0392B;font-size:0.875rem;font-weight:800}
-        .history-rating-btn{border:1px solid #F4845F;background:#F4845F;color:#fff;border-radius:8px;min-height:44px;padding:.35rem .8rem;font-size:1rem;font-weight:800;cursor:pointer;white-space:nowrap}
         .rating-scale-btn{border:1px solid #ead8d2;background:#fff;color:#8A6A61;border-radius:9px;padding:.5rem;font-size:0.875rem;font-weight:800;cursor:pointer}
         .rating-scale-btn.active{background:#FDE8DE;border-color:#F4845F;color:#8B1A1A}
         .rating-option.selected{background:#FDE8DE !important;border-color:#F4845F !important}
@@ -174,16 +172,34 @@
 <body class="min-h-screen bg-peach-cream">
 
     {{-- ================= HEADER ================= --}}
+    {{-- Orders is a top-level tab, so its Current Order view has no back
+         button. Its History view is Order History, an inner page of More, so it
+         gets the same Back button as the other pages under More
+         (partials/header-back) — however it was opened: from More
+         (?tab=history, shown from the start) or with the History pill on this
+         page (switchTab() un-hides it). Rendered whenever the History panel
+         exists (a signed-in customer), hidden while Current Order is showing. --}}
+    @php
+        $historyBackAvailable = Auth::guard('customer')->check();
+        $historyBack = $historyBackAvailable && request()->query('tab') === 'history';
+    @endphp
     <header class="sticky top-0 z-40 border-b border-peach-soft bg-peach-cream/95 backdrop-blur">
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
-                <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
-                    <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
-                    <span class="min-w-0">
-                        <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
-                        <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
-                    </span>
-                </a>
+                <div class="flex min-w-0 items-center gap-2">
+                    @if($historyBackAvailable)
+                        <span class="shrink-0" data-history-back @if(! $historyBack) hidden @endif>
+                            @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'Back', 'ariaLabel' => 'Back'])
+                        </span>
+                    @endif
+                    <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
+                        <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
+                        <span class="min-w-0">
+                            <span class="block truncate font-display text-xl font-black tracking-tight text-peach-deep sm:text-2xl">Peachy</span>
+                            <span class="block truncate text-[0.8125rem] uppercase tracking-[0.18em] text-peach-red/70 sm:text-[0.875rem]">Cakes &amp; Deli Cafe</span>
+                        </span>
+                    </a>
+                </div>
 
                 @include('customer.partials.desktop-nav')
             </div>
@@ -262,7 +278,7 @@
         </div>
 
         {{-- ══════════ TAB 1: Current Order ══════════ --}}
-        <div id="statusTab" @if($initialTab === 'history') style="display:none;" @endif @if(\App\Support\DineInJoin::isDineInGuest()) data-dinein-guest @endif>
+        <div id="statusTab" @if($initialTab === 'history') style="display:none;" @endif>
             @php
             // A party can have more than one order in flight at once (dine-in
             // second round, pick-up follow-up), so this tab lists all of them
@@ -271,10 +287,6 @@
             @endphp
 
             @if(count($currentOrders))
-
-            @if(!empty($joinCardOrder))
-                @include('customer.partials.dinein-join-card')
-            @endif
 
             @if(count($currentOrders) > 1)
             <p class="mb-4 flex items-center gap-2 rounded-2xl border border-peach-soft bg-peach-cream/60 px-4 py-2.5 text-[0.875rem] font-semibold text-peach-deep/70">
@@ -632,12 +644,6 @@
             @endif
 
             @else
-            {{-- No order in progress. A Dine-In guest whose order was completed today
-                 still gets the card: this is where it comes back once the order is done
-                 (see DineInJoin::cardOrder()). --}}
-            @if(!empty($joinCardOrder))
-                @include('customer.partials.dinein-join-card')
-            @endif
             <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                 <i class="bi bi-bag-check block text-5xl text-peach/40"></i>
                 <p class="mt-3 text-base font-semibold text-peach-deep/55">No active order right now</p>
@@ -649,14 +655,96 @@
         </div>
 
         {{-- ══════════ TAB 2: Order History ══════════ --}}
+        {{--
+            Rebuilt (Oct 2026) to docs/design-refs/peachy-order-history.html:
+            a filter bar (All / Today / 7 days / 30 days, From–To, status,
+            per page, "N orders", Reset), day-grouped cards in an auto-fill
+            grid, and a numbered pager. The tester's HTML filters in the
+            browser; this page does it on the SERVER, from the query string
+            (App\Support\OrderHistoryFilter + the paginator in
+            OrderController::showOrders), so a filtered, paged view is a plain
+            link that survives a reload and works without JavaScript.
+
+            The design's top navigation bar is NOT rebuilt: the page already
+            has the shared header + bottom nav. Its "Current Order" button is
+            the existing Current Order tab button above.
+
+            DOM contract kept for ShopDisplayTimeTest: each group is a
+            <p class="date-group"> followed by its grid <div>; each card a
+            <div class="history-card"> with span.history-order-num and
+            span.history-time.
+        --}}
         @if(Auth::guard('customer')->check())
 <div id="historyTab" @if($initialTab !== 'history') style="display:none;" @endif>
-            @if(isset($orderHistory) && count($orderHistory) > 0)
+            @php
+                $historyFilter = $historyFilter ?? \App\Support\OrderHistoryFilter::fromRequest(request());
+                $historyTotal = method_exists($orderHistory, 'total') ? $orderHistory->total() : count($orderHistory);
+                $showFilterBar = $historyTotal > 0 || $historyFilter->isFiltered();
+                $chipClass = fn (bool $on) => 'inline-flex min-h-11 min-w-0 items-center justify-center rounded-full px-1.5 text-sm font-semibold no-underline transition sm:px-3.5 '
+                    . ($on ? 'bg-white text-peach-red shadow-sm' : 'text-peach-deep/60 hover:text-peach-red');
+                $fieldClass = 'min-h-11 w-full min-w-0 rounded-xl border border-peach-soft bg-white px-2.5 text-sm text-peach-deep outline-none focus:border-peach focus:ring-4 focus:ring-peach/20';
+            @endphp
+
+            @if($showFilterBar)
+            <div class="history-filters mb-6 flex flex-wrap items-center gap-2.5 rounded-2xl border border-peach-soft bg-peach-cream/85 p-3 shadow-[0_2px_0_rgba(139,26,26,.04),0_8px_24px_-12px_rgba(139,26,26,.25)] backdrop-blur-sm" data-testid="history-filters">
+                <div class="grid w-full grid-cols-4 rounded-full bg-peach-soft/60 p-1 sm:flex sm:w-auto" role="group" aria-label="Date range" data-testid="history-presets">
+                    @foreach(['all' => 'All', 'today' => 'Today', '7' => '7 days', '30' => '30 days'] as $presetKey => $presetLabel)
+                    {{-- PHP turns the array keys '7' and '30' into ints; the filter's preset is a string. --}}
+                    @php $presetKey = (string) $presetKey; @endphp
+                    <a href="{{ route('customer.orders', $historyFilter->query(['range' => $presetKey])) }}"
+                       data-preset="{{ $presetKey }}"
+                       @if($historyFilter->preset === $presetKey) aria-current="true" @endif
+                       class="{{ $chipClass($historyFilter->preset === $presetKey) }}">{{ $presetLabel }}</a>
+                    @endforeach
+                </div>
+
+                {{-- display:contents, so the fields sit in the bar's own flex row --}}
+                <form method="GET" action="{{ route('customer.orders') }}" class="contents" data-testid="history-form">
+                    <input type="hidden" name="tab" value="history">
+                    @if(in_array($historyFilter->preset, ['today', '7', '30'], true))
+                        {{-- Keeps the lit chip when only the status or page size changes:
+                             the dates below equal the chip's own, so the server reads it as that chip. --}}
+                        <input type="hidden" name="range" value="{{ $historyFilter->preset }}">
+                    @endif
+
+                    <div class="flex w-full items-center gap-1.5 text-peach-deep/60 sm:w-auto">
+                        <input type="date" name="from" value="{{ $historyFilter->from }}" aria-label="From date" onchange="this.form.requestSubmit()" class="{{ $fieldClass }} sm:w-auto">
+                        <span aria-hidden="true">–</span>
+                        <input type="date" name="to" value="{{ $historyFilter->to }}" aria-label="To date" onchange="this.form.requestSubmit()" class="{{ $fieldClass }} sm:w-auto">
+                    </div>
+
+                    <div class="grid w-full grid-cols-2 gap-2 sm:flex sm:w-auto">
+                        <select name="status" aria-label="Status" onchange="this.form.requestSubmit()" class="{{ $fieldClass }} sm:w-auto">
+                            <option value="all" @selected($historyFilter->status === 'all')>All statuses</option>
+                            <option value="completed" @selected($historyFilter->status === 'completed')>Completed</option>
+                            <option value="cancelled" @selected($historyFilter->status === 'cancelled')>Cancelled</option>
+                        </select>
+                        <select name="per_page" aria-label="Orders per page" onchange="this.form.requestSubmit()" class="{{ $fieldClass }} sm:w-auto">
+                            @foreach(\App\Support\OrderHistoryFilter::PER_PAGE_OPTIONS as $size)
+                            <option value="{{ $size }}" @selected($historyFilter->perPage === $size)>{{ $size }} / page</option>
+                            @endforeach
+                        </select>
+                    </div>
+
+                    <noscript><button type="submit" class="min-h-11 rounded-xl border border-peach-soft bg-white px-4 text-sm font-bold text-peach-deep">Apply</button></noscript>
+                </form>
+
+                <span class="hidden flex-1 sm:block"></span>
+                <div class="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+                    <span class="text-sm text-peach-deep/60" data-testid="history-count" aria-live="polite">{{ $historyTotal }} {{ $historyTotal === 1 ? 'order' : 'orders' }}</span>
+                    <a href="{{ route('customer.orders', $historyFilter->query(['range' => 'all', 'status' => 'all'])) }}"
+                       data-testid="history-reset"
+                       class="inline-flex min-h-11 items-center px-2 text-sm font-bold text-peach-red no-underline hover:text-peach-deep">Reset</a>
+                </div>
+            </div>
+            @endif
+
+            @if(count($orderHistory) > 0)
             @php
             // Grouped by the SHOP's day (Manila), not the app zone's: under
             // APP_TIMEZONE=UTC an order at 7:30 AM Manila would otherwise
-            // land under "Yesterday".
-            $grouped = $orderHistory->groupBy(function($order) {
+            // land under "Yesterday". Only this page's orders are grouped.
+            $grouped = collect($orderHistory->items())->groupBy(function($order) {
             if (\App\Support\ShopDay::isToday($order->created_at)) return 'Today';
             if (\App\Support\ShopDay::isYesterday($order->created_at)) return 'Yesterday';
             return \App\Support\ShopDay::format($order->created_at, 'M d, Y');
@@ -664,67 +752,134 @@
             @endphp
 
             @foreach($grouped as $date => $orders)
-            <p class="date-group mb-2.5 mt-5 text-[0.8125rem] font-bold uppercase tracking-[0.16em] text-peach-deep/45 first:mt-0">{{ $date }}</p>
-            <div class="grid gap-2.5 sm:grid-cols-2 xl:grid-cols-3">
+            <p class="date-group mb-2.5 mt-6 text-xs font-bold uppercase tracking-[0.2em] text-peach-deep/70 first:mt-0">{{ $date }}</p>
+            <div class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,19rem),1fr))] gap-3">
                 @foreach($orders as $order)
                 @php
                     $orderRating = $orderRatings[$order->id] ?? null;
                     $canRate = $order->status === 'completed'
                         && in_array($order->type, ['dine_in', 'pick_up'], true);
+                    $isCancelled = $order->status === 'cancelled';
+                    $dessertRating = ($order->status === 'completed' && $order->has_free_dessert)
+                        ? (($dessertRatings ?? collect())[$order->id] ?? null)
+                        : null;
                 @endphp
-                <div class="history-card card-surface grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 p-3 transition hover:border-peach hover:shadow-md sm:p-4">
-                    <div class="history-icon {{ $order->status === 'cancelled' ? 'cancelled' : 'completed' }} grid h-10 w-10 shrink-0 place-items-center rounded-xl {{ $order->status === 'cancelled' ? 'bg-peach-red' : 'bg-green-500' }}">
-                        <i class="bi {{ $order->status === 'cancelled' ? 'bi-x-lg' : 'bi-check2' }} text-base text-white"></i>
+                <div class="history-card card-surface flex min-w-0 gap-3.5 p-4 transition hover:-translate-y-0.5 hover:border-peach-rose sm:p-[18px]">
+                    <div class="history-icon {{ $isCancelled ? 'cancelled bg-peach-red' : 'completed bg-green-600' }} grid h-9 w-9 shrink-0 self-center place-items-center rounded-[10px] text-white" aria-hidden="true">
+                        <i class="bi {{ $isCancelled ? 'bi-x-lg' : 'bi-check2' }} text-base"></i>
                     </div>
-                    <div class="history-info min-w-0">
-                        <a href="{{ route('customer.receipt', $order->id) }}" class="block no-underline">
-                            <span class="history-order-num block truncate text-sm font-bold text-peach-deep">{{ $order->order_number }}</span>
-                            <span class="history-meta block truncate text-xs font-medium text-peach-deep/50">{{ $order->items_count }} item(s) • {{ strtoupper($order->status) }}</span>
-                            @if($order->discount_amount > 0)
-                            <span class="history-discount block truncate text-xs font-semibold text-green-600">Discount: -₱{{ number_format($order->discount_amount, 2) }}</span>
-                            @endif
-                            <span class="history-time block text-xs text-peach-deep/35">{{ \App\Support\ShopDay::format($order->created_at, 'h:i A') }}</span>
-                        </a>
-                        @if($canRate && !$orderRating)
-                        <span class="rating-needed"><i class="bi bi-star-fill"></i> Meal not rated yet</span>
-                        @elseif($orderRating)
-                        <span class="rating-needed" style="background:#E4F2EA;color:#2E7D5B;">
-                            <i class="bi bi-check-circle-fill"></i> Rated {{ $orderRating->rating }}/5
-                        </span>
+
+                    <div class="min-w-0 flex-1">
+                        {{-- Order number and price. The number is never cut off: it
+                             keeps its full width, and when the price cannot sit beside
+                             it the price drops to the next line, still right-aligned. --}}
+                        <div class="flex flex-wrap items-baseline justify-between gap-x-2 gap-y-0.5">
+                            <a href="{{ route('customer.receipt', $order->id) }}" class="min-w-0 max-w-full no-underline">
+                                <span class="history-order-num block text-xs font-bold text-peach-deep [overflow-wrap:anywhere]">{{ $order->order_number }}</span>
+                            </a>
+                            <span class="history-amount ml-auto whitespace-nowrap font-display text-xl text-peach-deep">₱{{ number_format($order->total, 2) }}</span>
+                        </div>
+
+                        <p class="history-meta mt-1 text-xs leading-relaxed text-peach-deep/60">
+                            {{ $order->items_count }} item(s) • <span class="font-bold tracking-wide {{ $isCancelled ? 'text-peach-red' : 'text-green-700' }}">{{ strtoupper($order->status) }}</span>
+                            <br>
+                            <span class="history-time">{{ \App\Support\ShopDay::format($order->created_at, 'h:i A') }}</span>
+                        </p>
+                        @if($order->discount_amount > 0)
+                        <p class="history-discount mt-0.5 text-xs font-semibold text-green-700">Discount: -₱{{ number_format($order->discount_amount, 2) }}</p>
                         @endif
 
-                        {{-- The free dessert's OWN rating (Oct 2026), separate
-                             from the meal's — see submitDessertRating(). --}}
-                        @if($order->status === 'completed' && $order->has_free_dessert)
-                            @php $dessertRating = ($dessertRatings ?? collect())[$order->id] ?? null; @endphp
-                            @if($dessertRating)
-                            <span class="rating-needed" style="background:#E4F2EA;color:#2E7D5B;" data-testid="dessert-rated">
-                                <i class="bi bi-gift-fill"></i> Reward rated {{ $dessertRating->rating }}/5
+                        <div class="mt-3 grid gap-2.5 border-t border-dashed border-peach-soft pt-3">
+                            @if($canRate)
+                                @if($orderRating)
+                                <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700" data-testid="meal-rated" aria-label="Meal rated {{ $orderRating->rating }} out of 5">
+                                    <span class="text-amber-500" aria-hidden="true">{{ str_repeat('★', (int) $orderRating->rating) }}<span class="text-[#ead9cf]">{{ str_repeat('★', max(0, 5 - (int) $orderRating->rating)) }}</span></span>
+                                    {{ $orderRating->rating }}/5
+                                </span>
+                                @else
+                                <span class="inline-flex items-center gap-1.5 text-xs font-medium text-peach-deep/60" data-testid="meal-not-rated">
+                                    <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-peach" aria-hidden="true"></span> Not rated yet
+                                </span>
+                                @endif
+                            @endif
+
+                            {{-- The free dessert's OWN rating (Oct 2026), separate
+                                 from the meal's — see submitDessertRating(). --}}
+                            @if($order->status === 'completed' && $order->has_free_dessert && $dessertRating)
+                            <span class="inline-flex items-center gap-1.5 text-xs font-semibold text-green-700" data-testid="dessert-rated">
+                                <i class="bi bi-gift-fill" aria-hidden="true"></i> Reward rated {{ $dessertRating->rating }}/5
                             </span>
-                            @else
+                            @endif
+
+                            <div class="flex gap-2">
+                                <a href="{{ route('customer.receipt', $order->id) }}"
+                                   class="history-receipt inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border border-peach-soft bg-white px-3.5 text-sm font-bold text-peach-deep no-underline transition hover:border-peach hover:text-peach-red">View receipt</a>
+                                @if($canRate && !$orderRating)
+                                <button type="button"
+                                    class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border border-transparent bg-peach px-3.5 text-sm font-bold text-white transition hover:bg-peach-red"
+                                    data-testid="rate-meal-btn"
+                                    onclick="openRatingModal({{ $order->id }}, @js($order->order_number))">
+                                    <i class="bi bi-star-fill" aria-hidden="true"></i> Rate meal
+                                </button>
+                                @endif
+                            </div>
+
+                            @if($order->status === 'completed' && $order->has_free_dessert && ! $dessertRating)
                             <button type="button"
-                                class="mt-1.5 inline-flex min-h-11 items-center gap-1.5 rounded-full border border-peach bg-white px-3 text-sm font-bold text-peach-red"
+                                class="inline-flex min-h-11 items-center justify-center gap-1.5 rounded-[10px] border border-peach bg-white px-3.5 text-sm font-bold text-peach-red"
                                 data-testid="rate-dessert-btn"
                                 onclick="openDessertRatingModal({{ $order->id }}, @js($order->order_number))">
                                 <i class="bi bi-gift" aria-hidden="true"></i> Rate your reward
                             </button>
                             @endif
-                        @endif
-                    </div>
-                    <div class="history-right shrink-0 text-right">
-                        <span class="history-amount block font-display text-base font-black text-peach-deep">₱{{ number_format($order->total, 2) }}</span>
-                        <a href="{{ route('customer.receipt', $order->id) }}" class="history-receipt flex min-h-11 items-center justify-end text-sm font-bold text-peach-red">Receipt →</a>
-                        @if($canRate && !$orderRating)
-                        <button type="button" class="history-rating-btn mt-1"
-                            onclick="openRatingModal({{ $order->id }}, @js($order->order_number))">
-                            Rate Meal
-                        </button>
-                        @endif
+                        </div>
                     </div>
                 </div>
                 @endforeach
             </div>
             @endforeach
+
+            @if($orderHistory->hasPages())
+            @php
+                $pagerCurrent = $orderHistory->currentPage();
+                $pagerLast = $orderHistory->lastPage();
+                $pagerPages = collect([1, $pagerLast, $pagerCurrent - 1, $pagerCurrent, $pagerCurrent + 1])
+                    ->filter(fn ($p) => $p >= 1 && $p <= $pagerLast)->unique()->sort()->values();
+                $pagerBox = 'inline-flex min-h-11 min-w-11 items-center justify-center rounded-[10px] border px-3 text-sm font-bold no-underline transition';
+            @endphp
+            <nav class="history-pager mb-6 mt-8 flex flex-wrap items-center justify-center gap-1.5" aria-label="Order history pages" data-testid="history-pager">
+                @if($orderHistory->onFirstPage())
+                <span class="{{ $pagerBox }} cursor-not-allowed border-peach-soft bg-white text-peach-deep opacity-40" aria-disabled="true">‹ Prev</span>
+                @else
+                <a href="{{ $orderHistory->previousPageUrl() }}" rel="prev" class="{{ $pagerBox }} border-peach-soft bg-white text-peach-deep hover:border-peach">‹ Prev</a>
+                @endif
+
+                @foreach($pagerPages as $p)
+                    @if(! $loop->first && $p - $pagerPages[$loop->index - 1] > 1)
+                    <span class="px-1 text-peach-deep/50" aria-hidden="true">…</span>
+                    @endif
+                    @if($p === $pagerCurrent)
+                    <span class="{{ $pagerBox }} border-peach-red bg-peach-red text-white" aria-current="page">{{ $p }}</span>
+                    @else
+                    <a href="{{ $orderHistory->url($p) }}" class="{{ $pagerBox }} border-peach-soft bg-white text-peach-deep hover:border-peach" aria-label="Page {{ $p }}">{{ $p }}</a>
+                    @endif
+                @endforeach
+
+                @if($orderHistory->hasMorePages())
+                <a href="{{ $orderHistory->nextPageUrl() }}" rel="next" class="{{ $pagerBox }} border-peach-soft bg-white text-peach-deep hover:border-peach">Next ›</a>
+                @else
+                <span class="{{ $pagerBox }} cursor-not-allowed border-peach-soft bg-white text-peach-deep opacity-40" aria-disabled="true">Next ›</span>
+                @endif
+            </nav>
+            @endif
+            @elseif($historyFilter->isFiltered())
+            <div class="empty-state grid place-items-center rounded-2xl bg-white/60 px-6 py-14 text-center" data-testid="history-empty-filtered">
+                <i class="bi bi-funnel block text-5xl text-peach/40"></i>
+                <p class="mt-3 text-base font-semibold text-peach-deep/60">No orders in this range. Try a different date.</p>
+                <a href="{{ route('customer.orders', $historyFilter->query(['range' => 'all', 'status' => 'all'])) }}" class="mt-4 inline-flex min-h-11 items-center gap-2 rounded-full bg-peach-red px-5 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
+                    Reset filters
+                </a>
+            </div>
             @else
             <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                 <i class="bi bi-clock-history block text-5xl text-peach/40"></i>
@@ -1304,6 +1459,13 @@
                     panel.style.display = i === target ? 'block' : 'none';
                 }
             });
+
+            // Order History (an inner page of More) has a Back button; the
+            // Current Order view (a top-level tab) does not.
+            const historyBack = document.querySelector('[data-history-back]');
+            if (historyBack) {
+                historyBack.hidden = target !== 1;
+            }
         }
 
         // Order status is checked by the AJAX poller below.
@@ -1795,10 +1957,6 @@
         }
 
         if (statusTab) {
-            // The Dine-In "Want a stamp?" card already on the page (a finished
-            // order was loaded with it) must survive the repaint.
-            const joinCard = statusTab.querySelector('section.dinein-join');
-
             statusTab.innerHTML = `
                 <div class="empty-state card-surface grid place-items-center px-6 py-14 text-center">
                     <i class="bi bi-bag-check block text-5xl text-peach/40"></i>
@@ -1808,46 +1966,7 @@
                     </a>
                 </div>
             `;
-
-            if (joinCard) {
-                statusTab.insertBefore(joinCard, statusTab.firstChild);
-            } else if (statusTab.hasAttribute('data-dinein-guest')) {
-                restoreJoinCard(statusTab);
-            }
         }
-    }
-
-    /**
-     * A Dine-In guest's last order just finished while this page was open: the
-     * join (stamp) card was not drawn (it is hidden while an
-     * order is in progress) and the server alone knows whether it is due now
-     * (completed today, a branch that earns stamps; never for a cancelled or
-     * rejected order). Ask the server by loading this same page and take only
-     * the card, with its own style block, from the answer. Nothing is decided
-     * here, and a failure just leaves the page as it was.
-     */
-    function restoreJoinCard(statusTab) {
-        fetch(window.location.pathname, {
-            credentials: 'same-origin',
-            headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'text/html' },
-        })
-            .then(function (r) { return r.ok ? r.text() : ''; })
-            .then(function (html) {
-                if (!html || statusTab.querySelector('section.dinein-join')) return;
-
-                const doc = new DOMParser().parseFromString(html, 'text/html');
-                const card = doc.querySelector('section.dinein-join');
-                if (!card) return;
-
-                doc.querySelectorAll('style').forEach(function (style) {
-                    if (style.textContent.indexOf('.dinein-join') !== -1) {
-                        document.head.appendChild(document.importNode(style, true));
-                    }
-                });
-
-                statusTab.insertBefore(document.importNode(card, true), statusTab.firstChild);
-            })
-            .catch(function () { /* the page stays as it is */ });
     }
 
     /**

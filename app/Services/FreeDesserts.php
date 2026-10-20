@@ -29,8 +29,9 @@ use Illuminate\Support\Facades\DB;
  * its own reward and its own on/off. Nothing is shared between branches, so a
  * customer who orders at two branches fills two cards.
  *
- * THE RULE. One stamp per shop day (Manila) with at least one COMPLETED order
- * AT THE BRANCH (orders.branch_id), counted from
+ * THE RULE. One stamp per shop day (Manila) on which the customer PLACED at
+ * least one order that is now COMPLETED, AT THE BRANCH (orders.branch_id) — the
+ * day it was placed, not the day staff finished it (StreakCalendar) — counted from
  * config('loyalty.free_dessert_counts_from'). The days do NOT have to be
  * consecutive, and several completed orders on one day are still one stamp.
  * With X = StreakRewardSettings::visitDays($branchId), D stamps at that branch

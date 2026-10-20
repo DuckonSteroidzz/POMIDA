@@ -105,7 +105,7 @@ class FreeDessertPromptTest extends TestCase
 
     private function order(User $user, string $status, ?string $manilaDay = null): Order
     {
-        return Order::create([
+        $order = Order::create([
             'order_number'   => 'FDQ-' . strtoupper(Str::random(8)),
             'user_id'        => $user->id,
             'branch_id'      => 1,
@@ -119,6 +119,16 @@ class FreeDessertPromptTest extends TestCase
                 ? CarbonImmutable::parse($manilaDay . ' 12:00:00', 'Asia/Manila')->utc()->format('Y-m-d H:i:s')
                 : null,
         ]);
+
+        // A stamp day is the day the order was PLACED (created_at, not fillable).
+        if ($manilaDay) {
+            DB::table('orders')->where('id', $order->id)->update([
+                'created_at' => CarbonImmutable::parse($manilaDay . ' 12:00:00', 'Asia/Manila')->utc()->format('Y-m-d H:i:s'),
+            ]);
+            $order = $order->fresh();
+        }
+
+        return $order;
     }
 
     /** Staff complete an order through the real admin route (which grants). */

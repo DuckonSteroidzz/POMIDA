@@ -985,6 +985,11 @@
                 'admin.summary',
                 'admin.qr-generator',
                 'admin.ads',
+                // Promotions & Rewards (Oct 2026): all three tabs show the
+                // bar. Vouchers and Streak Rewards act on it themselves (see
+                // pcBranchSelectHandler below and App\Support\ViewingBranch).
+                'admin.vouchers',
+                'admin.streak-rewards',
                 'admin.analytics',
                 // Batch 2 (2026-09-29): the branch only changes the Items
                 // counts there — categories themselves are global.
@@ -1061,11 +1066,15 @@
 
                     {{-- Admin only — may branch filter. A plain GET navigation,
                          not a POST form: switching your own "Viewing:" scope
-                         writes nothing and carries no CSRF token to go stale. --}}
+                         writes nothing and carries no CSRF token to go stale.
+                         A page may define window.pcBranchSelectHandler(value,
+                         select) to apply the choice itself (Vouchers swaps its
+                         list in the background); returning true means it did. --}}
                     <div style="display:flex;gap:0.5rem;align-items:center;margin:0;">
 
                         <select name="branch_id"
-                            onchange="if(this.value){window.location.href='{{ url('admin/branches/select') }}/'+encodeURIComponent(this.value);}"
+                            onchange="if(window.pcBranchSelectHandler&&window.pcBranchSelectHandler(this.value,this)){return;}if(this.value){window.location.href='{{ url('admin/branches/select') }}/'+encodeURIComponent(this.value);}"
+                            data-pc-branch-select aria-label="Viewing branch"
                             class="pc-select">
 
                             <option value="all"

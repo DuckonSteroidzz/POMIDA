@@ -297,16 +297,14 @@ class DineInSignupClaimTest extends TestCase
             ->assertSessionHas(DineInJoin::NOTICE_KEY, DineInJoin::MSG_ONGOING_ORDER);
         $this->assertNull(session(DineInJoin::SESSION_ORDER), 'a blocked join must not pin anything');
 
-        // Staff complete it: the card is back on the order screen, with Sign up and Log in.
+        // Staff complete it: the Orders page no longer carries a stamp card (removed);
+        // the join route is reached from the Dine-In rewards pop-up instead.
         $this->complete($order);
         $orders = $this->get(route('customer.orders'))->assertOk();
-        $orders->assertSee('data-dinein-join-card', false);
-        $orders->assertSee('Want a stamp for this order?');
-        $orders->assertSee('Sign up free and confirm your email today to get a stamp for this order.');
-        $orders->assertSee(route('customer.dinein-join', ['mode' => 'signup']), false);
-        $orders->assertSee(route('customer.dinein-join', ['mode' => 'login']), false);
+        $orders->assertDontSee('data-dinein-join-card', false);
+        $orders->assertDontSee('a stamp for this order');
 
-        // Sign up from the card.
+        // Sign up through the join route (what the pop-up links to).
         $this->get(route('customer.dinein-join', ['mode' => 'signup']))->assertRedirect(route('customer.register'));
         $this->assertSame($order->id, session(DineInJoin::SESSION_ORDER), 'the join did not pin this session\'s order');
         $this->get(route('customer.register'))->assertOk()->assertSee('data-dinein-join-note', false);
@@ -404,8 +402,8 @@ class DineInSignupClaimTest extends TestCase
         $this->assertSame($rewards, FreeDessertReward::count());
         $this->assertSame($awards, LoyaltyAward::count());
 
-        // After completion the card is back (completed today, still claimable).
-        $this->get(route('customer.orders'))->assertOk()->assertSee('data-dinein-join-card', false);
+        // After completion the order is still claimable, but the Orders page shows no card.
+        $this->get(route('customer.orders'))->assertOk()->assertDontSee('data-dinein-join-card', false);
     }
 
     // ══════════ 3. claims that must fail ══════════

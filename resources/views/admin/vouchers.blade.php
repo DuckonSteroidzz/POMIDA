@@ -456,6 +456,13 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
          viewer's own scope is applied before any of this. --}}
     @php $filtersOn = $filters['q'] !== '' || $filters['status'] !== '' || $filters['scope'] !== ''; @endphp
     <form action="{{ route('admin.vouchers') }}" method="GET" class="vch-toolbar" role="search" data-testid="voucher-filters">
+        {{-- The owner's "Viewing:" branch (the bar at the top of the page).
+             Not a filter: "Clear filters" keeps it, and it is the one value
+             the bar, not this form, changes. Absent for staff/supervisors,
+             who have no choice to carry. --}}
+        @if($lockedBranchId === null)
+            <input type="hidden" name="branch" value="{{ $viewingBranchId ?? 'all' }}" data-vch-viewing>
+        @endif
         <label class="vch-search">
             <i class="bi bi-search" aria-hidden="true"></i>
             <input type="search" name="q" value="{{ $filters['q'] }}" maxlength="100"
@@ -470,8 +477,12 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
         <select name="scope" class="form-control-custom vch-filter" aria-label="Filter by scope">
             <option value="">All scopes</option>
             <option value="global" @selected($filters['scope'] === 'global')>Global</option>
+            {{-- Viewing one branch, the other branches' scopes could only list
+                 nothing, so they are hidden (and re-shown by the script when
+                 the Viewing branch changes). --}}
             @foreach($scopeBranches as $scopeBranch)
-                <option value="{{ $scopeBranch->id }}" @selected($filters['scope'] === (string) $scopeBranch->id)>{{ $scopeBranch->name }}</option>
+                @php $scopeOff = $viewingBranchId !== null && $scopeBranch->id !== $viewingBranchId; @endphp
+                <option value="{{ $scopeBranch->id }}" data-scope-branch @selected($filters['scope'] === (string) $scopeBranch->id) @if($scopeOff) hidden disabled @endif>{{ $scopeBranch->name }}</option>
             @endforeach
         </select>
         <noscript><button type="submit" class="vch-btn-ghost">Search</button></noscript>
@@ -595,6 +606,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
         var countEl = document.getElementById('vchCount');
         var clearEl = document.getElementById('vchClearFilters');
         var searchEl = form.elements.q;
+        var viewingEl = form.querySelector('[data-vch-viewing]');
         var DEBOUNCE_MS = 300;
         var timer = null;
         var latest = 0;          // sequence number of the newest request
@@ -612,7 +624,31 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                 var value = form.elements[name].value.trim();
                 if (value === '') { url.searchParams.delete(name); } else { url.searchParams.set(name, value); }
             });
+            // Always sent, so the server remembers it and the URL says it.
+            if (viewingEl) { url.searchParams.set('branch', viewingEl.value || 'all'); }
             return url;
+        }
+
+        // Viewing one branch, only Global and that branch remain as scopes.
+        function syncScopeOptions() {
+            if (!viewingEl) { return; }
+            var viewing = viewingEl.value;
+            Array.prototype.forEach.call(form.elements.scope.querySelectorAll('[data-scope-branch]'), function (option) {
+                var off = viewing !== 'all' && option.value !== viewing;
+                option.hidden = off;
+                option.disabled = off;
+            });
+            var chosen = form.elements.scope.selectedOptions[0];
+            if (chosen && chosen.disabled) { form.elements.scope.value = ''; }
+        }
+
+        // The four cards above the list, from the counts the fragment carries.
+        function updateStats(fresh) {
+            ['total', 'active', 'onWheel', 'expired'].forEach(function (key) {
+                var value = fresh.dataset['stat' + key.charAt(0).toUpperCase() + key.slice(1)];
+                var card = document.querySelector('[data-stat="' + key.replace('onWheel', 'on_wheel') + '"]');
+                if (card && value !== undefined) { card.textContent = Number(value).toLocaleString('en-US'); }
+            });
         }
 
         function setBusy(on) {
@@ -660,6 +696,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                     region.dataset.filtersOn = fresh.dataset.filtersOn;
                     if (countEl) { countEl.textContent = fresh.dataset.total; }
                     if (clearEl) { clearEl.hidden = fresh.dataset.filtersOn !== '1'; }
+                    updateStats(fresh);
 
                     // Only now does the address change, so a failed update never
                     // leaves a URL that does not match the list on screen.
@@ -717,6 +754,21 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
         document.getElementById('vchRetry').addEventListener('click', function () {
             load(lastUrl || filterUrl());
         });
+
+        // The "Viewing:" bar at the top of the page (owner only): switch the
+        // list here, in the background, keeping the search and filters. The
+        // server remembers the branch, so the Streak Rewards tab opens on it.
+        if (viewingEl) {
+            window.pcBranchSelectHandler = function (value, select) {
+                viewingEl.value = value || 'all';
+                var label = document.querySelector('.pc-branchbar .value');
+                var option = select && select.options[select.selectedIndex];
+                if (label && option) { label.textContent = option.text.trim(); }
+                syncScopeOptions();
+                applyNow();
+                return true;
+            };
+        }
     })();
 </script>
 

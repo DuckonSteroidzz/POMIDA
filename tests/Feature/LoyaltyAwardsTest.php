@@ -85,9 +85,9 @@ class LoyaltyAwardsTest extends TestCase
     }
 
     /** An order with no lines, so completion has no stock to deduct. */
-    private function order(?User $user, string $status = 'pending', ?string $completedManila = null): Order
+    private function order(?User $user, string $status = 'pending', ?string $completedManila = null, ?string $placedManila = null): Order
     {
-        return Order::create([
+        $order = Order::create([
             'order_number'   => 'LOY-' . strtoupper(Str::random(8)),
             'user_id'        => $user?->id,
             'branch_id'      => 1,
@@ -99,6 +99,16 @@ class LoyaltyAwardsTest extends TestCase
             'total'          => 100,
             'completed_at'   => $completedManila ? $this->manila($completedManila) : null,
         ]);
+
+        // A streak day is the day the order was PLACED. created_at is not
+        // fillable, so a back-dated fixture sets it directly; by default it is
+        // placed at the moment it is completed.
+        if ($placedManila ?? $completedManila) {
+            DB::table('orders')->where('id', $order->id)->update(['created_at' => $this->manila($placedManila ?? $completedManila)]);
+            $order = $order->fresh();
+        }
+
+        return $order;
     }
 
     /** Staff press Complete — the real route, the only way an order completes. */
@@ -314,6 +324,49 @@ class LoyaltyAwardsTest extends TestCase
         $this->complete($this->order($user));
 
         $this->assertSame(['3:2026-10-13'], $this->awards($user, LoyaltyAward::TYPE_STREAK)->pluck('award_key')->all());
+    }
+
+    /**
+     * Placed on the 13th, the 14th (23:50, completed 00:10 on the 15th) and
+     * the 15th: three days in a row. By completion day the 14th's order would
+     * have been dated the 15th, leaving a gap on the 14th and no bonus.
+     */
+    public function test_an_order_completed_after_midnight_counts_for_the_day_it_was_placed(): void
+    {
+        $user = $this->customer();
+        $this->order($user, 'completed', '2026-10-13 12:00');
+        $this->order($user, 'completed', '2026-10-15 00:10', '2026-10-14 23:50');
+
+        // Placed today, completed now: the third day in a row (13, 14, 15).
+        $this->complete($this->order($user));
+
+        $this->assertSame(['3:2026-10-13'], $this->awards($user, LoyaltyAward::TYPE_STREAK)->pluck('award_key')->all());
+    }
+
+    public function test_a_late_completion_joins_the_run_to_days_already_completed_after_it(): void
+    {
+        $user = $this->customer();
+        $this->order($user, 'completed', '2026-10-13 12:00');
+        // Placed on the 14th but staff only get to it on the 16th... the 15th was already completed.
+        $this->order($user, 'completed', '2026-10-15 12:00');
+        $late = $this->order($user, 'preparing', null, '2026-10-14 12:00');
+
+        $this->travelTo(CarbonImmutable::parse('2026-10-16 04:00:00', 'UTC'));
+        $this->complete($late);
+
+        // Days 13, 14, 15 are one run of 3, found from the late order's own day.
+        $this->assertSame(['3:2026-10-13'], $this->awards($user, LoyaltyAward::TYPE_STREAK)->pluck('award_key')->all());
+    }
+
+    public function test_an_order_placed_yesterday_and_completed_today_does_not_make_today_a_streak_day(): void
+    {
+        $user = $this->customer();
+        $this->order($user, 'completed', '2026-10-13 12:00');
+        // Placed on the 14th (yesterday), completed today: only the 14th is marked.
+        $this->complete($this->order($user, 'preparing', null, '2026-10-14 12:00'));
+
+        // 13th + 14th = 2 days; today (the 15th) has no order placed on it.
+        $this->assertCount(0, $this->awards($user, LoyaltyAward::TYPE_STREAK));
     }
 
     // ══════════ the ledger is the guard ══════════

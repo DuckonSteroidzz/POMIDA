@@ -65,7 +65,7 @@
         <div class="mx-auto w-full max-w-6xl px-4 sm:px-6">
             <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 py-3 sm:py-4">
                 <div class="flex min-w-0 items-center gap-2">
-                    @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'More'])
+                    @include('customer.partials.header-back', ['href' => route('customer.more'), 'label' => 'Back', 'ariaLabel' => 'Back'])
                     <a href="{{ route('customer.menu') }}" class="flex min-w-0 items-center gap-3 no-underline">
                         <span class="grid h-11 w-11 shrink-0 place-items-center rounded-full bg-peach-soft text-xl sm:h-12 sm:w-12 sm:text-2xl">🍑</span>
                         <span class="min-w-0">

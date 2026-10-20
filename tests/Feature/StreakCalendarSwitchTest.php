@@ -133,7 +133,7 @@ class StreakCalendarSwitchTest extends TestCase
 
     private function completedOrderOn(?User $user, string $manilaDay): Order
     {
-        return Order::create([
+        $order = Order::create([
             'order_number'   => 'SSW-' . strtoupper(Str::random(8)),
             'user_id'        => $user?->id,
             'branch_id'      => 1,
@@ -145,6 +145,11 @@ class StreakCalendarSwitchTest extends TestCase
             'total'          => 100,
             'completed_at'   => $this->manila($manilaDay . ' 12:00:00'),
         ]);
+
+        // A streak day is the day the order was PLACED (created_at, not fillable).
+        DB::table('orders')->where('id', $order->id)->update(['created_at' => $this->manila($manilaDay . ' 12:00:00')]);
+
+        return $order->fresh();
     }
 
     private function pendingOrder(?User $user): Order
@@ -247,7 +252,7 @@ class StreakCalendarSwitchTest extends TestCase
             ->assertSee('data-testid="benefit-free-dessert"', false);
 
         $this->actingAs($this->portalUser('admin'), 'admin')->get(route('admin.streak-rewards'))->assertOk()
-            ->assertSee('Streak Calendar on/off', false)
+            ->assertSee('Master Streak Calendar', false)
             ->assertSee('Turns the stamp card off for every branch');
     }
 
@@ -483,9 +488,11 @@ class StreakCalendarSwitchTest extends TestCase
         $this->assertSame(['0'], $this->globalRows()->pluck('value')->all());
         $this->assertFalse(Setting::streakCalendarEnabled());
 
-        $this->actingAs($owner, 'admin')->get(route('admin.streak-rewards'))->assertOk()
-            ->assertSee('background:#ccc', false)
-            ->assertSee('✗ Disabled');
+        // The Master Streak Calendar switch now reads Off.
+        $this->assertMatchesRegularExpression(
+            '/role="switch" aria-checked="false"\s+aria-label="Master Streak Calendar" data-testid="streak-master-switch"/',
+            $this->actingAs($owner, 'admin')->get(route('admin.streak-rewards'))->assertOk()->getContent()
+        );
 
         $this->actingAs($owner, 'admin')->post(route('admin.streak.toggle'))
             ->assertRedirect(route('admin.streak-rewards'))
@@ -511,7 +518,7 @@ class StreakCalendarSwitchTest extends TestCase
         // own branch's settings) but never sees the master switch there.
         $this->actingAs($this->portalUser('supervisor'), 'admin')->get(route('admin.streak-rewards'))->assertOk()
             ->assertDontSee(route('admin.streak.toggle'), false)
-            ->assertDontSee('Streak Calendar on/off', false);
+            ->assertDontSee('Master Streak Calendar', false);
 
         // Staff cannot reach the page at all.
         $this->actingAs($this->portalUser('staff'), 'admin')->get(route('admin.streak-rewards'))

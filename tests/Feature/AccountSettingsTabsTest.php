@@ -21,8 +21,10 @@ use Tests\TestCase;
  *  - the profile card sits above the tabs, outside every panel;
  *  - all four panels are in the HTML (inactive ones carry `hidden`, they are
  *    never left out) and every section sits in the panel the reference gives it;
- *  - all four panels, and the sticky Delete / Save bar, are inside the ONE
+ *  - all four panels, and the Delete / Save bar, are inside the ONE
  *    account-update form, so Save submits every field whichever tab is open;
+ *    the bar is a plain static block at the end of the form (not sticky/fixed);
+ *  - the header carries the standard customer nav (More shown, and lit);
  *  - a rejected field starts the page on the tab that holds it, with the error
  *    printed next to the field.
  *
@@ -252,7 +254,57 @@ class AccountSettingsTabsTest extends TestCase
         $this->assertSame(1, $x->query('ancestor::form[@id="account-form"]', $bar)->length);
         $this->assertSame(1, $x->query('.//button[@type="submit"][contains(normalize-space(.), "Save Changes")]', $bar)->length);
         $this->assertSame(1, $x->query('.//button[@onclick="confirmDelete()"]', $bar)->length);
-        $this->assertStringContainsString('sticky', $bar->getAttribute('class'));
+    }
+
+    public function test_the_save_and_delete_bar_is_static_and_last_in_the_form(): void
+    {
+        $html = $this->page($this->customer());
+        $x = $this->xpath($html);
+        $bar = $this->one($x, '//*[@data-testid="account-action-bar"]');
+
+        $classes = preg_split('/\s+/', trim($bar->getAttribute('class')));
+        foreach ($classes as $class) {
+            $this->assertDoesNotMatchRegularExpression('/(^|:)(sticky|fixed|absolute)$|^(top|bottom)-|^z-/', $class, "the bar still carries the positioning class '$class'");
+        }
+        // No ancestor between the bar and the form positions it either.
+        $this->assertSame(0, $x->query('ancestor::*[contains(concat(" ", normalize-space(@class), " "), " sticky ") or contains(concat(" ", normalize-space(@class), " "), " fixed ")]', $bar)->length);
+        // It is the last element in the form: nothing follows it.
+        $this->assertSame(0, $x->query('following-sibling::*', $bar)->length, 'something follows the action bar in the form');
+        // And no padding is reserved for a floating bar.
+        $this->assertStringNotContainsString('scroll-padding-bottom', $html);
+    }
+
+    public function test_the_header_shows_the_standard_nav_with_more_lit_for_every_order_type(): void
+    {
+        $user = $this->customer();
+
+        foreach (['pick_up', 'dine_in', null] as $type) {
+            $request = $this->actingAs($user, 'customer')->withSession(array_filter(['branch_id' => 1, 'order_type' => $type]));
+            $html = $request->get(route('customer.account'))->assertOk()->getContent();
+
+            preg_match('/<header\b.*?<\/header>/s', $html, $header);
+            $nav = $header[0] ?? '';
+            $this->assertStringContainsString('<nav class="hidden items-center gap-1 md:flex">', $nav, "$type: standard nav missing");
+
+            // Same items, same order as the More page: Menu, Orders, Spin & Win, More, Cart.
+            preg_match_all('/<i class="bi (bi-[a-z0-9-]+)"><\/i>\s*(Menu|Orders|Spin &amp; Win|More|Cart)\b/', $nav, $m);
+            $this->assertSame(['Menu', 'Orders', 'Spin &amp; Win', 'More', 'Cart'], $m[2], "$type: nav items differ from the standard nav");
+
+            // More is the lit (active) item.
+            $this->assertMatchesRegularExpression('/href="' . preg_quote(route('customer.more'), '/') . '"[^>]*bg-peach-soft text-peach-red[^>]*>\s*<i class="bi bi-three-dots"><\/i> More/', $nav, "$type: More is not the active item");
+        }
+    }
+
+    public function test_the_back_button_reads_back_and_still_goes_to_more(): void
+    {
+        $html = $this->page($this->customer());
+        $x = $this->xpath($html);
+        $back = $this->one($x, '//header//a[@data-header-back]');
+
+        $this->assertSame(route('customer.more'), $back->getAttribute('href'));
+        $this->assertSame('Back', $back->getAttribute('aria-label'));
+        $this->assertSame('Back', trim($back->textContent));
+        $this->assertStringContainsString('bi-arrow-left', $html);
     }
 
     public function test_the_tab_script_handles_hash_and_arrow_keys(): void

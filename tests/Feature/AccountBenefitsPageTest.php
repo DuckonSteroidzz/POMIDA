@@ -63,7 +63,7 @@ class AccountBenefitsPageTest extends TestCase
 
     private function order(User $user, string $manila, string $status = 'completed'): void
     {
-        Order::create([
+        $order = Order::create([
             'order_number'   => 'BEN-' . strtoupper(Str::random(8)),
             'user_id'        => $user->id,
             'branch_id'      => 1,
@@ -75,6 +75,10 @@ class AccountBenefitsPageTest extends TestCase
             'total'          => 100,
             'completed_at'   => CarbonImmutable::parse($manila, 'Asia/Manila')->utc()->format('Y-m-d H:i:s'),
         ]);
+
+        // The day a streak counts is the day the order was PLACED (created_at,
+        // not fillable), so a back-dated fixture is placed when it completes.
+        DB::table('orders')->where('id', $order->id)->update(['created_at' => CarbonImmutable::parse($manila, 'Asia/Manila')->utc()->format('Y-m-d H:i:s')]);
     }
 
     // ══════════ registered, verified ══════════

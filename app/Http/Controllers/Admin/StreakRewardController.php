@@ -9,6 +9,7 @@ use App\Models\Voucher;
 use App\Services\AdminOrderAccess;
 use App\Services\RewardCodeCheck;
 use App\Services\StreakRewardSettings;
+use App\Support\ViewingBranch;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -58,14 +59,27 @@ class StreakRewardController extends Controller
     public const DEFAULT_SCOPE = 'default';
 
     /**
+     * Why "All branches" + Free menu item is refused. Menu items are made per
+     * branch (Menu Items will not add one under All Branches), so the only item
+     * that could fit is one sold at every branch (branch_id NULL), and none can
+     * be created from the portal.
+     */
+    public const ITEM_PER_BRANCH_MESSAGE = 'Free menu items are set per branch. Select a specific branch to choose the menu item.';
+
+    /**
      * GET admin.streak-rewards. Mirrors the data AdminController::showVouchers()
      * used to build for the same card, moved here with the page itself.
      *
-     *   Owner: ?streak_branch=<id>|default picks the branch (or "All
-     *     branches") the settings card shows; an overview of every branch is
-     *     always included.
-     *   Supervisor: their own branch only — no query param, no overview.
-     *     A branchless supervisor gets scope_ok=false and no form.
+     *   Owner: ?streak_branch=<id>|default (or ?branch=) picks the branch (or
+     *     "All branches") the settings card shows. It is the same choice as the
+     *     "Viewing:" bar (App\Support\ViewingBranch): without a query value
+     *     the page opens on whatever the owner is viewing, and a value here
+     *     becomes what they view everywhere. The overview of every branch is
+     *     always included. ?reward=menu_item|voucher preselects the Reward
+     *     (the "pick a branch" links under All Branches use it).
+     *   Supervisor: their own branch only — every query value is ignored, no
+     *     tabs, no overview. A branchless supervisor gets scope_ok=false and no
+     *     form.
      */
     public function index(Request $request)
     {
@@ -74,17 +88,26 @@ class StreakRewardController extends Controller
         $locked = AdminOrderAccess::lockedBranchId();
 
         $streakOverview = collect();
-        $scopeBranch = null;
+        $branchTabs = collect();
+        $globalDefaults = null;
         $scopeOk = true;
 
         if ($locked === null) {
-            $requested = (string) $request->query('streak_branch', '');
-            $scopeBranch = ctype_digit($requested) ? Branch::find((int) $requested) : null;
+            $scopeBranch = ViewingBranch::resolve(
+                $request->query('streak_branch', $request->query('branch')),
+                self::DEFAULT_SCOPE
+            );
             $streakOverview = StreakRewardSettings::overview();
+            $branchTabs = $streakOverview->pluck('branch');
+            $globalDefaults = StreakRewardSettings::current(null);
         } else {
             $scopeBranch = $locked > 0 ? Branch::find($locked) : null;
             $scopeOk = $scopeBranch !== null;
         }
+
+        $preferredType = in_array($request->query('reward'), StreakRewardSettings::TYPES, true)
+            ? $request->query('reward')
+            : null;
 
         $scopeId = $scopeBranch?->id;
 
@@ -110,24 +133,24 @@ class StreakRewardController extends Controller
                 ->orderBy('code')
                 ->get();
 
-            // Menu items are never company-wide in this business — the Menu
-            // Items page itself says "Select a specific branch before adding
-            // menu items" — so under "All branches" ($scopeId === null) this
-            // query can never return a row. Skip it rather than hand the view
-            // an always-empty list to render as a picker; the view disables
-            // the "Free menu item" reward for that scope instead.
-            if ($scopeId !== null) {
-                $rewardMenuItemOptions = MenuItem::with('branch')
-                    ->where($fitsScope)
-                    ->orderBy('name')
-                    ->get(['id', 'name', 'branch_id', 'is_available']);
-            }
+            // Under "All branches" ($scopeId === null) only an item sold at
+            // every branch (branch_id NULL) fits. The schema and the customer
+            // menu support one, but Menu Items never creates one ("Select a
+            // specific branch before adding menu items"), so this is normally
+            // empty and the view then says to pick a branch instead.
+            $rewardMenuItemOptions = MenuItem::with('branch')
+                ->where($fitsScope)
+                ->orderBy('name')
+                ->get(['id', 'name', 'branch_id', 'is_available']);
         }
 
         return view('admin.streak-rewards', compact(
             'isAdmin',
             'streakRewards',
             'streakOverview',
+            'branchTabs',
+            'globalDefaults',
+            'preferredType',
             'rewardVoucherOptions',
             'rewardMenuItemOptions'
         ));
@@ -136,6 +159,14 @@ class StreakRewardController extends Controller
     public function update(Request $request): RedirectResponse
     {
         $branchId = $this->targetBranch($request, allowDefault: true);
+
+        // "All branches" + Free menu item with no item chosen: say why in the
+        // owner's words before the generic "choose the menu item" rule does.
+        if ($branchId === null
+            && $request->input('reward_type') === StreakRewardSettings::TYPE_MENU_ITEM
+            && blank($request->input('menu_item_id'))) {
+            return $this->refuse('menu_item_id', self::ITEM_PER_BRANCH_MESSAGE, null);
+        }
 
         $validated = $request->validateWithBag(self::ERROR_BAG_SETTINGS, [
             'days'          => 'required|integer|min:1|max:' . StreakRewardSettings::MAX_DAYS,
@@ -194,7 +225,7 @@ class StreakRewardController extends Controller
 
             if (! StreakRewardSettings::fits($menuItem->branch_id !== null ? (int) $menuItem->branch_id : null, $branchId)) {
                 return $this->refuse('menu_item_id', $branchId === null
-                    ? 'Free menu item is set per branch. Choose a voucher discount for all branches instead.'
+                    ? self::ITEM_PER_BRANCH_MESSAGE
                     : 'Choose a menu item sold at ' . $branchName . ' or at all branches.', $branchId);
             }
         }
@@ -241,7 +272,20 @@ class StreakRewardController extends Controller
 
         StreakRewardSettings::setBranchEnabled($branchId, $on, Auth::guard('admin')->id());
 
-        return $this->backTo($branchId)->with(
+        // The Branch Overview's switches post the tab the owner was on, so
+        // flipping a branch there does not jump the page to that branch.
+        $returnTo = $branchId;
+        $returnScope = trim((string) $request->input('return_scope', ''));
+
+        if (AdminOrderAccess::lockedBranchId() === null && $returnScope !== '') {
+            if ($returnScope === self::DEFAULT_SCOPE) {
+                $returnTo = null;
+            } elseif (ctype_digit($returnScope) && Branch::whereKey((int) $returnScope)->exists()) {
+                $returnTo = (int) $returnScope;
+            }
+        }
+
+        return $this->backTo($returnTo)->with(
             'success',
             'Streak Calendar & Reward Stamps ' . ($on ? 'enabled' : 'disabled') . ' at ' . Branch::whereKey($branchId)->value('name') . '.'
         );

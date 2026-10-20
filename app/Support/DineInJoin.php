@@ -14,15 +14,15 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Log;
 
 /**
- * "Want a stamp for this order?" — a Dine-In guest joins the loyalty program
+ * Dine-In sign-up claim — a Dine-In guest joins the loyalty program
  * right after ordering, and the order they just placed comes with them
  * (Oct 2026).
  *
  * THE FLOW
  * --------
- * 1. The guest taps Sign up or Log in on the Orders page card (or in the
- *    rewards pop-up on the Dine-In menu). That goes through start(), which writes the
- *    intent into THIS session and pins the order the card was about.
+ * 1. The guest taps Sign up or Log in in the rewards pop-up on the Dine-In
+ *    menu. That goes through start(), which writes the intent into THIS
+ *    session and pins the order the guest just placed.
  * 2. Sign-up does not sign anyone in (email confirmation comes first, see
  *    App\Support\VerificationFlow), so the claim always happens at LOGIN.
  *    AuthController::login() calls claimInto() once the login has fully
@@ -92,7 +92,7 @@ final class DineInJoin
     /** Statuses after which an order is no longer in progress. */
     public const FINISHED_STATUSES = ['completed', 'cancelled', 'rejected'];
 
-    /** Copy shared by the card, the login page and the flash after login. */
+    /** Copy shared by the pop-up, the login page and the flash after login. */
     public const MSG_CLAIMED = 'This order is now on your account. It will count toward your stamp card when it is completed.';
 
     public const MSG_CLAIMED_COMPLETED = 'This order is now on your account and counts toward your stamp card.';
@@ -107,7 +107,7 @@ final class DineInJoin
 
     /**
      * A Dine-In guest is in this browser: no account signed in, and the
-     * session is seated at a table. Both the card and the menu line need this.
+     * session is seated at a table. Both the pop-up and the menu line need this.
      */
     public static function isDineInGuest(): bool
     {
@@ -124,7 +124,7 @@ final class DineInJoin
      * session, so the guest would lose sight of an order staff are still
      * working on. Never for a signed-in customer or a pick-up session.
      *
-     * Once per request: the Orders card, the buttons and the route guard all
+     * Once per request: the pop-up, the buttons and the route guard all
      * ask, and the answer cannot change inside one request.
      */
     public static function ongoingOrder(): ?Order
@@ -171,7 +171,7 @@ final class DineInJoin
     }
 
     /**
-     * Stamps can be earned at the branch this session is seated at. The card
+     * Stamps can be earned at the branch this session is seated at. The pop-up
      * promises a stamp, so it is not shown where none can be earned.
      */
     public static function stampsOnAt(?int $branchId): bool
@@ -254,26 +254,6 @@ final class DineInJoin
         $days = FreeDesserts::visitDays($branchId);
 
         return $days >= 2 && $days <= self::POPUP_MAX_STAMPS ? $days : self::POPUP_DEFAULT_STAMPS;
-    }
-
-    /**
-     * The order the Orders page card is about, or null for no card: this
-     * session's newest ownerless Dine-In order that was COMPLETED today. While
-     * any guest order is still in progress there is no card (logging in would
-     * lose it, see ongoingOrder()); it comes back when that order is
-     * completed, and a cancelled or rejected order never offers one. The order
-     * comes from the session-owned list, not from what the page happens to
-     * list, because a completed order is no longer an "active" one.
-     */
-    public static function cardOrder(): ?Order
-    {
-        if (! self::isDineInGuest() || self::blocksGuestAuth()) {
-            return null;
-        }
-
-        $order = self::claimableOrders()->first();
-
-        return $order && self::stampsOnAt((int) $order->branch_id) ? $order : null;
     }
 
     /**

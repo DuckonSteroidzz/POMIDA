@@ -205,12 +205,46 @@ class CustomerNavigationTest extends TestCase
         }
     }
 
+    public function test_back_buttons_whose_parent_is_more_read_plain_back(): void
+    {
+        $user = $this->customer();
+
+        foreach (['customer.account', 'customer.help', 'customer.vouchers'] as $route) {
+            $html = $this->visit($user, route($route));
+            preg_match('/<header\b.*?<\/header>/s', $html, $header);
+
+            $this->assertMatchesRegularExpression(
+                '/<a href="' . preg_quote(route('customer.more'), '/') . '"\s+data-header-back\s+aria-label="Back"/',
+                $header[0],
+                "{$route}: the back button should be labelled plain Back"
+            );
+            $this->assertMatchesRegularExpression('/data-header-back.*?<i class="bi bi-arrow-left[^"]*"[^>]*><\/i>\s*<span class="hidden sm:inline">Back<\/span>/s', $header[0], "{$route}: the arrow + 'Back' label is missing");
+            $this->assertStringNotContainsString('Back to More', $html);
+            $this->assertDoesNotMatchRegularExpression('/data-header-back[^>]*>.*?<span class="hidden sm:inline">More<\/span>/s', $header[0]);
+        }
+
+        // Other inner pages still name their destination.
+        $order = $this->order($user);
+        $this->assertStringContainsString('aria-label="Back to Orders"', $this->visit($user, route('customer.receipt', $order->id)));
+        $this->assertStringContainsString('aria-label="Back to Menu"', $this->visit($user, route('customer.cart')));
+    }
+
     public function test_the_four_tab_pages_have_no_header_back_button(): void
     {
         $user = $this->customer();
 
         foreach (['customer.menu', 'customer.orders', 'customer.game', 'customer.more'] as $route) {
-            $this->assertNull($this->headerBackHref($this->visit($user, route($route))), "{$route} is a top-level tab and should not show a back button");
+            $html = $this->visit($user, route($route));
+
+            // Orders carries its Order History view's Back button, hidden until
+            // the History pill is used; on the plain Orders view it must stay
+            // hidden. Drop that hidden wrapper, then nothing may be left.
+            if ($route === 'customer.orders') {
+                $this->assertMatchesRegularExpression('/<span class="shrink-0" data-history-back\s+hidden\s*>/', $html, 'the plain Orders view showed the Order History back button');
+                $html = preg_replace('/<span class="shrink-0" data-history-back\s+hidden\s*>.*?<\/a>\s*<\/span>/s', '', $html);
+            }
+
+            $this->assertNull($this->headerBackHref($html), "{$route} is a top-level tab and should not show a back button");
         }
     }
 
@@ -220,7 +254,7 @@ class CustomerNavigationTest extends TestCase
         $markup = preg_replace('/\{\{--.*?--\}\}/s', '', file_get_contents(resource_path('views/customer/partials/header-back.blade.php')));
 
         $this->assertStringContainsString('h-11 min-w-11', $markup, 'the back button must keep a 44px tap target');
-        $this->assertStringContainsString('aria-label="Back to {{ $label }}"', $markup);
+        $this->assertStringContainsString('aria-label="{{ $ariaLabel ?? \'Back to \' . $label }}"', $markup);
         $this->assertStringNotContainsString('history.back', $markup, 'back must go to the parent page, not browser history');
     }
 

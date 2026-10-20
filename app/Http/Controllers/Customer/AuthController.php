@@ -1994,7 +1994,7 @@ private function switchBranch($branchId): void
                 // request. See App\Support\SingleSession.
                 \App\Support\SingleSession::claim($request, 'customer');
 
-                // The Dine-In "Want a stamp for this order?" flow: attach the
+                // The Dine-In sign-up claim flow: attach the
                 // one order this session pinned. See App\Support\DineInJoin.
                 $joined = \App\Support\DineInJoin::active();
                 $hadPinnedOrder = \App\Support\DineInJoin::pinnedOrderId() !== null;

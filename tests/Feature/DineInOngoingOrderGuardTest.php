@@ -28,7 +28,6 @@ use Tests\TestCase;
  * session that proves the order is theirs. Now, for a GUEST seated at a TABLE
  * whose own session placed an order that is not completed / cancelled /
  * rejected:
- *   - the Orders-page "Want a stamp?" card is not shown;
  *   - the login and register routes (GET and POST) and the Sign up / Log in
  *     join links redirect back with one fixed message, and do nothing else;
  *   - the buttons carry data-ongoing-order-block so the page opens an in-page
@@ -285,14 +284,14 @@ class DineInOngoingOrderGuardTest extends TestCase
 
     // ══════════ the Orders card ══════════
 
-    public function test_the_card_is_hidden_while_the_order_is_ongoing_and_back_after_completion(): void
+    public function test_the_orders_page_never_shows_a_stamp_card_ongoing_or_completed(): void
     {
         $this->chooseBranchReward(1, $this->item(), 7, 30);
         $order = $this->seatedGuestWithOrder();
 
         $this->get(route('customer.orders'))->assertOk()
             ->assertDontSee('data-dinein-join-card', false)
-            ->assertDontSee('Want a stamp for this order?');
+            ->assertDontSee('a stamp for this order');
 
         foreach (['preparing', 'serving'] as $status) {
             \DB::table('orders')->where('id', $order->id)->update(['status' => $status]);
@@ -301,13 +300,15 @@ class DineInOngoingOrderGuardTest extends TestCase
 
         $this->complete($order);
 
+        // The Orders-page card was removed: even once the order is completed the
+        // page carries no stamp prompt and no Sign up / Log in join links.
         $this->get(route('customer.orders'))->assertOk()
-            ->assertSee('data-dinein-join-card', false)
-            ->assertSee('Want a stamp for this order?')
-            ->assertSee(route('customer.dinein-join', ['mode' => 'signup']), false)
-            ->assertSee(route('customer.dinein-join', ['mode' => 'login']), false);
+            ->assertDontSee('data-dinein-join-card', false)
+            ->assertDontSee('a stamp for this order')
+            ->assertDontSee(route('customer.dinein-join', ['mode' => 'signup']), false)
+            ->assertDontSee(route('customer.dinein-join', ['mode' => 'login']), false);
 
-        // And the links are open again: the join pins the completed order.
+        // The join route itself still works for the rewards pop-up: it pins the completed order.
         $this->get(route('customer.dinein-join', ['mode' => 'login']))->assertRedirect(route('customer.login'));
         $this->assertSame($order->id, session(DineInJoin::SESSION_ORDER));
         $this->get(route('customer.login'))->assertOk();
@@ -336,22 +337,33 @@ class DineInOngoingOrderGuardTest extends TestCase
         $this->get(route('customer.login'))->assertOk();
     }
 
-    public function test_the_orders_page_poller_keeps_or_fetches_the_card_when_the_last_order_finishes(): void
+    public function test_the_orders_page_has_no_stamp_card_machinery_left(): void
     {
-        // The poller repaints #statusTab when the last in-flight order ends; that
-        // used to wipe the card (found in a real browser). A guest's page marks
-        // the area so the card can be fetched from the server when it was hidden
-        // while the order cooked; a signed-in customer's page has no such mark.
+        // The Orders-page "stamp" card, and the poller code that kept/fetched it
+        // when the last order finished, were removed. The page must carry neither.
         $this->seatedGuestWithOrder();
 
         $html = $this->get(route('customer.orders'))->assertOk()->getContent();
-        $this->assertMatchesRegularExpression('/<div id="statusTab"[^>]* data-dinein-guest/', $html);
-        $this->assertStringContainsString("statusTab.querySelector('section.dinein-join')", $html);
-        $this->assertStringContainsString('function restoreJoinCard(statusTab)', $html);
+        $this->assertStringNotContainsString('data-dinein-guest', $html);
+        $this->assertStringNotContainsString('section.dinein-join', $html);
+        $this->assertStringNotContainsString('restoreJoinCard', $html);
+        $this->assertStringNotContainsString('data-dinein-join-card', $html);
+        $this->assertStringNotContainsString('a stamp for this order', $html);
+    }
 
-        $this->flushSession();
-        $html = $this->actingAs($this->customer(), 'customer')->get(route('customer.orders'))->assertOk()->getContent();
-        $this->assertDoesNotMatchRegularExpression('/<div id="statusTab"[^>]* data-dinein-guest/', $html);
+    public function test_the_empty_orders_state_has_no_stamp_card_or_join_links(): void
+    {
+        // A guest whose only order finished sees "No active order right now" and
+        // nothing about a stamp, with no Sign up / Log in join links.
+        $order = $this->seatedGuestWithOrder();
+        $this->complete($order);
+
+        $this->get(route('customer.orders'))->assertOk()
+            ->assertSee('No active order right now')
+            ->assertDontSee('data-dinein-join-card', false)
+            ->assertDontSee('a stamp for this order')
+            ->assertDontSee(route('customer.dinein-join', ['mode' => 'signup']), false)
+            ->assertDontSee(route('customer.dinein-join', ['mode' => 'login']), false);
     }
 
     // ══════════ cancelled / rejected ══════════

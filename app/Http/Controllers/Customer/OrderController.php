@@ -1713,13 +1713,8 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
             // One-time "play while you wait" modal; see App\Support\SpinPrompt.
             $spinPrompt = \App\Support\SpinPrompt::forOrders($currentOrders);
 
-            // Dine-In guests: "Want a stamp for this order?" card, inline on
-            // the page (never a modal, so the Spin prompt is not blocked).
-            // See App\Support\DineInJoin.
-            $joinCardOrder = \App\Support\DineInJoin::cardOrder();
-
             return view('customer.orders', compact(
-                'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt', 'joinCardOrder'
+                'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt'
             ));
         }
 
@@ -1732,7 +1727,12 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
 
         $currentOrder = $currentOrders->first();
 
-        $orderHistory = Order::with([
+        // History: filtered (chips / date range / status) and paginated, both
+        // from the query string — see App\Support\OrderHistoryFilter. The
+        // total in the paginator is the "N orders" the filter bar shows.
+        $historyFilter = \App\Support\OrderHistoryFilter::fromRequest(request());
+
+        $historyQuery = Order::with([
             'discountCard',
             'voucher',
         ])->withCount('items')
@@ -1740,9 +1740,25 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
             // "Rate your reward" control.
             ->withExists(['items as has_free_dessert' => fn ($q) => $q->where('is_free_dessert', true)])
             ->where('user_id', Auth::guard('customer')->id())
-            ->whereIn('status', ['completed', 'cancelled'])
-            ->latest()
-            ->get();
+            ->whereIn('status', ['completed', 'cancelled']);
+
+        $historyFilter->apply($historyQuery);
+
+        $historyQuery->latest()->latest('id');
+
+        // A page number past the end (a stale link after a filter change)
+        // shows the last page instead of an empty one.
+        $historyTotal = (clone $historyQuery)->toBase()->getCountForPagination();
+        $historyLastPage = max(1, (int) ceil($historyTotal / $historyFilter->perPage));
+
+        $orderHistory = $historyQuery
+            ->paginate(
+                $historyFilter->perPage,
+                ['*'],
+                'page',
+                min(max(1, (int) request()->query('page', 1)), $historyLastPage)
+            )
+            ->appends($historyFilter->query());
 
         $dessertRatings = \App\Models\FreeDessertRating::whereIn(
             'order_id',
@@ -1776,7 +1792,7 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
         $spinPrompt = \App\Support\SpinPrompt::forOrders($currentOrders);
 
         return view('customer.orders', compact(
-            'currentOrders', 'currentOrder', 'orderHistory', 'orderRatings', 'dessertRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt'
+            'currentOrders', 'currentOrder', 'orderHistory', 'historyFilter', 'orderRatings', 'dessertRatings', 'pollableOrderIds', 'storeContact', 'spinPrompt'
         ));
     }
 

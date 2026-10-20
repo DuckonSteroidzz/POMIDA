@@ -21,13 +21,24 @@ use Illuminate\Support\Facades\DB;
  *
  * WHICH DAY AN ORDER BELONGS TO
  * -----------------------------
- * The day it was completed, in the SHOP's time zone (config app.shop_timezone,
- * Asia/Manila). The app stores timestamps in APP_TIMEZONE (UTC on this
- * machine, possibly Asia/Manila live), so they are read in that zone and
- * converted; under UTC, bucketing the raw values would move every order
- * completed before 8:00 AM Manila onto the previous day. completed_at is
- * always set by completeOrder(); created_at is the fallback only for legacy
- * rows that never had it.
+ * The day it was PLACED (created_at), in the SHOP's time zone (config
+ * app.shop_timezone, Asia/Manila) — the day the customer actually ordered.
+ * It used to be the day staff COMPLETED it, which marked a day the customer
+ * never ordered on whenever an order placed late in the evening was finished
+ * after midnight (placed 23:50 Oct 19, completed 00:10 Oct 20 → "ordered on
+ * Oct 20"). Only the STATUS still comes from completion: a day is marked by an
+ * order that was placed that day AND is completed.
+ *
+ * This is the one place a day is decided. The calendar, current and best
+ * streak, the Reward Challenge, the Stamp Card (FreeDesserts::stampDays) and
+ * the streak points bonus (Loyalty::orderCompleted) all read completedDays(),
+ * so they cannot disagree.
+ *
+ * The app stores timestamps in APP_TIMEZONE (UTC on this machine, possibly
+ * Asia/Manila live), so they are read in that zone and converted; under UTC,
+ * bucketing the raw values would move every order placed before 8:00 AM
+ * Manila onto the previous day. created_at is always set; completed_at is the
+ * fallback only for a legacy row that somehow has none.
  *
  * Stateless and read-only. Day keys are 'Y-m-d' strings throughout.
  */
@@ -45,8 +56,8 @@ class StreakCalendar
     }
 
     /**
-     * Every shop-zone day on which this customer had at least one completed
-     * order, as a set: ['2026-10-05' => true, ...], sorted ascending.
+     * Every shop-zone day on which this customer PLACED at least one order that
+     * is now completed, as a set: ['2026-10-05' => true, ...], sorted ascending.
      *
      * $branchId: only orders AT that branch (orders.branch_id) — the stamp
      * card and the Account page calendar are per branch. Null: every branch,
@@ -63,8 +74,8 @@ class StreakCalendar
             ->where('user_id', $user->id)
             ->where('status', 'completed')
             ->when($branchId !== null, fn ($q) => $q->where('branch_id', $branchId))
-            ->selectRaw('COALESCE(completed_at, created_at) AS done_at')
-            ->pluck('done_at');
+            ->selectRaw('COALESCE(created_at, completed_at) AS placed_at')
+            ->pluck('placed_at');
 
         $days = [];
 
@@ -109,6 +120,42 @@ class StreakCalendar
             'length' => $length,
             'start'  => $cursor->addDay()->format('Y-m-d'),
             'end'    => $end,
+        ];
+    }
+
+    /**
+     * The whole run of consecutive days that contains $day (extending both
+     * before and after it), or null if $day itself has no completed order.
+     *
+     * An order is credited to the day it was PLACED but can be completed days
+     * later, after other days were already marked, so the run it joins may
+     * continue past its own day.
+     *
+     * @param  array<string, true>  $days
+     * @return array{length:int, start:string, end:string}|null
+     */
+    public static function runContaining(array $days, CarbonImmutable $day): ?array
+    {
+        if (! isset($days[$day->format('Y-m-d')])) {
+            return null;
+        }
+
+        $first = $day;
+
+        while (isset($days[$first->subDay()->format('Y-m-d')])) {
+            $first = $first->subDay();
+        }
+
+        $last = $day;
+
+        while (isset($days[$last->addDay()->format('Y-m-d')])) {
+            $last = $last->addDay();
+        }
+
+        return [
+            'length' => (int) $first->diffInDays($last) + 1,
+            'start'  => $first->format('Y-m-d'),
+            'end'    => $last->format('Y-m-d'),
         ];
     }
 
