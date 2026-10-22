@@ -1,0 +1,94 @@
+%% POMIDA ERD - POMIDA — Module 4: Inventory - generated 2026-10-22 from pomida_db
+%% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
+%% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
+erDiagram
+    inventory {
+        bigint id PK
+        bigint branch_id FK "UK with item_code"
+        varchar(255) item_name
+        varchar(50) item_code "UK with branch_id"
+        varchar(100) category
+        text description
+        decimal(12_3) quantity
+        varchar(20) unit
+        decimal(12_3) low_stock_alert
+        decimal(10_2) unit_cost
+        varchar(255) supplier
+        tinyint(1) is_active
+        timestamp archived_at
+        varchar(50) archived_item_code
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_item_ingredients {
+        bigint id PK
+        bigint menu_item_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with menu_item_id"
+        decimal(10_3) quantity_used
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_item_size_ingredients {
+        bigint id PK
+        bigint menu_item_size_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with menu_item_size_id"
+        decimal(12_3) quantity
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_option_ingredients {
+        bigint id PK
+        bigint menu_option_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with menu_option_id"
+        decimal(10_3) quantity_used
+        timestamp created_at
+        timestamp updated_at
+    }
+    stock_movements {
+        bigint id PK
+        bigint inventory_id FK
+        varchar(255) deleted_item_name
+        enum movement_type
+        decimal(10_3) amount
+        decimal(10_3) quantity_after
+        varchar(255) reason
+        enum source
+        bigint reference_id
+        bigint user_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    branches {
+        bigint id PK "table of module: Users and Branches"
+    }
+    menu_item_sizes {
+        bigint id PK "table of module: Menu"
+    }
+    menu_items {
+        bigint id PK "table of module: Menu"
+    }
+    menu_options {
+        bigint id PK "table of module: Menu"
+    }
+    users {
+        bigint id PK "table of module: Users and Branches"
+    }
+
+    branches |o--o{ inventory : "stocks"
+    inventory ||--o{ menu_item_ingredients : "is used in"
+    inventory ||--o{ menu_item_size_ingredients : "is used in"
+    inventory ||--o{ menu_option_ingredients : "is used in"
+    inventory |o--o{ stock_movements : "logs"
+    menu_item_sizes ||--o{ menu_item_size_ingredients : "has recipe line"
+    menu_items ||--o{ menu_item_ingredients : "has recipe line"
+    menu_options ||--o{ menu_option_ingredients : "has recipe line"
+    users |o--o{ stock_movements : "records"
+
+    classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef mod_orders fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
+    classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
+    class inventory,menu_item_ingredients,menu_item_size_ingredients,menu_option_ingredients,stock_movements mod_inventory
+    class branches,menu_item_sizes,menu_items,menu_options,users ext

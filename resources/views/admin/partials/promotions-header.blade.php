@@ -68,6 +68,9 @@
     <p class="page-title">Promotions &amp; Rewards</p>
     <p class="promo-sub">Vouchers, streak rewards and advertisements in one place.</p>
 
+    {{-- A bar with one pill in it is not a choice (staff reach only
+         Vouchers), so it is drawn only when there are two or more. --}}
+    @if(count($promoTabs) > 1)
     <nav class="promo-tabs" aria-label="Promotions &amp; Rewards sections">
         @foreach($promoTabs as $tab)
             <a href="{{ route($tab['route']) }}"
@@ -78,4 +81,5 @@
             </a>
         @endforeach
     </nav>
+    @endif
 </div>

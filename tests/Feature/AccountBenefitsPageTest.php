@@ -381,11 +381,12 @@ class AccountBenefitsPageTest extends TestCase
         $this->assertStringContainsString('onclick="confirmDelete()"', $html);
         $this->assertStringContainsString('onclick="resendVerification()"', $html);
 
-        // Calendar, reward challenge, stamp card, benefits: the same sections.
-        foreach (['data-testid="streak-calendar"', 'data-testid="free-dessert-challenge"', 'data-testid="free-dessert-card"', 'id="benefits"'] as $section) {
+        // Calendar, bonus-points card, stamp card, benefits: the same sections.
+        foreach (['data-testid="streak-calendar"', 'data-testid="bonus-banner"', 'data-testid="free-dessert-card"', 'id="benefits"'] as $section) {
             $this->assertStringContainsString($section, $html, $section);
         }
-        $this->assertStringContainsString('Day 1 of 7', $html);
+        $this->assertStringNotContainsString('data-testid="free-dessert-challenge"', $html, 'the Reward Challenge card is gone');
+        $this->assertStringContainsString('1 / 7 stamps', $html);
 
         // Four tabs (Oct 2026): all four panels are in the HTML, in the
         // reference's order, whichever one is showing. Which section sits in
@@ -419,8 +420,11 @@ class AccountBenefitsPageTest extends TestCase
             $this->assertStringNotContainsString($gone, $html, "still on the page: $gone");
         }
 
-        // The stamp rule is said once on this page (the stamp card), not three times.
-        $this->assertSame(1, substr_count($html, '1 stamp per day you completed an order'));
+        // The tester's updated reference words the stamp rule in full on the
+        // stamp card AND in Account Benefits (twice, on purpose), and the old
+        // "1 stamp per day you completed an order" wording is gone everywhere.
+        $this->assertSame(2, substr_count($html, 'Earn 1 stamp per day when you complete at least one order at'));
+        $this->assertSame(0, substr_count($html, '1 stamp per day you completed an order'));
     }
 
     public function test_the_points_shown_elsewhere_include_the_bonus_balance(): void

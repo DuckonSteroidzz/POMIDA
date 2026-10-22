@@ -2905,6 +2905,9 @@ private function switchBranch($branchId): void
         // redemption Voucher::branchErrorFor() would then refuse at checkout
         // — a prize that could be WON but never SPENT.
         return $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
+            // The admin list's Wheel switch (Oct 2026): a voucher switched off
+            // the wheel is never a prize, whatever else it qualifies on.
+            ->where('on_wheel', true)
             ->where('points_required', '>', 0)
             ->where('points_required', '<=', $totalPoints)
             ->notExpired()
@@ -3336,6 +3339,8 @@ private function switchBranch($branchId): void
         // voucher's description could be shown as the "next voucher" hint to
         // a customer at branch 1, who could never actually earn or redeem it.
         $nextVoucher = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
+            // Only a voucher the wheel can actually award is worth aiming for.
+            ->where('on_wheel', true)
             ->where('points_required', '>', $totalPoints)
             ->notExpired())
             ->orderBy('points_required', 'asc')

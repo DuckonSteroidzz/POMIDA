@@ -13,8 +13,8 @@
     it works with no JavaScript.
 
     Layout (Oct 2026 redesign): a cell of the Overview grid on the Account page,
-    7 of 12 columns from 1100px up and full width below it; the grid and the
-    stacked challenge + stamp card beside it are in account-settings.blade.php.
+    7 of 12 columns from 761px up and full width below it; the grid and the
+    stacked bonus-points card + stamp card beside it are in account-settings.blade.php.
 
     Phone sizing: body text is text-sm (16px) or larger, the weekday row and
     legend are text-xs (14px, this app's floor); the
@@ -29,7 +29,7 @@
     $nextMilestone = collect($milestones)->keys()->first(fn ($days) => $days > $bonusRun['length']);
     $calendarBranch = $streakBranch?->name ?? 'this branch';
 @endphp
-<section id="streak" class="acct-card min-w-0 scroll-mt-24 p-4 sm:p-[22px] col-span-12 min-[1100px]:col-span-7" aria-labelledby="streak-title" data-testid="streak-calendar" data-branch="{{ $streakBranch?->id }}">
+<section id="streak" class="acct-card min-w-0 scroll-mt-24 p-4 sm:p-[22px] col-span-12 min-[761px]:col-span-7" aria-labelledby="streak-title" data-testid="streak-calendar" data-branch="{{ $streakBranch?->id }}">
     <div class="mb-4 flex items-start gap-3">
         <span class="acct-icon text-lg">
             <i class="bi bi-calendar-check"></i>

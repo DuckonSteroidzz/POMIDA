@@ -552,7 +552,9 @@
             {{-- The one global switch row the owner's toggle flips and the spin
                  endpoint enforces — see Setting::gameEnabled(). --}}
             @if(\App\Models\Setting::gameEnabled())
-            @php $gameVouchers = $vouchers->where('points_required', '>', 0)->sortBy('points_required'); @endphp
+            {{-- Prizes only: points vouchers the owner left switched onto the
+                 wheel (vouchers.on_wheel), the same set the picker draws from. --}}
+            @php $gameVouchers = $vouchers->where('points_required', '>', 0)->where('on_wheel', true)->sortBy('points_required'); @endphp
             <div class="game-layout">
 
                 <div class="game-play">

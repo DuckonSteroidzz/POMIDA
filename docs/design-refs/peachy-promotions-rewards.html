@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Promotions & Rewards – Peachy Cafe Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --peach:#F4845F;--peach-soft:#F6B49B;--coral:#C0392B;--red:#8B1A1A;
+  --cream:#FFF4EC;--cream-2:#FDF1E6;--sand:#F8D7B0;--ink:#4A3B36;--muted:#9A837B;
+  --line:rgba(244,132,95,.28);--ok:#2E8B57;--ok-bg:#E6F5EC;--warn:#B7791F;--warn-bg:#FDF3DC;
+  --off:#8a7a75;--off-bg:#F1ECEA;--shadow:0 10px 30px -18px rgba(139,26,26,.45);--r:16px;
+}
+*{box-sizing:border-box}
+html,body{margin:0;overflow-x:hidden}
+body{font-family:'Poppins',sans-serif;background:var(--cream);color:var(--ink);font-size:14px;line-height:1.5}
+button,input,select,textarea{font-family:inherit;font-size:inherit;color:inherit}
+h1,h2,h3{margin:0;color:var(--red)}
+/* Layout */
+.app{display:block;min-height:100vh}
+.brand small{display:block;font-weight:500;font-size:.72rem;opacity:.75}
+.main{width:100%;max-width:1440px;min-width:0;margin:0 auto;padding:32px 32px 48px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:1rem;margin-bottom:1.3rem;flex-wrap:wrap}
+.topbar h1{font-size:1.6rem}
+.topbar p{margin:.15rem 0 0;color:var(--muted)}
+.mobile-head,.tabs-m{display:none}
+/* Top section tabs */
+.section-tabs{display:flex;gap:.65rem;flex-wrap:wrap;margin:0 0 1.4rem;padding:.45rem;background:#fff;border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow)}
+.section-tab{flex:1 1 170px;min-height:46px;padding:.7rem 1rem;border:1px solid transparent;border-radius:10px;background:transparent;color:var(--muted);font-weight:700;cursor:pointer;transition:background .18s,color .18s,box-shadow .18s}
+.section-tab:hover{background:var(--cream);color:var(--red)}
+.section-tab.active{background:linear-gradient(135deg,var(--peach),var(--coral));color:#fff;box-shadow:0 5px 14px rgba(192,57,43,.2)}
+.section-tab:focus-visible{outline:3px solid rgba(244,132,95,.35);outline-offset:2px}
+@media(max-width:560px){.section-tabs{display:grid;grid-template-columns:1fr;gap:.4rem}.section-tab{width:100%;text-align:left}}
+
+/* Cards */
+.card{background:#fff;border-radius:var(--r);border:1px solid var(--line);box-shadow:var(--shadow);padding:1.25rem;margin-bottom:1.2rem}
+.card-hd{display:flex;align-items:center;justify-content:space-between;gap:.8rem;flex-wrap:wrap;margin-bottom:1rem;padding-bottom:.8rem;border-bottom:2px dashed var(--line)}
+.card-hd h2{font-size:1.05rem;display:flex;align-items:center;gap:.5rem}
+.card-hd p{margin:.1rem 0 0;color:var(--muted);font-size:.8rem}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:1rem;margin-bottom:1.2rem}
+.stat{background:#fff;border:1px solid var(--line);border-radius:var(--r);padding:1rem;box-shadow:var(--shadow);min-width:0}
+.stat b{display:block;font-size:1.5rem;color:var(--red)}
+.stat span{color:var(--muted);font-size:.78rem}
+.stat .em{float:right;font-size:1.3rem}
+/* Forms */
+.grid{display:grid;gap:.9rem 1rem;grid-template-columns:repeat(4,minmax(0,1fr))}
+.grid .s2{grid-column:span 2}.grid .s4{grid-column:1/-1}
+.grid.g2{grid-template-columns:repeat(2,minmax(0,1fr))}
+.fld label{display:block;font-size:.78rem;font-weight:600;color:var(--red);margin-bottom:.3rem}
+.fld .hint{font-size:.72rem;color:var(--muted);margin-top:.25rem}
+.inp{width:100%;padding:.62rem .8rem;border:1.5px solid var(--peach-soft);border-radius:10px;background:#fff;outline:none;min-height:42px}
+.inp:focus{border-color:var(--peach);box-shadow:0 0 0 3px rgba(244,132,95,.18)}
+textarea.inp{resize:vertical;min-height:70px}
+.inp:disabled{background:var(--cream-2);color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;border:0;cursor:pointer;border-radius:10px;padding:.6rem 1.1rem;font-weight:700;min-height:42px;transition:.15s;white-space:nowrap}
+.btn-p{background:linear-gradient(135deg,var(--peach),var(--coral));color:#fff;box-shadow:0 8px 18px -10px rgba(192,57,43,.7)}
+.btn-p:hover{filter:brightness(1.05)}
+.btn-g{background:#fff;color:var(--coral);border:1.5px solid var(--peach-soft)}
+.btn-g:hover{background:var(--cream)}
+.btn-d{background:#fff;color:var(--coral);border:1.5px solid #f2b8b0}
+.btn-d:hover{background:#fdecea}
+.btn-sm{padding:.35rem .65rem;min-height:34px;font-size:.78rem;border-radius:8px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.actions{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1rem;flex-wrap:wrap}
+/* switch */
+.sw{position:relative;display:inline-block;width:46px;height:26px;flex-shrink:0}
+.sw input{opacity:0;width:0;height:0}
+.sw i{position:absolute;inset:0;background:#e5d6cf;border-radius:99px;cursor:pointer;transition:.2s}
+.sw i:before{content:"";position:absolute;width:20px;height:20px;left:3px;top:3px;background:#fff;border-radius:50%;transition:.2s;box-shadow:0 2px 4px rgba(0,0,0,.15)}
+.sw input:checked+i{background:var(--peach)}
+.sw input:checked+i:before{transform:translateX(20px)}
+.sw input:disabled+i{opacity:.5;cursor:not-allowed}
+
+/* Voucher wheel switch: the state is written inside the switch itself */
+.sw-wheel{width:58px;height:25px;vertical-align:middle}
+.sw-wheel i{background:#e5d6cf}
+.sw-wheel i:before{width:17px;height:17px;left:4px;top:4px}
+.sw-wheel:after{content:"OFF";position:absolute;right:7px;top:50%;transform:translateY(-50%);font-size:9px;font-weight:800;line-height:1;color:#75645e;pointer-events:none}
+.sw-wheel input:checked+i{background:var(--peach)}
+.sw-wheel input:checked+i:before{transform:translateX(33px)}
+.sw-wheel input:checked~.wheel-state{display:none}
+.sw-wheel:has(input:checked):after{content:"ON";left:8px;right:auto;color:#fff}
+
+/* badges */
+.bd{display:inline-flex;align-items:center;gap:.25rem;padding:.18rem .55rem;border-radius:999px;font-size:.7rem;font-weight:700;white-space:nowrap}
+.bd-ok{background:var(--ok-bg);color:var(--ok)}.bd-off{background:var(--off-bg);color:var(--off)}
+.bd-exp{background:#fdecea;color:var(--coral)}.bd-warn{background:var(--warn-bg);color:var(--warn)}
+.bd-gl{background:var(--sand);color:var(--red)}.bd-br{background:var(--cream);color:var(--coral);border:1px solid var(--peach-soft)}
+.bd-lock{background:#efe7e4;color:#7a645d}
+/* toolbar */
+.toolbar{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.9rem}
+.toolbar .inp{width:auto;flex:1;min-width:160px}
+.toolbar select.inp{flex:0 0 auto;min-width:150px}
+/* table */
+.tbl-wrap{overflow-x:auto;border-radius:12px;border:1px solid var(--line)}
+table{width:100%;border-collapse:collapse;min-width:820px}
+th{background:var(--cream-2);color:var(--red);text-align:left;font-size:.74rem;text-transform:uppercase;letter-spacing:.03em;padding:.7rem .8rem;white-space:nowrap}
+td{padding:.75rem .8rem;border-top:1px solid var(--line);vertical-align:middle}
+tr:hover td{background:#fffaf6}
+.code{font-weight:800;color:var(--red);letter-spacing:.04em}
+.sub{font-size:.74rem;color:var(--muted)}
+.bar{height:6px;background:var(--cream-2);border-radius:9px;overflow:hidden;margin-top:.3rem;width:110px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--peach),var(--coral))}
+.row-act{display:flex;align-items:center;justify-content:flex-start;gap:.35rem;flex-wrap:wrap}
+/* Compact voucher actions menu */
+.voucher-status{display:flex;align-items:center;gap:.55rem;min-width:112px}
+.voucher-actions{position:relative;display:inline-block}
+.voucher-actions summary{list-style:none;cursor:pointer;display:grid;place-items:center;width:38px;height:36px;border:1px solid var(--peach-soft);border-radius:10px;background:#fff;color:var(--red);font-size:1.25rem;font-weight:800;line-height:1;transition:.15s}
+.voucher-actions summary::-webkit-details-marker{display:none}
+.voucher-actions summary:hover,.voucher-actions[open] summary{background:var(--cream);border-color:var(--peach)}
+.voucher-actions summary:focus-visible{outline:3px solid rgba(244,132,95,.25);outline-offset:2px}
+.voucher-menu{position:absolute;right:0;top:calc(100% + 6px);z-index:30;display:grid;gap:3px;min-width:168px;padding:6px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 28px rgba(74,59,54,.16)}
+.voucher-menu button{width:100%;justify-content:flex-start;border:0;background:transparent;color:var(--ink);padding:.55rem .7rem;min-height:36px;font-size:.8rem;text-align:left}
+.voucher-menu button:hover{background:var(--cream);color:var(--red)}
+.voucher-menu button.danger{color:var(--coral)}
+.voucher-menu button:disabled{opacity:.4;cursor:not-allowed}
+.voucher-menu .menu-lock{padding:.55rem .7rem;color:var(--muted);font-size:.75rem;white-space:nowrap}
+.status-cell{display:flex;align-items:center;gap:.55rem;flex-wrap:nowrap}
+
+.empty{text-align:center;color:var(--muted);padding:2rem}
+/* mobile cards */
+.mcards{display:none}
+.mc{border:1px solid var(--line);border-radius:14px;padding:.9rem;margin-bottom:.7rem;background:#fff}
+.mc-top{display:flex;justify-content:space-between;gap:.6rem;align-items:flex-start}
+.mc-top>div{min-width:0}
+.mc dl{display:grid;grid-template-columns:1fr 1fr;gap:.4rem .8rem;margin:.7rem 0;font-size:.8rem}
+.mc dt{color:var(--muted);font-size:.7rem}.mc dd{margin:0;font-weight:600;overflow-wrap:anywhere}
+.mc .row-act .btn{flex:1}
+/* ads */
+.thumb{width:84px;height:52px;border-radius:9px;object-fit:cover;border:1px solid var(--peach-soft);background:linear-gradient(135deg,var(--cream-2),var(--sand));display:grid;place-items:center;color:var(--peach);font-size:1.2rem;flex-shrink:0}
+.drop{border:2px dashed var(--peach-soft);border-radius:12px;padding:1rem;text-align:center;cursor:pointer;background:var(--cream);color:var(--muted);display:flex;flex-direction:column;align-items:center;gap:.5rem}
+.drop img{max-width:100%;max-height:140px;border-radius:10px}
+.place{display:flex;gap:.6rem;flex-wrap:wrap}
+.place label{flex:1;min-width:130px;border:1.5px solid var(--peach-soft);border-radius:12px;padding:.7rem;cursor:pointer;display:flex;gap:.5rem;align-items:center;font-weight:600;color:var(--ink)}
+.place input{accent-color:var(--coral)}
+.place label:has(input:checked){background:var(--cream);border-color:var(--peach)}
+
+/* Ads action menu */
+.ad-actions{position:relative;display:inline-block}
+.ad-actions summary{list-style:none;cursor:pointer;display:grid;place-items:center;width:36px;height:34px;border:1px solid var(--peach-soft);border-radius:9px;background:#fff;color:var(--red);font-size:1.25rem;font-weight:800;line-height:1}
+.ad-actions summary::-webkit-details-marker{display:none}
+.ad-actions summary:hover,.ad-actions[open] summary{background:var(--cream);border-color:var(--peach)}
+.ad-actions summary:focus-visible{outline:3px solid rgba(244,132,95,.25);outline-offset:2px}
+.ad-menu{position:absolute;right:0;top:calc(100% + 5px);z-index:40;display:grid;gap:2px;min-width:140px;padding:5px;background:#fff;border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 24px rgba(74,59,54,.16)}
+.ad-menu button{width:100%;justify-content:flex-start;border:0;background:transparent;color:var(--ink);padding:.55rem .65rem;min-height:34px;font-size:.8rem;text-align:left}
+.ad-menu button:hover{background:var(--cream);color:var(--red)}
+.ad-menu button.danger{color:var(--coral)}
+
+/* streak */
+.master{display:flex;align-items:center;justify-content:space-between;gap:1rem;background:linear-gradient(135deg,var(--cream-2),var(--sand));border-radius:var(--r);padding:1.1rem 1.25rem;margin-bottom:1.2rem;border:1px solid var(--line)}
+.master>div{min-width:0}
+.master h3{font-size:1rem}.master p{margin:.15rem 0 0;font-size:.8rem;color:var(--ink)}
+.two{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(0,1fr);gap:1.2rem}
+.branch-pills{display:flex;gap:.45rem;flex-wrap:wrap;margin-bottom:1rem}
+.pill{border:1.5px solid var(--peach-soft);background:#fff;border-radius:999px;padding:.45rem .9rem;font-weight:600;cursor:pointer;color:var(--coral);min-height:38px}
+.pill.on{background:var(--coral);color:#fff;border-color:var(--coral)}
+.pill:disabled{opacity:.4;cursor:not-allowed}
+.seg{display:flex;background:var(--cream);border-radius:12px;padding:4px;gap:4px}
+.seg button{flex:1;border:0;background:none;padding:.55rem;border-radius:9px;font-weight:600;cursor:pointer;color:var(--muted);min-height:40px}
+.seg button.on{background:#fff;color:var(--red);box-shadow:0 2px 6px rgba(139,26,26,.12)}
+.stamps{display:flex;gap:6px;flex-wrap:wrap;margin:.4rem 0}
+.stamps span{width:26px;height:26px;border-radius:50%;border:2px dashed var(--peach-soft);display:grid;place-items:center;font-size:.75rem}
+.stamps span.f{background:var(--peach);border:0;color:#fff}
+.ov{display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding:.75rem 0;border-top:1px dashed var(--line)}
+.ov:first-child{border-top:0}
+.ov>div{min-width:0}
+.ov b{display:block;color:var(--red)}
+.check-res{margin-top:.8rem;border-radius:12px;padding:.8rem;font-size:.85rem;display:none}
+.check-res.show{display:block}
+.check-res.ok{background:var(--ok-bg);color:var(--ok)}.check-res.bad{background:#fdecea;color:var(--coral)}
+.notice{display:flex;gap:.6rem;align-items:flex-start;background:var(--cream);border:1px solid var(--peach-soft);border-radius:12px;padding:.7rem .9rem;color:var(--red);font-size:.8rem;margin-bottom:1rem}
+.chk{display:flex;gap:.5rem;align-items:flex-start;font-size:.8rem}
+.chk input{accent-color:var(--coral);margin-top:.2rem}
+/* modal */
+.ovl{display:none;position:fixed;inset:0;background:rgba(74,59,54,.5);z-index:100;align-items:center;justify-content:center;padding:1rem}
+.ovl.show{display:flex}
+.mbox{background:#fff;border-radius:18px;padding:1.3rem;width:100%;max-width:620px;max-height:calc(100vh - 2rem);overflow-y:auto;box-shadow:0 20px 50px -20px rgba(139,26,26,.5)}
+.mbox.sm{max-width:420px}
+.mhd{display:flex;justify-content:space-between;align-items:center;gap:.6rem;padding-bottom:.8rem;margin-bottom:1rem;border-bottom:2px dashed var(--line)}
+.mhd h3{font-size:1.05rem}
+.x{border:0;background:none;font-size:1.5rem;color:var(--muted);cursor:pointer;line-height:1;padding:.2rem .4rem}
+.issued{font-size:1.5rem;font-weight:800;letter-spacing:.12em;color:var(--red);background:var(--cream);border:2px dashed var(--peach);border-radius:12px;padding:1rem;text-align:center;margin:.8rem 0}
+.toast{position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%) translateY(12px);background:var(--red);color:#fff;padding:.7rem 1.1rem;border-radius:12px;font-weight:600;z-index:200;transition:opacity .25s,transform .25s,visibility .25s;max-width:calc(100vw - 2rem);text-align:center;opacity:0;visibility:hidden;pointer-events:none}
+.toast.show{transform:translateX(-50%) translateY(0);opacity:1;visibility:visible;pointer-events:auto}
+.sec{display:none;scroll-margin-top:1rem}.sec.active{display:block}
+.hide{display:none!important}
+/* Responsive */
+@media (max-width:1100px){
+  .grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .grid .s2{grid-column:span 2}
+  .two{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media (max-width:860px){
+  .main{padding:20px 20px 40px}
+  .topbar h1{font-size:1.3rem}
+}
+@media (max-width:640px){
+  .main{padding:16px 14px 32px}
+  .grid,.grid.g2{grid-template-columns:1fr}
+  .grid .s2,.grid .s4{grid-column:auto}
+  .tbl-wrap{display:none}.mcards{display:block}
+  .card{padding:1rem}
+  .actions .btn{flex:1}
+  .toolbar .inp,.toolbar select.inp{flex:1 1 100%}
+  .master{flex-direction:row}
+  .stat b{font-size:1.25rem}
+}
+</style>
+</head>
+<body>
+<div class="app">
+  <main class="main">
+    <div class="topbar">
+      <div><h1>Promotions & Rewards</h1><p id="secDesc">Vouchers, streak rewards and advertisements in one place.</p></div>
+    </div>
+    <nav class="section-tabs" role="tablist" aria-label="Promotion sections">
+      <button type="button" class="section-tab active" role="tab" aria-selected="true" aria-controls="sec-vouchers" data-section="vouchers">🎟️ Vouchers</button>
+      <button type="button" class="section-tab" role="tab" aria-selected="false" aria-controls="sec-streak" data-section="streak">🔥 Streak Rewards</button>
+      <button type="button" class="section-tab" role="tab" aria-selected="false" aria-controls="sec-ads" data-section="ads">📣 Ads Management</button>
+    </nav>
+
+    <!-- ============ VOUCHERS ============ -->
+    <section class="sec active" id="sec-vouchers" role="tabpanel">
+      <div class="card-hd" style="margin:0 0 1rem;padding:.2rem 0 .8rem">
+        <div><h2>🎟️ Vouchers</h2><p>Create, issue and manage voucher promotions.</p></div>
+      </div>
+      <div class="stats" id="vStats"></div>
+
+      <div class="master">
+        <div><h3>🎡 Spin Wheel</h3><p>Enable or disable the game for customers</p></div>
+        <label class="sw"><input type="checkbox" id="wheelToggle" checked><i></i></label>
+      </div>
+
+      <div class="card" id="vCreateCard">
+        <div class="card-hd"><div><h2>➕ Create New Voucher</h2><p>Leave as All Branches for a company-wide promo</p></div></div>
+        <form id="vForm" autocomplete="off">
+          <div class="grid" id="vFields"></div>
+          <div class="actions"><button type="reset" class="btn btn-g">Clear</button><button class="btn btn-p">Create Voucher</button></div>
+        </form>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><div><h2>🎟️ Vouchers</h2><p>Usage, validity and spin wheel status</p></div></div>
+        <div class="toolbar">
+          <input class="inp" id="vSearch" placeholder="Search code or description…">
+          <select class="inp" id="vStatus"><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="expired">Expired</option><option value="used">Used up</option></select>
+          <select class="inp brSel" id="vBranchF" data-all="All scopes"></select>
+        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Voucher</th><th>Discount</th><th>Usage</th><th>Min Order</th><th>Points Req.</th><th>Valid</th><th>Scope</th><th>Wheel</th><th>Status</th><th>Actions</th></tr></thead><tbody id="vBody"></tbody></table></div>
+        <div class="mcards" id="vCards"></div>
+      </div>
+    </section>
+
+    <!-- ============ STREAK ============ -->
+    <section class="sec" id="sec-streak" role="tabpanel">
+      <div class="card-hd" style="margin:1.8rem 0 1rem;padding:.2rem 0 .8rem">
+        <div><h2>🔥 Streak Rewards</h2><p>Configure stamp-card rewards and review branch settings.</p></div>
+      </div>
+      <div class="master">
+        <div><h3>📅 Master Streak Calendar</h3><p>Turns the stamp card off for every branch. Already-earned rewards still work.</p></div>
+        <label class="sw"><input type="checkbox" id="masterToggle" checked><i></i></label>
+      </div>
+
+      <div class="two">
+        <div class="card">
+          <div class="card-hd"><div><h2>🔥 Streak Rewards</h2><p>Set what a full stamp card gives, and turn it on or off.</p></div></div>
+          <div class="branch-pills" id="srPills"></div>
+          <div id="srScopeNote" class="notice" style="margin-bottom:1rem"></div>
+          <form id="srForm">
+            <div class="grid g2">
+              <div class="fld s4" style="display:flex;justify-content:space-between;align-items:center;gap:1rem;background:var(--cream);padding:.7rem .9rem;border-radius:12px">
+                <div style="min-width:0"><label style="margin:0">On/Off</label><div class="hint" style="margin:0" id="srOnHint">Stamp card for this scope</div></div>
+                <label class="sw"><input type="checkbox" id="srOn"><i></i></label>
+              </div>
+              <div class="fld"><label for="srDays">Days needed *</label><input class="inp" type="number" min="1" max="30" id="srDays" required><div class="hint">How many different days with a completed order earn one reward.</div></div>
+              <div class="fld"><label for="srValid">Valid for (days) *</label><input class="inp" type="number" min="1" id="srValid" required><div class="hint">How many days a reward can be used after it's earned.</div></div>
+              <div class="fld s4"><label>Reward *</label>
+                <div class="seg" id="srType"><button type="button" data-t="menu">🍰 Free menu item</button><button type="button" data-t="voucher">🎟️ Voucher discount</button></div>
+              </div>
+              <div class="fld s4" id="srMenuWrap"><label for="srMenu">Menu item</label><select class="inp" id="srMenu"></select><div class="hint" id="srMenuHint">Given as one free serving, while it can still be ordered.</div></div>
+              <div class="fld s4 hide" id="srVoucherWrap"><label for="srVoucher">Voucher</label><select class="inp" id="srVoucher"></select></div>
+              <div class="fld s4" id="srApplyWrap"><label class="chk"><input type="checkbox" id="srApplyAll"> <span>Also make all branches use this (removes each branch's own settings).</span></label></div>
+            </div>
+            <div class="sub" style="margin-top:.6rem">Rewards already earned are not changed.</div>
+            <div class="stamps" id="srPreview"></div>
+            <div class="actions"><button class="btn btn-p" id="srSave">Save Streak Settings</button></div>
+          </form>
+        </div>
+
+        <div>
+          <div class="card">
+            <div class="card-hd"><div><h2>🔎 Reward Code Checker</h2><p>Verify a customer's streak reward code</p></div></div>
+            <div style="display:flex;gap:.5rem;flex-wrap:wrap">
+              <input class="inp" id="chkCode" placeholder="e.g. STRK-7Q2M" style="flex:1;min-width:150px;text-transform:uppercase">
+              <button class="btn btn-p" id="chkBtn">Check</button>
+            </div>
+            <div class="check-res" id="chkRes"></div>
+            <div class="sub" style="margin-top:.6rem">Try: STRK-7Q2M, STRK-K9PL, STRK-USED</div>
+          </div>
+          <div class="card">
+            <div class="card-hd"><div><h2>🏪 Branch Overview</h2><p>Global defaults vs branch overrides</p></div></div>
+            <div id="srOverview"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ ADS ============ -->
+    <section class="sec" id="sec-ads" role="tabpanel">
+      <div class="card-hd" style="margin:1.8rem 0 1rem;padding:.2rem 0 .8rem">
+        <div><h2>📣 Ads Management</h2><p>Create and manage advertisements shown to customers.</p></div>
+      </div>
+      <div class="stats" id="aStats"></div>
+      <div class="card" id="aCreateCard">
+        <div class="card-hd"><div><h2>📣 Create Advertisement</h2><p>Shown to customers on the Game or Menu page</p></div></div>
+        <form id="aForm" autocomplete="off">
+          <div class="grid">
+            <div class="fld s2"><label>Title *</label><input class="inp" name="title" required maxlength="80"></div>
+            <div class="fld s2"><label>Link (optional)</label><input class="inp" name="link" type="url" placeholder="https://"></div>
+            <div class="fld s2"><label>Description</label><textarea class="inp" name="description" rows="3"></textarea></div>
+            <div class="fld s2"><label>Image</label>
+              <label class="drop" id="aDrop"><span id="aDropTxt">🖼️ Tap to upload an image</span><img id="aPrev" class="hide" alt="Preview"><input type="file" accept="image/*" id="aFile" hidden></label>
+            </div>
+            <div class="fld s2"><label>Placement *</label>
+              <div class="place"><label><input type="radio" name="placement" value="game" checked> 🎮 Game Page</label><label><input type="radio" name="placement" value="menu"> 📋 Menu Page</label></div>
+            </div>
+            <div class="fld"><label>Start Date</label><input class="inp" type="date" name="start"></div>
+            <div class="fld"><label>End Date</label><input class="inp" type="date" name="end"></div>
+            <div class="fld s2"><label>Branch Scope</label><select class="inp brScope" name="branch"></select></div>
+          </div>
+          <div class="actions"><button type="reset" class="btn btn-g">Clear</button><button class="btn btn-p">Publish Ad</button></div>
+        </form>
+      </div>
+      <div class="card">
+        <div class="card-hd"><div><h2>🗂️ Advertisements</h2><p>Active, inactive and expired campaigns</p></div></div>
+        <div class="toolbar">
+          <input class="inp" id="aSearch" placeholder="Search title…">
+          <select class="inp" id="aPlace"><option value="">All placements</option><option value="game">Game Page</option><option value="menu">Menu Page</option></select>
+          <select class="inp" id="aStatus"><option value="">All statuses</option><option value="active">Active</option><option value="inactive">Inactive</option><option value="expired">Expired</option><option value="scheduled">Scheduled</option></select>
+        </div>
+        <div class="tbl-wrap"><table><thead><tr><th>Ad</th><th>Placement</th><th>Schedule</th><th>Scope</th><th>Status</th><th>Active</th><th>Actions</th></tr></thead><tbody id="aBody"></tbody></table></div>
+        <div class="mcards" id="aCards"></div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- Modals -->
+<div class="ovl" id="mVoucher"><div class="mbox">
+  <div class="mhd"><h3>✏️ Edit Voucher</h3><button class="x" data-close>&times;</button></div>
+  <form id="vEditForm"><div class="grid g2" id="vEditFields"></div>
+    <label class="chk" style="margin-top:.8rem"><input type="checkbox" id="vEditWheel"> <span>Active on spin wheel</span></label>
+    <div class="actions"><button type="button" class="btn btn-g" data-close>Cancel</button><button class="btn btn-p">Save Changes</button></div>
+  </form>
+</div></div>
+
+<div class="ovl" id="mAd"><div class="mbox">
+  <div class="mhd"><h3>✏️ Edit Advertisement</h3><button class="x" data-close>&times;</button></div>
+  <form id="aEditForm">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:.4rem;margin-bottom:1rem;padding-bottom:1rem;border-bottom:1px dashed var(--line)">
+      <img id="aEditPrev" class="thumb" style="width:200px;height:120px" alt=""><div class="thumb hide" id="aEditPh" style="width:200px;height:120px">🖼️</div><span class="sub">Current image</span>
+    </div>
+    <div class="grid g2">
+      <div class="fld s4"><label>Title *</label><input class="inp" name="title" required></div>
+      <div class="fld s4"><label>Description</label><textarea class="inp" name="description"></textarea></div>
+      <div class="fld s4"><label>Link (optional)</label><input class="inp" name="link" type="url"></div>
+      <div class="fld"><label>Placement *</label><select class="inp" name="placement"><option value="game">Game Page</option><option value="menu">Menu Page</option></select></div>
+      <div class="fld"><label>Branch Scope</label><select class="inp brScope" name="branch"></select></div>
+      <div class="fld"><label>Start Date</label><input class="inp" type="date" name="start"></div>
+      <div class="fld"><label>End Date</label><input class="inp" type="date" name="end"></div>
+      <div class="fld s4"><label>Replace Image (optional)</label><input class="inp" type="file" accept="image/*" id="aEditFile"></div>
+    </div>
+    <div class="actions"><button type="button" class="btn btn-g" data-close>Cancel</button><button class="btn btn-p">Save Changes</button></div>
+  </form>
+</div></div>
+
+<div class="ovl" id="mConfirm"><div class="mbox sm">
+  <div class="mhd"><h3>🗑️ Confirm Delete</h3><button class="x" data-close>&times;</button></div>
+  <p id="cTxt" style="margin:0 0 .5rem"></p><p class="sub">This cannot be undone.</p>
+  <div class="actions"><button class="btn btn-g" data-close>Cancel</button><button class="btn btn-d" id="cYes" style="background:var(--coral);color:#fff;border:0">Delete</button></div>
+</div></div>
+
+<div class="ovl" id="mIssue"><div class="mbox sm">
+  <div class="mhd"><h3>🎁 Issue Voucher Code</h3><button class="x" data-close>&times;</button></div>
+  <div class="fld"><label>Customer name or phone</label><input class="inp" id="iCust" placeholder="e.g. Maria Santos"></div>
+  <div id="iOut" class="hide"><div class="issued" id="iCode"></div><p class="sub" id="iMeta" style="text-align:center"></p></div>
+  <div class="actions"><button class="btn btn-g" data-close>Close</button><button class="btn btn-p" id="iGo">Generate Code</button></div>
+</div></div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const today=new Date().toISOString().slice(0,10);
+const addDays=n=>{const d=new Date();d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)};
+const fmt=d=>d?new Date(d+'T00:00').toLocaleDateString('en-PH',{month:'short',day:'numeric',year:'numeric'}):'—';
+const peso=n=>'₱'+Number(n||0).toLocaleString('en-PH');
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let uid=100;
+
+/* ---------- Data ---------- */
+const BRANCHES=[{id:1,name:'Makati'},{id:2,name:'BGC Taguig'},{id:3,name:'Quezon City'}];
+const bName=id=>id?BRANCHES.find(b=>b.id==id)?.name:'All Branches';
+const ROLES=[
+  {key:'owner',label:'Owner / Admin',branch:null},
+  {key:'supervisor',label:'Supervisor – Makati',branch:1},
+  {key:'staff',label:'Staff – Makati',branch:1}];
+let role=ROLES[0];
+
+let vouchers=[
+  {id:1,code:'PEACHY50',description:'₱50 off any order',type:'fixed',value:50,max:200,used:134,min:300,points:0,from:addDays(-30),exp:addDays(20),branch:null,active:true,wheel:true},
+  {id:2,code:'LATTE15',description:'15% off all lattes',type:'percent',value:15,max:100,used:100,min:0,points:50,from:addDays(-20),exp:addDays(10),branch:1,active:true,wheel:false},
+  {id:3,code:'BGCBRUNCH',description:'Weekend brunch promo',type:'percent',value:20,max:80,used:22,min:500,points:0,from:addDays(-10),exp:addDays(25),branch:2,active:true,wheel:true},
+  {id:4,code:'SUMMER25',description:'Summer peach drinks',type:'percent',value:25,max:150,used:88,min:200,points:100,from:addDays(-90),exp:addDays(-5),branch:null,active:true,wheel:false},
+  {id:5,code:'MKTFREE',description:'Free pastry upgrade',type:'fixed',value:80,max:40,used:5,min:250,points:30,from:addDays(-3),exp:addDays(40),branch:1,active:false,wheel:false},
+  {id:6,code:'QCHELLO',description:'New QC branch welcome',type:'fixed',value:100,max:300,used:41,min:400,points:0,from:addDays(-7),exp:'',branch:3,active:true,wheel:true}];
+
+const MENU={1:['Peach Iced Tea','Croissant','Caramel Latte','Strawberry Shortcake'],2:['Peach Iced Tea','Avocado Toast','Cold Brew'],3:['Peach Iced Tea','Ube Cheese Pandesal','Spanish Latte']};
+let streakGlobal={on:true,days:7,valid:14,type:'voucher',voucher:1,menu:''};
+let streakBranch={1:{override:true,on:true,days:5,valid:7,type:'menu',menu:'Caramel Latte',voucher:''},2:{override:false},3:{override:true,on:false,days:7,valid:14,type:'voucher',voucher:6,menu:''}};
+let masterOn=true, srScope='all', wheelOn=true;
+const CODES={'STRK-7Q2M':{cust:'Maria Santos',branch:1,reward:'Free Caramel Latte',exp:addDays(5),used:false},'STRK-K9PL':{cust:'Jon Reyes',branch:2,reward:'Voucher PEACHY50',exp:addDays(-2),used:false},'STRK-USED':{cust:'Ana Cruz',branch:3,reward:'Voucher QCHELLO',exp:addDays(8),used:true}};
+
+const svg=(c1,c2,e)=>'data:image/svg+xml,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop stop-color="${c1}"/><stop offset="1" stop-color="${c2}"/></linearGradient></defs><rect width="320" height="200" fill="url(#g)"/><text x="160" y="125" font-size="80" text-anchor="middle">${e}</text></svg>`);
+let ads=[
+  {id:1,title:'Peach Mango Frappe is back!',description:'Our summer bestseller returns for a limited time.',img:svg('#F8D7B0','#F4845F','🥭'),link:'https://peachycafe.ph/frappe',placement:'menu',start:addDays(-5),end:addDays(25),branch:null,active:true},
+  {id:2,title:'Spin & Win Double Points',description:'Every spin earns 2× points this week.',img:svg('#FFF4EC','#C0392B','🎡'),link:'',placement:'game',start:addDays(-2),end:addDays(5),branch:null,active:true},
+  {id:3,title:'Makati Breakfast Bundle',description:'Coffee + croissant for ₱199 before 10AM.',img:svg('#FDF1E6','#F6B49B','🥐'),link:'',placement:'menu',start:addDays(-15),end:addDays(15),branch:1,active:false},
+  {id:4,title:'BGC Grand Opening',description:'Thank you for celebrating with us!',img:svg('#F6B49B','#8B1A1A','🎉'),link:'',placement:'game',start:addDays(-60),end:addDays(-10),branch:2,active:true},
+  {id:5,title:'QC Holiday Treats',description:'Coming soon to Quezon City.',img:'',link:'',placement:'menu',start:addDays(10),end:addDays(40),branch:3,active:true}];
+
+/* ---------- Permissions ---------- */
+const P={
+  vCreate:()=>role.key!=='staff',
+  vManage:v=>role.key==='owner'||(role.key==='supervisor'&&v.branch===role.branch),
+  vVisible:v=>!role.branch||v.branch===null||v.branch===role.branch,
+  vIssue:v=>vStatus(v)==='active',
+  aAccess:()=>role.key!=='staff',
+  aManage:a=>role.key==='owner'||(role.key==='supervisor'&&a.branch===role.branch),
+  aVisible:a=>!role.branch||a.branch===null||a.branch===role.branch,
+  wheel:()=>role.key==='owner',
+  master:()=>role.key==='owner',
+  srEdit:s=>role.key==='owner'||(role.key==='supervisor'&&s==role.branch),
+  srAccess:()=>role.key!=='staff'};
+
+/* ---------- Helpers ---------- */
+function toast(m){const t=$('#toast');t.textContent=m;t.classList.add('show');clearTimeout(t._t);t._t=setTimeout(()=>t.classList.remove('show'),2200)}
+function open(id){$(id).classList.add('show')}
+function closeAll(){$$('.ovl').forEach(o=>o.classList.remove('show'))}
+$$('.ovl').forEach(o=>o.addEventListener('click',e=>{if(e.target===o||e.target.closest('[data-close]'))closeAll()}));
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeAll()});
+let confirmCb=null;
+function confirmDel(txt,cb){$('#cTxt').innerHTML=txt;confirmCb=cb;open('#mConfirm')}
+$('#cYes').onclick=()=>{confirmCb&&confirmCb();closeAll()};
+const scopeBadge=b=>b?`<span class="bd bd-br">📍 ${esc(bName(b))}</span>`:`<span class="bd bd-gl">🌐 Global</span>`;
+function fillBranchSelects(){
+  $$('.brScope').forEach(s=>{
+    const opts=role.key==='owner'?[`<option value="">All Branches (global)</option>`,...BRANCHES.map(b=>`<option value="${b.id}">${b.name}</option>`)]:[`<option value="${role.branch}">${bName(role.branch)}</option>`];
+    s.innerHTML=opts.join('');s.disabled=role.key!=='owner';});
+  const f=$('#vBranchF');f.innerHTML=`<option value="">All scopes</option><option value="g">Global only</option>`+BRANCHES.filter(b=>!role.branch||b.id===role.branch).map(b=>`<option value="${b.id}">${b.name}</option>`).join('');
+}
+
+/* ---------- Voucher form fields ---------- */
+const vFieldHTML=(p='')=>`
+ <div class="fld"><label>Voucher Code *</label><input class="inp" name="code" required maxlength="20" style="text-transform:uppercase" placeholder="PEACHY50"></div>
+ <div class="fld"><label>Discount Type *</label><select class="inp" name="type"><option value="fixed">Fixed (₱)</option><option value="percent">Percent (%)</option></select></div>
+ <div class="fld"><label>Discount Value *</label><input class="inp" type="number" name="value" min="1" step="0.01" required></div>
+ <div class="fld"><label>Max Uses *</label><input class="inp" type="number" name="max" min="1" required></div>
+ <div class="fld ${p?'s4':'s2'}"><label>Description</label><input class="inp" name="description" maxlength="120"></div>
+ <div class="fld"><label>Minimum Order (₱)</label><input class="inp" type="number" name="min" min="0" value="0"></div>
+ <div class="fld"><label>Points Required</label><input class="inp" type="number" name="points" min="0" value="0"></div>
+ <div class="fld"><label>Valid From (Start Date)</label><input class="inp" type="date" name="from"><div class="hint">Date when voucher can be used</div></div>
+ <div class="fld"><label>Expiry Date</label><input class="inp" type="date" name="exp"></div>
+ <div class="fld s2"><label>Branch Scope</label><select class="inp brScope" name="branch"></select><div class="hint">Leave as All Branches for a company-wide promo</div></div>`;
+$('#vFields').innerHTML=vFieldHTML();
+$('#vEditFields').innerHTML=vFieldHTML('e');
+
+function readForm(f){const o={};new FormData(f).forEach((v,k)=>o[k]=v);return o}
+function vStatus(v){
+  if(!v.active)return'inactive';
+  if(v.exp&&v.exp<today)return'expired';
+  if(v.used>=v.max)return'used';
+  if(v.from&&v.from>today)return'scheduled';
+  return'active'}
+const vBadge={active:'<span class="bd bd-ok">● Active</span>',inactive:'<span class="bd bd-off">○ Inactive</span>',expired:'<span class="bd bd-exp">⏰ Expired</span>',used:'<span class="bd bd-warn">Used up</span>',scheduled:'<span class="bd bd-warn">🗓 Scheduled</span>'};
+function expHint(v){if(!v.exp)return'No expiry';const d=Math.round((new Date(v.exp)-new Date(today))/864e5);return d<0?`Expired ${-d}d ago`:d===0?'Expires today':d<=7?`⚠ ${d}d left`:`${d}d left`}
+
+$('#vForm').addEventListener('submit',e=>{e.preventDefault();const d=readForm(e.target);
+  const code=d.code.trim().toUpperCase();
+  if(vouchers.some(v=>v.code===code))return toast('That voucher code already exists');
+  if(d.type==='percent'&&+d.value>100)return toast('Percent discount cannot exceed 100');
+  if(d.from&&d.exp&&d.exp<d.from)return toast('Expiry must be after the start date');
+  vouchers.unshift({id:++uid,code,description:d.description,type:d.type,value:+d.value,max:+d.max,used:0,min:+d.min,points:+d.points,from:d.from,exp:d.exp,branch:role.key==='owner'?(d.branch?+d.branch:null):role.branch,active:true,wheel:false});
+  e.target.reset();fillBranchSelects();renderV();toast('Voucher '+code+' created')});
+
+let editV=null;
+function openEditV(id){const v=vouchers.find(x=>x.id===id);editV=v;const f=$('#vEditForm');
+  fillBranchSelects();
+  Object.entries({code:v.code,type:v.type,value:v.value,max:v.max,description:v.description,min:v.min,points:v.points,from:v.from,exp:v.exp,branch:v.branch??''}).forEach(([k,val])=>f.elements[k].value=val);
+  $('#vEditWheel').checked=v.wheel;open('#mVoucher')}
+$('#vEditForm').addEventListener('submit',e=>{e.preventDefault();const d=readForm(e.target);const code=d.code.trim().toUpperCase();
+  if(vouchers.some(v=>v.code===code&&v!==editV))return toast('That voucher code already exists');
+  if(d.type==='percent'&&+d.value>100)return toast('Percent discount cannot exceed 100');
+  Object.assign(editV,{code,type:d.type,value:+d.value,max:+d.max,description:d.description,min:+d.min,points:+d.points,from:d.from,exp:d.exp,wheel:$('#vEditWheel').checked});
+  if(role.key==='owner')editV.branch=d.branch?+d.branch:null;
+  closeAll();renderV();toast('Voucher updated')});
+
+let issueV=null;
+function openIssue(id){issueV=vouchers.find(x=>x.id===id);$('#iCust').value='';$('#iOut').classList.add('hide');$('#iGo').disabled=false;open('#mIssue')}
+$('#iGo').onclick=()=>{const c=$('#iCust').value.trim();if(!c)return toast('Enter the customer first');
+  const code=issueV.code+'-'+Math.random().toString(36).slice(2,7).toUpperCase();
+  issueV.used++;$('#iCode').textContent=code;$('#iMeta').textContent=`Issued to ${c} • ${issueV.type==='fixed'?peso(issueV.value):issueV.value+'%'} off • ${expHint(issueV)}`;
+  $('#iOut').classList.remove('hide');$('#iGo').disabled=true;renderV()};
+
+function vAct(v){
+  const m=P.vManage(v),c=P.vCreate();
+  let items='';
+  if(m) items+=`<button type="button" data-vtoggle="${v.id}">${v.active?'⏸ Deactivate Voucher':'✓ Activate Voucher'}</button>`;
+  items+=`<button type="button" data-issue="${v.id}" ${P.vIssue(v)?'':'disabled title="Only active vouchers can be issued"'}>🎁 Issue Voucher</button>`;
+  if(c){
+    if(m) items+=`<button type="button" data-vedit="${v.id}">✏️ Edit Voucher</button><button type="button" class="danger" data-vdel="${v.id}">🗑️ Delete Voucher</button>`;
+    else items+=`<span class="menu-lock">🔒 Read-only</span>`;
+  }
+  return `<details class="voucher-actions"><summary aria-label="Voucher actions" title="More actions">⋮</summary><div class="voucher-menu">${items}</div></details>`;
+}
+const vDisc=v=>v.type==='fixed'?peso(v.value):v.value+'%';
+function renderV(){
+  const q=$('#vSearch').value.toLowerCase(),st=$('#vStatus').value,bf=$('#vBranchF').value;
+  const list=vouchers.filter(P.vVisible).filter(v=>(!q||(v.code+v.description).toLowerCase().includes(q))&&(!st||vStatus(v)===st)&&(!bf||(bf==='g'?v.branch===null:v.branch==bf)));
+  const can=v=>P.vManage(v);
+  $('#vBody').innerHTML=list.length?list.map(v=>{const s=vStatus(v),pct=Math.min(100,v.used/v.max*100);return`<tr>
+    <td><div class="code">${esc(v.code)}</div><div class="sub">${esc(v.description||'—')}</div></td>
+    <td><b>${vDisc(v)}</b><div class="sub">${v.type==='fixed'?'Fixed':'Percent'}</div></td>
+    <td>${v.used} / ${v.max}<div class="bar"><i style="width:${pct}%"></i></div></td>
+    <td>${v.min?peso(v.min):'—'}</td><td>${v.points||'—'}</td>
+    <td>${fmt(v.from)} → ${fmt(v.exp)}<div class="sub">${expHint(v)}</div></td>
+    <td>${scopeBadge(v.branch)}</td>
+    <td><label class="sw sw-wheel" title="On: eligible for Spin & Win · Off: excluded"><input type="checkbox" data-vwheel="${v.id}" ${v.wheel?'checked':''} ${can(v)?'':'disabled'}><i></i></label></td>
+    <td>${vBadge[s]}</td>
+    <td><div class="row-act">${vAct(v)}</div></td></tr>`}).join(''):`<tr><td colspan="10" class="empty">No vouchers match your filters.</td></tr>`;
+  $('#vCards').innerHTML=list.length?list.map(v=>{const s=vStatus(v);return`<div class="mc">
+    <div class="mc-top"><div><div class="code">${esc(v.code)}</div><div class="sub">${esc(v.description||'—')}</div></div>${vBadge[s]}</div>
+    <dl><div><dt>Discount</dt><dd>${vDisc(v)}</dd></div><div><dt>Usage</dt><dd>${v.used}/${v.max}<div class="bar" style="width:100%"><i style="width:${Math.min(100,v.used/v.max*100)}%"></i></div></dd></div>
+    <div><dt>Min order</dt><dd>${v.min?peso(v.min):'—'}</dd></div><div><dt>Points</dt><dd>${v.points||'—'}</dd></div>
+    <div><dt>Valid</dt><dd>${fmt(v.from)} – ${fmt(v.exp)}</dd></div><div><dt>Expiry</dt><dd>${expHint(v)}</dd></div>
+    <div><dt>Scope</dt><dd>${scopeBadge(v.branch)}</dd></div>
+    <div><dt>Spin Wheel</dt><dd><label class="sw sw-wheel" title="On: eligible for Spin & Win · Off: excluded"><input type="checkbox" data-vwheel="${v.id}" ${v.wheel?'checked':''} ${can(v)?'':'disabled'}><i></i></label></dd></div></dl>
+    <div class="row-act">${vAct(v)}</div></div>`}).join(''):`<div class="empty">No vouchers match your filters.</div>`;
+  const vis=vouchers.filter(P.vVisible);
+  $('#vStats').innerHTML=[['🎟️',vis.length,'Total vouchers'],['✅',vis.filter(v=>vStatus(v)==='active').length,'Active now'],['🎡',vis.filter(v=>v.wheel&&v.active).length,'On spin wheel'],['⏰',vis.filter(v=>vStatus(v)==='expired').length,'Expired']].map(([e,b,s])=>`<div class="stat"><span class="em">${e}</span><b>${b}</b><span>${s}</span></div>`).join('');
+}
+['#vSearch','#vStatus','#vBranchF'].forEach(s=>$(s).addEventListener('input',renderV));
+$('#sec-vouchers').addEventListener('click',e=>{if(!e.target.closest('.voucher-actions'))$$('#sec-vouchers .voucher-actions[open]').forEach(m=>m.removeAttribute('open'));const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.vedit)openEditV(+b.dataset.vedit);
+  if(b.dataset.vtoggle){
+    const v=vouchers.find(x=>x.id==b.dataset.vtoggle);
+    if(v&&P.vManage(v)){
+      v.active=!v.active;
+      renderV();
+      toast(`${v.code} ${v.active?'activated':'deactivated'}`);
+    }
+  }
+  if(b.dataset.issue)openIssue(+b.dataset.issue);
+  if(b.dataset.vdel){const v=vouchers.find(x=>x.id==b.dataset.vdel);confirmDel(`Delete voucher <b>${esc(v.code)}</b>?`,()=>{vouchers=vouchers.filter(x=>x!==v);renderV();toast('Voucher deleted')})}});
+$('#sec-vouchers').addEventListener('change',e=>{const t=e.target;
+  if(t.dataset.vwheel){const v=vouchers.find(x=>x.id==t.dataset.vwheel);v.wheel=t.checked;renderV();toast(`${v.code} ${v.wheel?'added to':'removed from'} spin wheel`)}});
+$('#wheelToggle').addEventListener('change',e=>{wheelOn=e.target.checked;toast('Spin Wheel '+(wheelOn?'enabled':'disabled')+' for customers')});
+
+/* ---------- Streak ---------- */
+function srCfg(){if(srScope==='all')return streakGlobal;const b=streakBranch[srScope];return b.override?b:{...streakGlobal,override:false}}
+let srType='voucher';
+function renderSR(){
+  $('#masterToggle').checked=masterOn;$('#masterToggle').disabled=!P.master();
+  const pills=[['all','🌐 All Branches'],...BRANCHES.map(b=>[b.id,'📍 '+b.name])];
+  $('#srPills').innerHTML=pills.map(([k,l])=>`<button type="button" class="pill ${srScope==k?'on':''}" data-sc="${k}" ${role.key==='supervisor'&&k!=role.branch?'disabled':''}>${l}</button>`).join('');
+  const c=srCfg(),edit=P.srEdit(srScope);
+  srType=c.type;
+  $('#srOn').checked=c.on;$('#srDays').value=c.days;$('#srValid').value=c.valid;
+  const br=srScope==='all'?null:srScope;
+  const mi=br?MENU[br]:[];
+  $('#srMenu').innerHTML=`<option value="">Choose a menu item</option>`+mi.map(m=>`<option ${c.menu===m?'selected':''}>${m}</option>`).join('');
+  $('#srMenu').disabled=!br||!edit;
+  $('#srMenuHint').textContent=br?'Given as one free serving, while it can still be ordered.':'For a free menu item, choose a branch above.';
+  const vs=vouchers.filter(v=>v.active&&(v.branch===null||v.branch==br));
+  $('#srVoucher').innerHTML=`<option value="">Choose a voucher</option>`+vs.map(v=>`<option value="${v.id}" ${c.voucher==v.id?'selected':''}>${v.code} — ${vDisc(v)} off</option>`).join('');
+  setSrType(srType);
+  $('#srApplyWrap').classList.toggle('hide',srScope!=='all');
+  $('#srApplyAll').checked=false;
+  $$('#srForm input,#srForm select,#srType button,#srSave').forEach(el=>{if(el.id!=='srMenu')el.disabled=!edit});
+  $('#srOnHint').textContent=srScope==='all'?'Global default for every branch':`${bName(srScope)} branch switch`;
+  const n=$('#srScopeNote');
+  if(!edit){n.style.display='flex';n.innerHTML='🔒 <span>Global defaults are read-only for your role. You can view them here.</span>'}
+  else if(srScope!=='all'){n.style.display='flex';n.innerHTML=streakBranch[srScope].override?`✏️ <span><b>${bName(srScope)}</b> uses its own settings (override).</span>`:`🌐 <span><b>${bName(srScope)}</b> currently follows the global defaults. Saving creates a branch override.</span>`}
+  else n.style.display='none';
+  $('#srPreview').innerHTML=Array.from({length:Math.min(+c.days||0,30)},(_,i)=>`<span class="${i<Math.ceil(c.days/2)?'f':''}">${i===c.days-1?'🎁':i+1}</span>`).join('');
+  renderOverview()}
+function setSrType(t){srType=t;$$('#srType button').forEach(b=>b.classList.toggle('on',b.dataset.t===t));$('#srMenuWrap').classList.toggle('hide',t!=='menu');$('#srVoucherWrap').classList.toggle('hide',t!=='voucher')}
+$('#srType').onclick=e=>{const b=e.target.closest('button');if(b&&!b.disabled)setSrType(b.dataset.t)};
+$('#srPills').onclick=e=>{const b=e.target.closest('button');if(!b||b.disabled)return;srScope=b.dataset.sc==='all'?'all':+b.dataset.sc;renderSR()};
+$('#srDays').addEventListener('input',()=>{const d=+$('#srDays').value||0;$('#srPreview').innerHTML=Array.from({length:Math.min(d,30)},(_,i)=>`<span class="${i<Math.ceil(d/2)?'f':''}">${i===d-1?'🎁':i+1}</span>`).join('')});
+$('#srForm').addEventListener('submit',e=>{e.preventDefault();
+  const cfg={on:$('#srOn').checked,days:+$('#srDays').value,valid:+$('#srValid').value,type:srType,menu:$('#srMenu').value,voucher:+$('#srVoucher').value||''};
+  if(cfg.type==='menu'&&!cfg.menu)return toast(srScope==='all'?'For a free menu item, choose a branch above':'Choose a menu item');
+  if(cfg.type==='voucher'&&!cfg.voucher)return toast('Choose a voucher');
+  if(srScope==='all'){streakGlobal=cfg;if($('#srApplyAll').checked)BRANCHES.forEach(b=>streakBranch[b.id]={override:false});toast($('#srApplyAll').checked?'Saved and applied to all branches':'Global defaults saved')}
+  else{streakBranch[srScope]={override:true,...cfg};toast(bName(srScope)+' settings saved')}
+  renderSR()});
+$('#masterToggle').addEventListener('change',e=>{masterOn=e.target.checked;renderOverview();toast('Streak calendar '+(masterOn?'ON':'OFF')+' for every branch')});
+function rewardTxt(c){if(c.type==='menu')return'Free '+(c.menu||'menu item');const v=vouchers.find(x=>x.id==c.voucher);return v?'Voucher '+v.code:'Voucher'}
+function renderOverview(){
+  const g=streakGlobal;
+  $('#srOverview').innerHTML=`<div class="ov"><div><b>🌐 Global defaults</b><span class="sub">${g.days} days · ${rewardTxt(g)} · valid ${g.valid}d</span></div>${g.on&&masterOn?'<span class="bd bd-ok">ON</span>':'<span class="bd bd-off">OFF</span>'}</div>`+
+  BRANCHES.map(b=>{const s=streakBranch[b.id],c=s.override?s:g,on=masterOn&&c.on;return`<div class="ov"><div><b>📍 ${b.name}</b><span class="sub">${c.days} days · ${esc(rewardTxt(c))} · valid ${c.valid}d</span><div style="margin-top:.25rem">${s.override?'<span class="bd bd-br">Branch override</span>':'<span class="bd bd-gl">Uses defaults</span>'}</div></div>
+   <label class="sw"><input type="checkbox" data-brsw="${b.id}" ${on?'checked':''} ${!masterOn||!P.srEdit(b.id)?'disabled':''}><i></i></label></div>`}).join('')+(masterOn?'':'<div class="notice" style="margin:.6rem 0 0">⏸ Master calendar is OFF — all branches paused.</div>')}
+$('#srOverview').addEventListener('change',e=>{const id=+e.target.dataset.brsw;if(!id)return;const s=streakBranch[id];
+  if(!s.override)streakBranch[id]={...streakGlobal,override:true};streakBranch[id].on=e.target.checked;renderSR();toast(`${bName(id)} streak ${e.target.checked?'ON':'OFF'}`)});
+$('#chkBtn').onclick=()=>{const code=$('#chkCode').value.trim().toUpperCase(),r=$('#chkRes'),c=CODES[code];r.className='check-res show';
+  if(!code){r.classList.add('bad');r.textContent='Enter a reward code.';return}
+  if(!c){r.classList.add('bad');r.textContent='❌ Code not found.';return}
+  if(role.branch&&c.branch!==role.branch){r.classList.add('bad');r.innerHTML=`❌ This code belongs to <b>${bName(c.branch)}</b>.`;return}
+  if(c.used){r.classList.add('bad');r.innerHTML=`⚠️ Already redeemed by ${c.cust}.`;return}
+  if(c.exp<today){r.classList.add('bad');r.innerHTML=`⏰ Expired on ${fmt(c.exp)} (${c.cust}).`;return}
+  r.classList.add('ok');r.innerHTML=`✅ <b>Valid</b> — ${c.reward}<br><span class="sub">${c.cust} · ${bName(c.branch)} · until ${fmt(c.exp)}</span>`};
+$('#chkCode').addEventListener('keydown',e=>{if(e.key==='Enter')$('#chkBtn').click()});
+
+/* ---------- Ads ---------- */
+function aStatus(a){if(!a.active)return'inactive';if(a.end&&a.end<today)return'expired';if(a.start&&a.start>today)return'scheduled';return'active'}
+const aBadge={active:'<span class="bd bd-ok">● Live</span>',inactive:'<span class="bd bd-off">○ Inactive</span>',expired:'<span class="bd bd-exp">⏰ Expired</span>',scheduled:'<span class="bd bd-warn">🗓 Scheduled</span>'};
+const placeTxt=p=>p==='game'?'🎮 Game Page':'📋 Menu Page';
+const readImg=(file,cb)=>{if(!file)return cb('');const r=new FileReader();r.onload=()=>cb(r.result);r.readAsDataURL(file)};
+let newImg='';
+$('#aFile').addEventListener('change',e=>readImg(e.target.files[0],src=>{newImg=src;$('#aPrev').src=src;$('#aPrev').classList.toggle('hide',!src);$('#aDropTxt').textContent=src?'🔁 Tap to change image':'🖼️ Tap to upload an image'}));
+$('#aForm').addEventListener('reset',()=>{newImg='';$('#aPrev').classList.add('hide');$('#aDropTxt').textContent='🖼️ Tap to upload an image';setTimeout(fillBranchSelects)});
+$('#aForm').addEventListener('submit',e=>{e.preventDefault();const d=readForm(e.target);
+  if(d.start&&d.end&&d.end<d.start)return toast('End date must be after start date');
+  ads.unshift({id:++uid,title:d.title.trim(),description:d.description,img:newImg,link:d.link,placement:d.placement,start:d.start,end:d.end,branch:role.key==='owner'?(d.branch?+d.branch:null):role.branch,active:true});
+  e.target.reset();renderA();toast('Advertisement published')});
+let editA=null,editImg=null;
+function openEditA(id){const a=ads.find(x=>x.id===id);editA=a;editImg=null;const f=$('#aEditForm');fillBranchSelects();
+  ['title','description','link','placement','start','end'].forEach(k=>f.elements[k].value=a[k]||'');f.elements.branch.value=a.branch??'';
+  $('#aEditFile').value='';setEditPrev(a.img);open('#mAd')}
+function setEditPrev(src){$('#aEditPrev').src=src||'';$('#aEditPrev').classList.toggle('hide',!src);$('#aEditPh').classList.toggle('hide',!!src)}
+$('#aEditFile').addEventListener('change',e=>readImg(e.target.files[0],src=>{editImg=src;setEditPrev(src||editA.img)}));
+$('#aEditForm').addEventListener('submit',e=>{e.preventDefault();const d=readForm(e.target);
+  if(d.start&&d.end&&d.end<d.start)return toast('End date must be after start date');
+  Object.assign(editA,{title:d.title,description:d.description,link:d.link,placement:d.placement,start:d.start,end:d.end});
+  if(role.key==='owner')editA.branch=d.branch?+d.branch:null; if(editImg)editA.img=editImg;
+  closeAll();renderA();toast('Advertisement updated')});
+function aAct(a){return P.aManage(a)?`<details class="ad-actions"><summary aria-label="Advertisement actions" title="Actions">⋮</summary><div class="ad-menu"><button type="button" data-aedit="${a.id}">✏️ Edit</button><button type="button" class="danger" data-adel="${a.id}">🗑️ Delete</button></div></details>`:`<span class="bd bd-lock">🔒 Read-only</span>`}
+const thumb=a=>a.img?`<img class="thumb" src="${a.img}" alt="">`:`<div class="thumb">🖼️</div>`;
+function renderA(){
+  const q=$('#aSearch').value.toLowerCase(),pl=$('#aPlace').value,st=$('#aStatus').value;
+  const list=ads.filter(P.aVisible).filter(a=>(!q||(a.title+a.description).toLowerCase().includes(q))&&(!pl||a.placement===pl)&&(!st||aStatus(a)===st));
+  $('#aBody').innerHTML=list.length?list.map(a=>`<tr>
+    <td><div style="display:flex;gap:.7rem;align-items:center">${thumb(a)}<div style="min-width:0"><b style="color:var(--red)">${esc(a.title)}</b><div class="sub">${esc(a.description||'')}</div>${a.link?`<a class="sub" href="${esc(a.link)}" target="_blank" rel="noopener" style="color:var(--coral)">🔗 ${esc(a.link)}</a>`:''}</div></div></td>
+    <td>${placeTxt(a.placement)}</td><td>${fmt(a.start)}<div class="sub">to ${fmt(a.end)}</div></td><td>${scopeBadge(a.branch)}</td>
+    <td>${aBadge[aStatus(a)]}</td><td><label class="sw"><input type="checkbox" data-atog="${a.id}" ${a.active?'checked':''} ${P.aManage(a)?'':'disabled'}><i></i></label></td>
+    <td><div class="row-act">${aAct(a)}</div></td></tr>`).join(''):`<tr><td colspan="7" class="empty">No advertisements match.</td></tr>`;
+  $('#aCards').innerHTML=list.length?list.map(a=>`<div class="mc">
+    <div class="mc-top"><div style="display:flex;gap:.7rem;align-items:center">${thumb(a)}<div style="min-width:0"><b style="color:var(--red)">${esc(a.title)}</b><div class="sub">${placeTxt(a.placement)}</div></div></div>${aBadge[aStatus(a)]}</div>
+    <dl><div><dt>Start</dt><dd>${fmt(a.start)}</dd></div><div><dt>End</dt><dd>${fmt(a.end)}</dd></div><div><dt>Scope</dt><dd>${scopeBadge(a.branch)}</dd></div><div><dt>Active</dt><dd><label class="sw"><input type="checkbox" data-atog="${a.id}" ${a.active?'checked':''} ${P.aManage(a)?'':'disabled'}><i></i></label></dd></div></dl>
+    <div class="row-act">${aAct(a)}</div></div>`).join(''):`<div class="empty">No advertisements match.</div>`;
+  const vis=ads.filter(P.aVisible);
+  $('#aStats').innerHTML=[['📣',vis.length,'Total ads'],['✅',vis.filter(a=>aStatus(a)==='active').length,'Live now'],['🎮',vis.filter(a=>a.placement==='game').length,'Game Page'],['📋',vis.filter(a=>a.placement==='menu').length,'Menu Page']].map(([e,b,s])=>`<div class="stat"><span class="em">${e}</span><b>${b}</b><span>${s}</span></div>`).join('')}
+['#aSearch','#aPlace','#aStatus'].forEach(s=>$(s).addEventListener('input',renderA));
+$('#sec-ads').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;
+  if(b.dataset.aedit){b.closest('details')?.removeAttribute('open');openEditA(+b.dataset.aedit)}
+  if(b.dataset.adel){b.closest('details')?.removeAttribute('open');const a=ads.find(x=>x.id==b.dataset.adel);confirmDel(`Delete ad <b>${esc(a.title)}</b>?`,()=>{ads=ads.filter(x=>x!==a);renderA();toast('Advertisement deleted')})}});
+$('#sec-ads').addEventListener('change',e=>{const id=e.target.dataset.atog;if(!id)return;const a=ads.find(x=>x.id==id);a.active=e.target.checked;renderA();toast(`Ad ${a.active?'activated':'deactivated'}`)});
+
+/* ---------- Promotions section tabs ---------- */
+const sectionDetails={
+  vouchers:'Create, issue and manage voucher promotions.',
+  streak:'Configure stamp-card rewards and review branch settings.',
+  ads:'Create and manage advertisements shown to customers.'
+};
+function showPromotionSection(name){
+  const allowed=['vouchers','streak','ads'];
+  if(!allowed.includes(name))return;
+  document.querySelectorAll('.sec').forEach(section=>{
+    section.classList.toggle('active',section.id==='sec-'+name);
+  });
+  document.querySelectorAll('.section-tab').forEach(tab=>{
+    const selected=tab.dataset.section===name;
+    tab.classList.toggle('active',selected);
+    tab.setAttribute('aria-selected',selected?'true':'false');
+  });
+  $('#secDesc').textContent=sectionDetails[name];
+}
+document.querySelectorAll('.section-tab').forEach(tab=>{
+  tab.addEventListener('click',()=>showPromotionSection(tab.dataset.section));
+});
+
+/* ---------- Single-page navigation & role ---------- */
+function applyRole(){
+  $('#vCreateCard').classList.toggle('hide',!P.vCreate());
+  $('#wheelToggle').disabled=!P.wheel();
+  if(role.key==='supervisor'&&srScope!==role.branch)srScope=role.branch;
+  if(role.key==='owner')srScope='all';
+  fillBranchSelects();renderV();renderSR();renderA();
+  // All three management sections remain stacked on this single page.
+}
+applyRole();
+</script>
+</body>
+</html>

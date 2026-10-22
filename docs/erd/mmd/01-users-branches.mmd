@@ -1,0 +1,64 @@
+%% POMIDA ERD - POMIDA — Module 1: Users & Branches - generated 2026-10-22 from pomida_db
+%% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
+%% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
+erDiagram
+    users {
+        bigint id PK
+        varchar(255) name
+        varchar(255) email UK
+        enum role
+        int points
+        int bonus_points
+        int reward_claims
+        varchar(20) contact_number
+        text address
+        varchar(255) pwd_card_number
+        varchar(255) pwd_name
+        varchar(255) pwd_image
+        varchar(255) senior_card_number
+        varchar(255) senior_name
+        varchar(255) senior_image
+        varchar(255) profile_image
+        bigint branch_id FK
+        tinyint(1) is_active
+        varchar(6) verification_code
+        timestamp verified_at
+        timestamp email_verified_at
+        varchar(255) password
+        varchar(100) remember_token
+        timestamp created_at
+        timestamp updated_at
+    }
+    branches {
+        bigint id PK
+        varchar(255) name
+        varchar(10) code UK
+        text address
+        varchar(20) contact_number
+        varchar(255) email
+        time opening_time
+        time closing_time
+        tinyint(1) is_active
+        tinyint(1) is_main_branch
+        varchar(255) image
+        timestamp created_at
+        timestamp updated_at
+    }
+    admin_bootstrap {
+        bigint id PK
+        varchar(1) singleton UK
+        bigint user_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    branches |o--o{ users : "employs"
+    users |o--o{ admin_bootstrap : "is recorded as first admin in"
+
+    classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef mod_orders fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
+    classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
+    class users,branches,admin_bootstrap mod_users

@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Support\ShopDay;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -31,18 +32,81 @@ class Ad extends Model
      * both use it, so they cannot drift apart. NULL starts_at / ends_at mean no
      * limit on that side. Branch targeting and placement stay with the caller.
      * Ad::isActive() answers the same question for a single loaded row.
+     *
+     * THE END DATE IS A WHOLE SHOP DAY. The admin form takes a date, stored at
+     * 00:00:00 in APP_TIMEZONE; compared as an instant under APP_TIMEZONE=UTC,
+     * that ended the ad at 8:00 AM Manila ON its end date. It is now read by
+     * the same rule as a voucher's expires_at (App\Support\ShopDay): a
+     * midnight value means "live through the end of that date in the shop",
+     * any other value is a precise instant. Nothing stored changes.
+     *
+     * THE START DATE IS A WHOLE SHOP DAY TOO, from the other side: a midnight
+     * starts_at begins at 00:00 Manila on that date (ShopDay::hasStartedAt /
+     * whereStarted), not at 8:00 AM; a start with a time of day begins at
+     * that exact instant.
      */
     public function scopeLiveNow($query)
     {
         return $query->where('is_active', true)
-            ->where(function ($q) {
-                $q->whereNull('starts_at')
-                    ->orWhere('starts_at', '<=', now());
-            })
-            ->where(function ($q) {
-                $q->whereNull('ends_at')
-                    ->orWhere('ends_at', '>=', now());
-            });
+            ->where(fn ($q) => ShopDay::whereStarted($q, $this->qualifyColumn('starts_at')))
+            ->where(fn ($q) => ShopDay::whereNotExpired($q, $this->qualifyColumn('ends_at')));
+    }
+
+    /** Has this ad's start been reached? See scopeLiveNow() for the rule. */
+    public function hasStarted(): bool
+    {
+        return ShopDay::hasStartedAt($this->starts_at);
+    }
+
+    /** Has this ad's end date passed? See scopeLiveNow() for the rule. */
+    public function hasEnded(): bool
+    {
+        return ShopDay::hasExpired($this->ends_at);
+    }
+
+    /**
+     * The four words the admin Ads list shows in its Status column and offers
+     * in its "All statuses" filter (Promotions & Rewards > Ads Management,
+     * Defect Report 3 part B). In the reference's order of precedence: an ad
+     * switched off is Inactive whatever its dates say; a switched-on ad past
+     * its end is Expired; one whose start is still ahead is Scheduled; the rest
+     * are Live — exactly the ads scopeLiveNow() hands to customers, so the
+     * badge never claims an ad is showing when the Game / Menu page would not
+     * show it.
+     */
+    public const LIST_STATUSES = ['live', 'inactive', 'expired', 'scheduled'];
+
+    public function listStatus(): string
+    {
+        if (! $this->is_active) {
+            return 'inactive';
+        }
+
+        if ($this->hasEnded()) {
+            return 'expired';
+        }
+
+        if (! $this->hasStarted()) {
+            return 'scheduled';
+        }
+
+        return 'live';
+    }
+
+    /** SQL twin of listStatus(); an unknown or empty status filters nothing. */
+    public function scopeWithListStatus($query, ?string $status)
+    {
+        $notEnded = fn ($q) => ShopDay::whereNotExpired($q, $this->qualifyColumn('ends_at'));
+        $started  = fn ($q) => ShopDay::whereStarted($q, $this->qualifyColumn('starts_at'));
+
+        return match ($status) {
+            'inactive'  => $query->where('is_active', false),
+            'expired'   => $query->where('is_active', true)->whereNot($notEnded),
+            'scheduled' => $query->where('is_active', true)->where($notEnded)
+                ->whereNotNull('starts_at')->whereNot($started),
+            'live'      => $query->liveNow(),
+            default     => $query,
+        };
     }
 
     /** True for an old cart/orders ad — one no customer page will ever show. */
@@ -80,8 +144,8 @@ class Ad extends Model
     public function isActive(): bool
     {
         if (!$this->is_active) return false;
-        if ($this->starts_at && $this->starts_at->isFuture()) return false;
-        if ($this->ends_at && $this->ends_at->isPast()) return false;
+        if (! $this->hasStarted()) return false;
+        if ($this->hasEnded()) return false;
         return true;
     }
 }

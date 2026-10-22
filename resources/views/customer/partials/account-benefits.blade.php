@@ -18,7 +18,7 @@
 @php
     $milestones = $loyalty['milestones'];
 @endphp
-<section id="benefits" class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[1100px]:col-span-7" aria-labelledby="benefits-title">
+<section id="benefits" class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[761px]:col-span-7" aria-labelledby="benefits-title">
     <div class="mb-4 flex items-start gap-3">
         <span class="acct-icon text-lg">
             <i class="bi bi-gift"></i>
@@ -62,13 +62,17 @@
              card is on (both switches). --}}
         @php $benefitBranch = \App\Services\FreeDesserts::sessionBranch(); @endphp
         @if($benefitBranch && \App\Services\FreeDesserts::active($benefitBranch->id))
-        @php $benefitReward = \App\Services\StreakRewardSettings::current($benefitBranch->id)['description']; @endphp
+        @php
+            $benefitReward = \App\Services\StreakRewardSettings::current($benefitBranch->id)['description'];
+            // "a Free Chocolate Cake" for an item reward, "a reward: 20% off" for a voucher.
+            $benefitRewardPhrase = ! $benefitReward ? 'a reward' : (str_starts_with($benefitReward, 'Free ') ? 'a ' . $benefitReward : 'a reward: ' . $benefitReward);
+        @endphp
         <li class="min-w-0">
             <a href="#free-dessert" class="flex h-full items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 no-underline transition hover:-translate-y-0.5 hover:border-peach-rose">
                 <span class="acct-icon text-lg"><i class="bi bi-gift"></i></span>
                 <span class="min-w-0">
                     <span class="block text-base font-semibold text-peach-deep">Stamp card reward</span>
-                    <span class="block text-sm text-peach-deep/70" data-testid="benefit-free-dessert">A reward{{ $benefitReward ? ' (' . $benefitReward . ')' : '' }} every {{ \App\Services\FreeDesserts::visitDays($benefitBranch->id) }} stamps.</span>
+                    <span class="block text-sm text-peach-deep/70" data-testid="benefit-free-dessert">Earn 1 stamp per day when you complete at least one order at {{ $benefitBranch->name }}. Collect {{ \App\Services\FreeDesserts::visitDays($benefitBranch->id) }} stamps to receive {{ $benefitRewardPhrase }}. The days do not need to be consecutive.</span>
                 </span>
             </a>
         </li>
@@ -122,7 +126,7 @@
     </ul>
 </section>
 
-<section class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[1100px]:col-span-5" aria-labelledby="recent-bonuses-title">
+<section class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[761px]:col-span-5" aria-labelledby="recent-bonuses-title">
     <div class="mb-3 flex items-start gap-3">
         <span class="acct-icon text-lg">
             <i class="bi bi-graph-up-arrow"></i>

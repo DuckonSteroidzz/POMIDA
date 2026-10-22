@@ -36,18 +36,21 @@ class AdminController extends Controller
 
     public function showAccount()
     {
+        // The page used to list every staff and supervisor account here. The
+        // redesign replaced that table with a link to Staff Accounts, so the
+        // query is gone. The GCash settings are read here, once, and only for
+        // the owner: the card is owner-only and the route is `role:admin`.
         $me = Auth::guard('admin')->user();
+        $isOwner = $me && $me->role === 'admin';
 
-        // Read-only staff summary for the Account page, admins only. Full staff
-        // management (create / activate / deactivate) lives on the Staff
-        // Accounts page.
-        $staffList = ($me && $me->role === 'admin')
-            ? \App\Models\User::whereIn('role', \App\Models\User::ADMIN_MANAGEABLE_ROLES)
-                ->orderBy('name')
-                ->get()
-            : collect();
+        $gcashSetting = fn (string $key) => $isOwner
+            ? \App\Models\Setting::where('key', $key)->whereNull('branch_id')->value('value')
+            : null;
 
-        return view('admin.account', compact('staffList'));
+        return view('admin.account', [
+            'gcashQr'    => $gcashSetting('gcash_qr'),
+            'gcashPhone' => $gcashSetting('gcash_phone'),
+        ]);
     }
 
     /**
@@ -2413,8 +2416,24 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
     // ══════════ Menu Options ══════════
 
-    public function showMenuOptions()
+    public function showMenuOptions(Request $request)
     {
+        /*
+         * The owner's "Viewing:" branch (Oct 2026) — the same remembered choice
+         * as every other admin page (App\Support\ViewingBranch), optionally
+         * named by ?branch=all|<id> so a view can be bookmarked. null = All
+         * Branches, which renders exactly as this page always has; always null
+         * for a branch-locked supervisor, whose page is narrowed by
+         * $lockedBranchId below and for whom a crafted ?branch= means nothing.
+         *
+         * Viewing one branch narrows only what is SHOWN: the Menu Items picker
+         * to that branch's items plus the company-wide (branch_id NULL) ones,
+         * and, per option, the "Used in" list and the inventory-status badge
+         * to the same items. The options themselves are global and all stay
+         * listed — one used nowhere in this branch still has to be assignable.
+         */
+        $viewingBranchId = \App\Support\ViewingBranch::resolve($request->query('branch'))?->id;
+
         // 'menuItems:id,name,branch_id' so the view can list, per option,
         // which branches it is actually assigned to and whether each has its
         // own ingredient mapping — see MenuOption::isMappedForBranch() (Phase
@@ -2460,6 +2479,12 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     ->when(
                         $lockedBranchId !== null,
                         fn ($scoped) => $scoped->where('branch_id', $lockedBranchId)
+                    )
+                    ->when(
+                        $viewingBranchId !== null,
+                        fn ($scoped) => $scoped->where(
+                            fn ($either) => $either->where('branch_id', $viewingBranchId)->orWhereNull('branch_id')
+                        )
                     ),
             ])
             ->orderBy('name')
@@ -2508,6 +2533,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 'branches',
                 'archivedCount',
                 'lockedBranchId',
+                'viewingBranchId',
                 'emptyInventoryBranchIds'
             )
         );
@@ -6130,6 +6156,28 @@ public function markOrderRefunded(int $id)
         return $query;
     }
 
+    /**
+     * The four cards above the Vouchers list. They count EVERYTHING this
+     * viewer may see in the branch they are viewing, whatever the filters
+     * say: a supervisor's own branch plus the global ones; the owner's every
+     * voucher, or one branch's own plus the global ones. Shared by the page
+     * and the Wheel switch, which hands the new "On spin wheel" count back.
+     */
+    private function voucherStats(?int $viewingBranchId): array
+    {
+        $scoped = fn () => $this->scopeVoucherViewing(
+            $this->scopePromotionListing(\App\Models\Voucher::query()),
+            $viewingBranchId
+        );
+
+        return [
+            'total'    => $scoped()->count(),
+            'active'   => $scoped()->withListStatus('active')->count(),
+            'on_wheel' => $scoped()->onWheel()->count(),
+            'expired'  => $scoped()->expiredNow()->count(),
+        ];
+    }
+
     public function showVouchers(Request $request)
     {
         // The owner's "Viewing:" branch — the bar at the top of the page,
@@ -6178,20 +6226,7 @@ public function markOrderRefunded(int $id)
             ->paginate($this->paginationPerPage($request))
             ->withQueryString();
 
-        // The four cards above the list count EVERYTHING this viewer may see
-        // in the branch they are viewing, whatever the filters say: a
-        // supervisor's own branch plus the global ones; the owner's every
-        // voucher, or one branch's own plus the global ones.
-        $scoped = fn () => $this->scopeVoucherViewing(
-            $this->scopePromotionListing(\App\Models\Voucher::query()),
-            $viewingBranchId
-        );
-        $voucherStats = [
-            'total'    => $scoped()->count(),
-            'active'   => $scoped()->withListStatus('active')->count(),
-            'on_wheel' => $scoped()->onWheel()->count(),
-            'expired'  => $scoped()->expiredNow()->count(),
-        ];
+        $voucherStats = $this->voucherStats($viewingBranchId);
 
         // Background refresh (the list's search box, filters and the "Viewing:"
         // bar fetch this same address instead of reloading the page): answer
@@ -6330,8 +6365,15 @@ public function markOrderRefunded(int $id)
             'expires_at' => 'nullable|date',
             'points_required' => 'nullable|integer|min:0',
             'is_active' => 'nullable|boolean',
+            // The modal's "Active on spin wheel" box (a hidden 0 + the box's
+            // 1). Absent from the request -> the flag is left as it is.
+            'on_wheel' => 'nullable|boolean',
             'branch_id' => 'nullable|exists:branches,id',
         ]);
+
+        if ($request->has('on_wheel')) {
+            $voucher->on_wheel = $request->boolean('on_wheel');
+        }
 
         $voucher->update([
             // Re-derived rather than carried over: for a supervisor this can
@@ -6565,6 +6607,69 @@ public function markOrderRefunded(int $id)
                 'success',
                 'Voucher "' . $voucher->code . '" ' . $status . '!'
             );
+    }
+
+    /**
+     * The Wheel switch on the Vouchers list: include this voucher on Spin &
+     * Win, or not (vouchers.on_wheel).
+     *
+     * Defect Report 3 part B. The Wheel column used to be a picture of
+     * isOnWheel() with nothing behind it, so it could not be switched at all;
+     * see VoucherWheelSwitchTest for the whole story.
+     *
+     * Same tier and the same per-record rule as toggleVoucher(): the route
+     * sits in the owner + supervisor group, and promotionScopeRefusal() stops
+     * a supervisor at a company-wide voucher (403) or another branch's (404).
+     *
+     * It SETS the state it is sent rather than flipping it, so a double click
+     * or a stale page can never leave the opposite of what the switch shows.
+     * Turning a 0-point voucher ON is refused (422): it is a public code, not
+     * a prize, and the wheel would never offer it. Switching on an inactive,
+     * expired or used-up voucher is allowed: it is a setting, and the voucher
+     * joins the wheel once it is live again.
+     *
+     * The page's script sends JSON and gets the new state, the reason it is
+     * paused (if it is) and the new "On spin wheel" count; a plain form post
+     * is redirected back like the other voucher actions.
+     */
+    public function toggleVoucherWheel(Request $request, int $id)
+    {
+        $voucher = \App\Models\Voucher::findOrFail($id);
+
+        $this->promotionScopeRefusal($voucher, 'voucher');
+
+        $request->validate(['on_wheel' => 'required|boolean']);
+        $on = $request->boolean('on_wheel');
+
+        if ($on && (int) $voucher->points_required <= 0) {
+            if ($request->expectsJson()) {
+                return response()->json(['message' => \App\Models\Voucher::WHEEL_NEEDS_POINTS], 422);
+            }
+
+            return redirect()->route('admin.vouchers')->with('error', \App\Models\Voucher::WHEEL_NEEDS_POINTS);
+        }
+
+        $voucher->on_wheel = $on;
+        $voucher->save();
+
+        $message = 'Voucher "' . $voucher->code . '" ' . ($on ? 'added to' : 'removed from') . ' the spin wheel.';
+
+        if (! $request->expectsJson()) {
+            return redirect()->route('admin.vouchers')->with('success', $message);
+        }
+
+        // The Viewing branch remembered for this owner (null = all branches;
+        // always null for a supervisor, whose scope is their own branch).
+        $viewingBranchId = \App\Support\ViewingBranch::resolve(null)?->id;
+
+        return response()->json([
+            'id'       => $voucher->id,
+            'on_wheel' => $voucher->on_wheel,
+            'live'     => $voucher->isOnWheel(),
+            'paused'   => $voucher->wheelPausedReason(),
+            'message'  => $message,
+            'stats'    => ['on_wheel' => $this->voucherStats($viewingBranchId)['on_wheel']],
+        ]);
     }
 
     public function toggleGame(Request $request)
@@ -6824,20 +6929,107 @@ public function markOrderRefunded(int $id)
 
     // ══════════ Ads (CRUD) ══════════
 
-    public function showAds()
+    /**
+     * The Ads list's search / placement / status filters, cleaned. Anything
+     * unrecognised becomes "no filter", never an error or a wider listing: the
+     * viewer's own scope is applied before any of this.
+     *
+     * @return array{q: string, placement: string, status: string}
+     */
+    private function adListFilters(Request $request): array
     {
-        // Own branch + global for a supervisor, everything for the owner.
-        // Same rule and same reasoning as the voucher listing.
-        $ads = $this->scopePromotionListing(\App\Models\Ad::with('branch'))
+        // A query-string array (?q[]=x) is not a search term: treat it as absent.
+        $word = fn (string $key) => is_string($request->query($key)) ? $request->query($key) : '';
+
+        $placement = $word('placement');
+        $status = $word('status');
+
+        return [
+            'q'         => mb_substr(trim($word('q')), 0, 100),
+            'placement' => in_array($placement, \App\Models\Ad::PLACEMENTS, true) ? $placement : '',
+            'status'    => in_array($status, \App\Models\Ad::LIST_STATUSES, true) ? $status : '',
+        ];
+    }
+
+    /**
+     * Every ad this viewer may see in the branch they are viewing: a
+     * supervisor's own branch plus the company-wide ones; the owner's every ad,
+     * or (viewing one branch) that branch's own plus the company-wide ones —
+     * the ads a customer at that branch can be shown. The same narrowing as the
+     * Vouchers list (scopeVoucherViewing() is not voucher-specific).
+     */
+    private function adListing(?int $viewingBranchId)
+    {
+        return $this->scopeVoucherViewing(
+            $this->scopePromotionListing(\App\Models\Ad::query()),
+            $viewingBranchId
+        );
+    }
+
+    /**
+     * The four cards above the Ads list. Like the Vouchers cards they follow
+     * the Viewing branch, not the list's filters. "Live now" is
+     * Ad::scopeLiveNow(), the rule the Game and Menu pages use.
+     */
+    private function adStats(?int $viewingBranchId): array
+    {
+        return [
+            'total' => $this->adListing($viewingBranchId)->count(),
+            'live'  => $this->adListing($viewingBranchId)->liveNow()->count(),
+            'game'  => $this->adListing($viewingBranchId)->where('placement', 'game')->count(),
+            'menu'  => $this->adListing($viewingBranchId)->where('placement', 'menu')->count(),
+        ];
+    }
+
+    public function showAds(Request $request)
+    {
+        // The owner's "Viewing:" branch, shared with the layout bar and the
+        // other two Promotions tabs (App\Support\ViewingBranch). ?branch=all|<id>
+        // sets it, so the list can switch in the background. Always null for a
+        // supervisor, whose listing scopePromotionListing() already narrows.
+        $viewingBranchId = \App\Support\ViewingBranch::resolve($request->query('branch'))?->id;
+
+        // Display only: the filters narrow what is LISTED, inside the viewer's
+        // own scope, and change nothing about any ad.
+        $filters = $this->adListFilters($request);
+
+        $listing = $this->adListing($viewingBranchId)->with('branch');
+
+        if ($filters['q'] !== '') {
+            $like = '%' . addcslashes($filters['q'], '\%_') . '%';
+            $listing->where(function ($q) use ($like) {
+                $q->where('title', 'like', $like)->orWhere('description', 'like', $like);
+            });
+        }
+
+        if ($filters['placement'] !== '') {
+            $listing->where('placement', $filters['placement']);
+        }
+
+        $ads = $listing->withListStatus($filters['status'])
             ->orderBy('display_order')
             ->orderBy('created_at', 'desc')
             ->get();
+
+        $adStats = $this->adStats($viewingBranchId);
+
+        // Background refresh (the search box, the two filters and the Viewing
+        // bar fetch this same address): answer with just the results region,
+        // which carries the four counts too. Same route, same middleware, same
+        // scope as the full page. Never cached; Vary says the address has two
+        // shapes, so a back/forward cannot hand a bare fragment to a page load.
+        if ($request->header('X-Ads-Fragment') === '1') {
+            return response()
+                ->view('admin.partials.ad-list-results', compact('ads', 'filters', 'adStats'))
+                ->header('Cache-Control', 'no-store, private')
+                ->header('Vary', 'X-Ads-Fragment');
+        }
 
         $branches = \App\Services\AdminOrderAccess::lockedBranchId() === null
             ? \App\Models\Branch::orderBy('id')->get()
             : collect();
 
-        return view('admin.ads', compact('ads', 'branches'));
+        return view('admin.ads', compact('ads', 'branches', 'filters', 'adStats', 'viewingBranchId'));
     }
 
     public function storeAd(Request $request)
@@ -6936,22 +7128,47 @@ public function markOrderRefunded(int $id)
             ->with('success', 'Ad "' . $ad->title . '" updated!');
     }
 
-    public function toggleAd(int $id)
+    /**
+     * The ad's on/off. A plain form post flips it and redirects, as it always
+     * has. The Active switch on the Ads list (Defect Report 3 part B) sends
+     * JSON with the state it now shows (is_active), which is SET rather than
+     * flipped — so a double click or a stale page can never leave the opposite
+     * of what the switch shows — and gets back the saved state, the new Status
+     * badge and the "Live now" count. Refusals are promotionScopeRefusal()'s:
+     * 403 for a company-wide ad, 404 for another branch's.
+     */
+    public function toggleAd(Request $request, int $id)
     {
         $ad = \App\Models\Ad::findOrFail($id);
 
         $this->promotionScopeRefusal($ad, 'ad');
 
-        $ad->is_active = !$ad->is_active;
+        if ($request->has('is_active')) {
+            $request->validate(['is_active' => 'required|boolean']);
+            $ad->is_active = $request->boolean('is_active');
+        } else {
+            $ad->is_active = !$ad->is_active;
+        }
+
         $ad->save();
 
-        return redirect()->route('admin.ads')
-            ->with(
-                'success',
-                'Ad "' . $ad->title . '" ' .
-                ($ad->is_active ? 'activated' : 'deactivated') .
-                '!'
-            );
+        $message = 'Ad "' . $ad->title . '" ' . ($ad->is_active ? 'activated' : 'deactivated') . '!';
+
+        if (! $request->expectsJson()) {
+            return redirect()->route('admin.ads')->with('success', $message);
+        }
+
+        // The Viewing branch remembered for this owner (null = all branches;
+        // always null for a supervisor, whose scope is their own branch).
+        $viewingBranchId = \App\Support\ViewingBranch::resolve(null)?->id;
+
+        return response()->json([
+            'id'        => $ad->id,
+            'is_active' => $ad->is_active,
+            'status'    => $ad->listStatus(),
+            'message'   => $message,
+            'stats'     => $this->adStats($viewingBranchId),
+        ]);
     }
 
     public function deleteAd(int $id)
@@ -7261,17 +7478,66 @@ public function markOrderRefunded(int $id)
             ->where('branch_id', $branchId ?? 0);
     }
 
-    public function showUsers()
+    /** Accounts per page on Staff Accounts. */
+    private const USERS_PER_PAGE = 10;
+
+    public function showUsers(Request $request)
     {
+        /*
+         * The owner's "Viewing:" branch (Oct 2026) — the same remembered choice
+         * as every other admin page (App\Support\ViewingBranch), optionally
+         * named by ?branch=all|<id> so a view can be bookmarked. null = All
+         * Branches (every portal account); always null for a branch-locked
+         * supervisor, whose list is already narrowed to their own branch by
+         * manageableUsersQuery() and for whom a crafted ?branch= means nothing.
+         *
+         * The count badge, the search, the "Showing X-Y of N" line and the
+         * pager are all derived from the one narrowed query below, so none of
+         * them can disagree with the rows.
+         */
+        $viewingBranchId = \App\Support\ViewingBranch::resolve($request->query('branch'))?->id;
+
+        // What the viewer may manage, narrowed to the Viewing branch. This is
+        // the "N accounts" the badge reports, whatever is typed in the search.
+        $inScope = $this->manageableUsersQuery()
+            ->when($viewingBranchId !== null, fn ($q) => $q->where('branch_id', $viewingBranchId));
+
+        $scopeTotal = (clone $inScope)->count();
+
+        // Search: name, email, role or branch name. Display narrowing only —
+        // the viewer's own scope above was applied first. LIKE wildcards in
+        // the typed text are escaped so "50%" and "a_b" are literal.
+        $search = trim(mb_substr((string) $request->query('q', ''), 0, 100));
+        $matching = (clone $inScope)->when($search !== '', function ($q) use ($search) {
+            $like = '%' . addcslashes($search, '\\%_') . '%';
+
+            $q->where(function ($w) use ($like) {
+                $w->where('name', 'like', $like)
+                    ->orWhere('email', 'like', $like)
+                    ->orWhere('role', 'like', $like)
+                    ->orWhereHas('branch', fn ($b) => $b->where('name', 'like', $like));
+            });
+        });
+
+        // A page past the end (the last row of the last page was just removed,
+        // or a hand-typed ?page=99) lands on the last real page, not on an
+        // empty list with a pager that has nowhere to go back to.
+        $matchingTotal = (clone $matching)->count();
+        $lastPage = max(1, (int) ceil($matchingTotal / self::USERS_PER_PAGE));
+        $page = min(max(1, (int) $request->query('page', 1)), $lastPage);
+
         // Ordered by role first so the two tiers read as two blocks rather
-        // than interleaved. What the query CONTAINS is decided by
-        // manageableUsersQuery() — the owner gets staff AND supervisors across
-        // every branch, a supervisor gets their own branch's staff only.
-        $staff = $this->manageableUsersQuery()
+        // than interleaved; id last so a page boundary is stable between
+        // two accounts with the same name. What the query CONTAINS is decided
+        // by manageableUsersQuery() — the owner gets staff AND supervisors
+        // across every branch, a supervisor gets their own branch's staff only.
+        $staff = $matching
             ->with('branch')
             ->orderBy('role')
             ->orderBy('name')
-            ->get();
+            ->orderBy('id')
+            ->paginate(self::USERS_PER_PAGE, ['*'], 'page', $page)
+            ->withQueryString();
 
         $me = Auth::guard('admin')->user();
 
@@ -7302,14 +7568,19 @@ public function markOrderRefunded(int $id)
          * OTHER branch, closed or not, so their list stays a single row keyed
          * on lockedBranchId() alone, without the is_active gate that a closed
          * home branch would fail. The owner keeps every open branch, plus any
-         * closed branch a currently-listed account still belongs to — pulled
-         * from $staff so this never needs to look further than the accounts
-         * actually on this page.
+         * closed branch a manageable account still belongs to.
+         *
+         * The list is paginated now, so "a manageable account" is read from
+         * the whole manageable set rather than from the page in hand: the
+         * create form is not re-drawn when the pager moves, and a page must
+         * never lack the closed branch one of ITS rows is assigned to. The
+         * Viewing branch is added too, so a closed branch the owner is viewing
+         * can still be pre-selected on the create form.
          */
         $branches = ($me && ! $me->isAdmin())
             ? \App\Models\Branch::where('id', \App\Services\AdminOrderAccess::lockedBranchId() ?? 0)->get()
             : \App\Models\Branch::where('is_active', true)
-                ->orWhereIn('id', $staff->pluck('branch_id')->filter()->unique())
+                ->orWhereIn('id', $this->manageableUsersQuery()->whereNotNull('branch_id')->distinct()->pluck('branch_id')->push($viewingBranchId)->filter()->unique())
                 ->orderBy('id')
                 ->get();
 
@@ -7318,7 +7589,28 @@ public function markOrderRefunded(int $id)
         // supervisor is offered 'staff' alone.
         $assignableRoles = $this->assignableRoles();
 
-        return view('admin.users', compact('staff', 'branches', 'assignableRoles'));
+        // Background refresh (the search box, the pager and the "Viewing:" bar
+        // fetch this same address instead of reloading the page): answer with
+        // just the results region. Everything above — the viewer's scope, the
+        // Viewing branch, the search, the paging — has already run on the same
+        // route middleware, so this is the identical listing the full page
+        // would have shown, minus the page around it. Never cached, and Vary
+        // says one address has two shapes.
+        if ($request->header('X-Staff-Fragment') === '1') {
+            return response()
+                ->view('admin.partials.staff-list-results', compact('staff', 'branches', 'assignableRoles', 'scopeTotal', 'search', 'viewingBranchId'))
+                ->header('Cache-Control', 'no-store, private')
+                ->header('Vary', 'X-Staff-Fragment');
+        }
+
+        // The create form's Assigned Branch starts on the branch being viewed
+        // (the only branch there is, for a locked supervisor) and stays
+        // changeable. A failed create re-selects what was submitted instead:
+        // see old('branch_id') in the view.
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+        $defaultBranchId = $viewingBranchId ?? $lockedBranchId;
+
+        return view('admin.users', compact('staff', 'branches', 'assignableRoles', 'scopeTotal', 'search', 'viewingBranchId', 'lockedBranchId', 'defaultBranchId'));
     }
 
     public function storeUser(Request $request)

@@ -1,0 +1,220 @@
+%% POMIDA ERD - POMIDA — Module 3: Orders & Payments - generated 2026-10-22 from pomida_db
+%% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
+%% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
+erDiagram
+    orders {
+        bigint id PK
+        varchar(20) order_number UK
+        varchar(20) receipt_number
+        bigint user_id FK
+        bigint branch_id FK
+        bigint processed_by FK
+        enum type
+        varchar(10) table_number
+        tinyint(1) is_takeout
+        enum status
+        decimal(10_2) subtotal
+        decimal(10_2) discount_amount
+        decimal(10_2) tax_amount
+        decimal(10_2) total
+        varchar(50) discount_type
+        bigint discount_card_id FK
+        varchar(255) discount_beneficiary_name
+        varchar(100) discount_beneficiary_card_number
+        varchar(255) discount_id_image
+        date discount_beneficiary_expiration
+        varchar(255) discount_status
+        bigint voucher_id FK
+        varchar(16) reward_code
+        enum payment_method
+        enum payment_status
+        decimal(10_2) amount_paid
+        decimal(10_2) change_amount
+        text notes
+        text cancellation_reason
+        timestamp confirmed_at
+        timestamp preparing_at
+        timestamp serving_at
+        timestamp completed_at
+        timestamp cancelled_at
+        timestamp created_at
+        timestamp updated_at
+        timestamp spin_prompted_at
+    }
+    order_items {
+        bigint id PK
+        bigint order_id FK
+        bigint menu_item_id FK
+        bigint menu_item_size_id FK
+        varchar(255) item_name
+        varchar(20) size_name
+        decimal(10_2) item_price
+        int quantity
+        decimal(10_2) subtotal
+        tinyint(1) is_free_dessert
+        decimal(10_2) ingredient_cost
+        tinyint(1) ingredient_cost_estimated
+        text special_instructions
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_item_options {
+        bigint id PK
+        bigint order_item_id FK
+        bigint menu_option_id FK
+        varchar(255) option_name
+        decimal(10_2) additional_price
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_item_size_ingredients {
+        bigint id PK
+        bigint order_item_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with order_item_id"
+        decimal(12_3) quantity
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_discount_beneficiaries {
+        bigint id PK
+        bigint order_id FK "UK with position"
+        smallint position "UK with order_id"
+        varchar(100) full_name
+        varchar(100) id_number
+        timestamp created_at
+        timestamp updated_at
+    }
+    discount_cards {
+        bigint id PK
+        bigint user_id FK
+        enum type
+        varchar(50) id_number
+        varchar(255) full_name
+        varchar(255) id_image
+        date expiration_date
+        tinyint(1) is_verified
+        timestamp verified_at
+        bigint verified_by FK
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    restaurant_tables {
+        bigint id PK
+        bigint branch_id FK "UK with table_number"
+        varchar(10) table_number "UK with branch_id"
+        varchar(12) code UK
+        tinyint(1) is_active
+        varchar(12) previous_code
+        timestamp code_rotated_at
+        bigint code_rotated_by FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    table_access_codes {
+        bigint id PK
+        varchar(12) code UK
+        bigint branch_id FK
+        varchar(10) table_number
+        bigint issued_by FK
+        timestamp expires_at
+        timestamp claimed_at
+        varchar(45) claimed_ip
+        timestamp created_at
+        timestamp updated_at
+    }
+    table_sessions {
+        bigint id PK
+        bigint branch_id FK
+        varchar(10) table_number
+        varchar(64) session_token UK
+        bigint order_id FK
+        varchar(32) active_lock UK
+        timestamp last_seen_at
+        timestamp last_activity_at
+        timestamp released_at
+        bigint released_by FK
+        varchar(20) release_reason
+        varchar(45) started_ip
+        bigint opened_by FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    table_session_devices {
+        bigint id PK
+        bigint table_session_id FK "UK with device_token"
+        varchar(64) device_token "UK with table_session_id"
+        timestamp last_activity_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    help_requests {
+        bigint id PK
+        bigint branch_id FK
+        bigint order_id FK
+        varchar(255) table_number
+        enum status
+        text message
+        timestamp requested_at
+        timestamp assisting_at
+        timestamp resolved_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    branches {
+        bigint id PK "table of module: Users and Branches"
+    }
+    inventory {
+        bigint id PK "table of module: Inventory"
+    }
+    menu_item_sizes {
+        bigint id PK "table of module: Menu"
+    }
+    menu_items {
+        bigint id PK "table of module: Menu"
+    }
+    menu_options {
+        bigint id PK "table of module: Menu"
+    }
+    users {
+        bigint id PK "table of module: Users and Branches"
+    }
+    vouchers {
+        bigint id PK "table of module: Marketing and Loyalty"
+    }
+
+    branches ||--o{ help_requests : "receives"
+    branches ||--o{ orders : "receives"
+    branches ||--o{ restaurant_tables : "has table"
+    branches ||--o{ table_access_codes : "issues code for"
+    branches ||--o{ table_sessions : "hosts"
+    discount_cards |o--o{ orders : "discounts"
+    inventory ||--o{ order_item_size_ingredients : "is deducted via"
+    menu_item_sizes |o--o{ order_items : "is sold as"
+    menu_items |o--o{ order_items : "is sold as"
+    menu_options ||--o{ order_item_options : "is chosen as"
+    order_items ||--o{ order_item_options : "has add-on"
+    order_items ||--o{ order_item_size_ingredients : "freezes recipe line"
+    orders |o--o{ help_requests : "is linked to"
+    orders ||--o{ order_discount_beneficiaries : "lists"
+    orders ||--o{ order_items : "contains"
+    orders |o--o{ table_sessions : "is placed in"
+    table_sessions ||--o{ table_session_devices : "has device"
+    users ||--o{ discount_cards : "owns"
+    users |o--o{ discount_cards : "verifies"
+    users |o--o{ orders : "processes"
+    users |o--o{ orders : "places"
+    users |o--o{ restaurant_tables : "rotates code of"
+    users |o--o{ table_access_codes : "issues"
+    users |o--o{ table_sessions : "opens"
+    users |o--o{ table_sessions : "releases"
+    vouchers |o--o{ orders : "is applied to"
+
+    classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef mod_orders fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
+    classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
+    class orders,order_items,order_item_options,order_item_size_ingredients,order_discount_beneficiaries,discount_cards,restaurant_tables,table_access_codes,table_sessions,table_session_devices,help_requests mod_orders
+    class branches,inventory,menu_item_sizes,menu_items,menu_options,users,vouchers ext

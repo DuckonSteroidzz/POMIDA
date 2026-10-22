@@ -29,7 +29,18 @@ class Voucher extends Model
         'expires_at',
         'valid_from',
         'is_active',
+        /*
+         * Include on Spin & Win (the Wheel switch on the admin list, Oct
+         * 2026). One more condition for a wheel prize, never a way round the
+         * others — see isOnWheel(). Defaults to true, in the column and below.
+         */
+        'on_wheel',
         'points_required',
+    ];
+
+    /** The column default, so a voucher made in code reads the same before a refresh. */
+    protected $attributes = [
+        'on_wheel' => true,
     ];
 
     protected $casts = [
@@ -38,7 +49,16 @@ class Voucher extends Model
         'expires_at'     => 'datetime',
         'valid_from'     => 'date',
         'is_active'      => 'boolean',
+        'on_wheel'       => 'boolean',
     ];
+
+    /**
+     * Why the Wheel switch cannot be turned ON for a 0-point voucher. Such a
+     * voucher is a public code anyone may type in (availabilityErrorFor), not
+     * a prize, so the wheel never offers it whatever the switch says. Shown as
+     * the disabled switch's tooltip and returned by the wheel route.
+     */
+    public const WHEEL_NEEDS_POINTS = 'Direct code (0 points): set Points Required above 0 to put it on the wheel.';
 
     /** The branch this voucher is scoped to, or null when it is global. */
     public function branch()
@@ -455,15 +475,34 @@ class Voucher extends Model
      * Is this voucher a Spin & Win prize right now? The same conditions as
      * AuthController::winnableVoucherFor() (the picker) minus the two that
      * depend on who is spinning: how many points they have, and what they
-     * already hold. Active, a wheel voucher (points_required > 0), not
-     * expired, not used up.
+     * already hold. Switched onto the wheel (on_wheel), active, a wheel
+     * voucher (points_required > 0), not expired, not used up.
      */
     public function isOnWheel(): bool
     {
-        return $this->is_active
+        return $this->on_wheel
+            && $this->is_active
             && (int) $this->points_required > 0
             && ! $this->isExpired()
             && ! $this->isUsedUp();
+    }
+
+    /**
+     * Switched onto the wheel but not offered right now — the short reason
+     * the admin list prints under an ON switch — or null. Null as well for a
+     * 0-point voucher, whose switch reads OFF (see WHEEL_NEEDS_POINTS).
+     */
+    public function wheelPausedReason(): ?string
+    {
+        if (! $this->on_wheel || (int) $this->points_required <= 0 || $this->isOnWheel()) {
+            return null;
+        }
+
+        return match ($this->listStatus()) {
+            'expired' => 'Paused: expired',
+            'used_up' => 'Paused: used up',
+            default   => 'Paused: inactive',
+        };
     }
 
     /**
@@ -507,7 +546,8 @@ class Voucher extends Model
     /** SQL twin of isOnWheel(). */
     public function scopeOnWheel($query)
     {
-        return $query->where('is_active', true)
+        return $query->where('on_wheel', true)
+            ->where('is_active', true)
             ->where('points_required', '>', 0)
             ->notExpired()
             ->notUsedUp();

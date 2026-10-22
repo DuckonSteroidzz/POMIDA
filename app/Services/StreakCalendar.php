@@ -30,7 +30,7 @@ use Illuminate\Support\Facades\DB;
  * order that was placed that day AND is completed.
  *
  * This is the one place a day is decided. The calendar, current and best
- * streak, the Reward Challenge, the Stamp Card (FreeDesserts::stampDays) and
+ * streak, the Stamp Card (FreeDesserts::stampDays) and
  * the streak points bonus (Loyalty::orderCompleted) all read completedDays(),
  * so they cannot disagree.
  *

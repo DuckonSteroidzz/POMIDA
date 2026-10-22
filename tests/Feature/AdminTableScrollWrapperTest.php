@@ -72,14 +72,19 @@ class AdminTableScrollWrapperTest extends TestCase
         );
     }
 
-    public function test_staff_accounts_table_still_has_its_original_five_columns(): void
+    /**
+     * The Oct 2026 redesign (fix/staff-accounts-v2) has six columns: the
+     * original Name / Email / Branch / Status, plus Role as its own column and
+     * the row actions now collected under "Actions" (the ⋮ menu).
+     */
+    public function test_staff_accounts_table_has_its_six_columns(): void
     {
         $html = $this->actingAs($this->admin(), 'admin')
             ->get('/admin/users')
             ->getContent();
 
-        foreach (['Name', 'Email', 'Branch', 'Status', 'Action'] as $column) {
-            $this->assertStringContainsString('>' . $column . '<', $html, "the $column column must be unchanged");
+        foreach (['Name', 'Email', 'Role', 'Branch', 'Status', 'Actions'] as $column) {
+            $this->assertStringContainsString('>' . $column . '<', $html, "the $column column is missing");
         }
     }
 

@@ -214,32 +214,29 @@
                 @method('PUT')
 
                 {{-- ================= OVERVIEW ================= --}}
-                {{-- Bonus banner, then the Streak Calendar (7 of 12) beside the
-                     Reward Challenge and Reward Stamp Card stacked (5 of 12);
-                     stacked on one column under 1100px. Read-only figures and
-                     links only, no fields. All of it is PER BRANCH — the branch
-                     the customer is ordering from ($streakBranch). $streak is
-                     null and the two stamp partials render nothing while the
-                     owner's master switch or that branch's own switch is off;
-                     with no branch picked yet, a short card asks them to
-                     choose one. --}}
+                {{-- The Streak Calendar (7 of 12) beside the Bonus points card and
+                     the Reward Stamp Card stacked (5 of 12); one column under
+                     761px (the tester's updated reference). Read-only figures
+                     and links only, no fields. The calendar and stamp card are
+                     PER BRANCH — the branch the customer is ordering from
+                     ($streakBranch). $streak is null and the stamp card renders
+                     nothing while the owner's master switch or that branch's
+                     own switch is off; with no branch picked yet, a short card
+                     asks them to choose one. The Bonus points card is not per
+                     branch and is always there. --}}
                 <section class="acct-panel flex flex-col gap-5" role="tabpanel" id="p-overview" data-tab="overview" aria-labelledby="t-overview" @if($startTab !== 'overview') hidden @endif>
-                    @include('customer.partials.account-bonus-banner')
-
                     @php $stampsOn = $freeDessert['enabled'] ?? false; @endphp
-                    @if($streak || $stampsOn)
-                        <div class="grid grid-cols-12 gap-5">
-                            @if($streak)
-                                @include('customer.partials.streak-calendar')
-                            @endif
+                    <div class="grid grid-cols-12 gap-5">
+                        @if($streak)
+                            @include('customer.partials.streak-calendar')
+                        @endif
+                        <div class="col-span-12 flex min-w-0 flex-col gap-3.5 {{ $streak ? 'min-[761px]:col-span-5' : '' }}">
+                            @include('customer.partials.account-bonus-banner')
                             @if($stampsOn)
-                                <div class="col-span-12 flex min-w-0 flex-col gap-5 {{ $streak ? 'min-[1100px]:col-span-5' : '' }}">
-                                    @include('customer.partials.free-dessert-progress')
-                                    @include('customer.partials.free-dessert-stamp-card')
-                                </div>
+                                @include('customer.partials.free-dessert-stamp-card')
                             @endif
                         </div>
-                    @endif
+                    </div>
                     @if(! $streak && ! $streakBranch && $streakOn)
                         <section class="acct-card p-4 sm:p-[22px]" data-testid="streak-choose-branch">
                             <div class="flex flex-wrap items-center gap-3">
@@ -413,9 +410,13 @@
                 {{-- Discount IDs are intentionally not stored in the customer account. --}}
 
                 {{-- ---------- ACTIONS ---------- --}}
-                {{-- A normal block at the end of the form, shown on every tab
-                     (it sits outside the tab panels, inside the same form). --}}
-                <div class="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-peach-soft bg-white p-3 shadow-sm" data-testid="account-action-bar">
+                {{-- A normal block at the end of the form, static (not floating),
+                     shown on the Profile and Security tabs only: hidden on Overview
+                     and Rewards, which have nothing to save or delete. It sits
+                     outside the tab panels, inside the same form, so it is hidden
+                     by the tab script (select() below) and by the server for the
+                     start tab, never by a panel. --}}
+                <div id="acct-action-bar" class="flex flex-wrap items-center justify-between gap-3 rounded-[18px] border border-peach-soft bg-white p-3 shadow-sm" data-testid="account-action-bar" @if(! in_array($startTab, ['profile', 'security'], true)) hidden @endif>
                     <p class="hidden text-sm text-peach-deep/60 sm:block">Deleting your account is permanent.</p>
                     <div class="flex w-full gap-2 sm:ml-auto sm:w-auto">
                         <button type="button" onclick="confirmDelete()"
@@ -467,11 +468,14 @@
             var tabs = Array.prototype.slice.call(tablist.querySelectorAll('[role="tab"]'));
             var names = tabs.map(function (t) { return t.getAttribute('data-tab'); });
             var current = tablist.getAttribute('data-start-tab') || 'overview';
+            var actionBar = document.getElementById('acct-action-bar');
 
             function select(name, opts) {
                 opts = opts || {};
                 if (names.indexOf(name) === -1) return;
                 current = name;
+                // Delete / Save only where there is something to save.
+                if (actionBar) actionBar.hidden = !(name === 'profile' || name === 'security');
                 tabs.forEach(function (t) {
                     var on = t.getAttribute('data-tab') === name;
                     t.setAttribute('aria-selected', on ? 'true' : 'false');

@@ -1,0 +1,42 @@
+{
+  "generated": "2026-10-22",
+  "database": "pomida_db",
+  "server": "10.4.32-MariaDB",
+  "tables_in_database": 43,
+  "application_tables": 35,
+  "framework_tables": [
+    "cache",
+    "cache_locks",
+    "failed_jobs",
+    "job_batches",
+    "jobs",
+    "migrations",
+    "password_reset_tokens",
+    "sessions"
+  ],
+  "columns_total": 448,
+  "columns_application": 406,
+  "foreign_keys_in_database": 70,
+  "foreign_keys_drawn_solid": 70,
+  "model_only_drawn_dotted": 0,
+  "entities_in_full_erd": 35,
+  "tables_missing_from_erd": [],
+  "entities_not_in_database": [],
+  "fks_without_a_solid_line": [],
+  "module_diagram_tables_sum": 35,
+  "module_diagram_lines_sum": 70,
+  "rendered_svg_relationship_paths": 70,
+  "model_only_relationships": [],
+  "dead_model_relationships": [],
+  "fks_without_model_relation": [
+    "admin_bootstrap.user_id->users",
+    "free_dessert_ratings.user_id->users",
+    "free_dessert_rewards.voucher_id->vouchers",
+    "notifications.branch_id->branches",
+    "notifications.user_id->users",
+    "table_access_codes.branch_id->branches",
+    "table_access_codes.issued_by->users",
+    "user_vouchers.issued_by->users"
+  ],
+  "model_relationship_methods_inspected": 84
+}

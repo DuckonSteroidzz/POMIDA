@@ -126,9 +126,10 @@ class GameSwitchSingleRowTest extends TestCase
         $page = $this->get('/customer/game')->assertOk()->getContent();
         $spin = $this->postJson('/customer/add-points');
 
-        $labelOn = str_contains($label, '✓ Enabled');
-        $labelOff = str_contains($label, '✗ Disabled');
-        $this->assertNotSame($labelOn, $labelOff, 'the Vouchers-page switch rendered neither or both labels');
+        // Since Oct 2026 the card holds an ON/OFF switch (a checkbox) rather
+        // than a ✓ Enabled / ✗ Disabled button: its checked state is the label.
+        $this->assertSame(1, preg_match('/<input[^>]*data-testid="spin-wheel-switch"[^>]*>/', $label, $switch), 'the Vouchers-page switch is missing');
+        $labelOn = (bool) preg_match('/\schecked(?=[\s>\/])/', $switch[0]);
 
         if ($spin->status() !== 200) {
             $this->assertSame('game_disabled', $spin->json('blocked'), 'setup: the spin was refused for another reason');

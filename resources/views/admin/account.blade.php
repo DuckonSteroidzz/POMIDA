@@ -1,527 +1,493 @@
 @extends('admin.layout')
 
-@section('title', 'Account - Peachy Admin')
+@section('title', 'Account Settings - Peachy Admin')
 
 @section('content')
 
+{{--
+    Account Settings — redesigned to docs/design-refs/admin-account-settings.html.
+
+    WHO SEES THIS PAGE: the owner (role `admin`) only. The route group in
+    routes/web.php is `role:admin`, so a supervisor or staff member is refused
+    before this view renders; the checks below are a second lock, not the
+    first. Nothing about who may see or save each card changed in the redesign.
+
+    The Name / Email / Access Level are read-only text. There has never been a
+    route that edits an admin's own name, email or role, so the redesign keeps
+    them as plain readonly fields (see the long note in git history on the
+    "Signed in as" block).
+--}}
+
 @php
     $adminUser = Auth::guard('admin')->user();
+
+    $accountName  = trim((string) ($adminUser->name ?? ''));
+    $accountEmail = (string) ($adminUser->email ?? '');
+    $accountRole  = (string) ($adminUser->role ?? 'admin');
+
+    // Initials: first letter of the first two words of the name, falling back
+    // to the email's first letter for an account with no name.
+    $nameWords = preg_split('/\s+/u', $accountName, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+    $initials = '';
+    foreach (array_slice($nameWords, 0, 2) as $word) {
+        $initials .= mb_strtoupper(mb_substr($word, 0, 1));
+    }
+    if ($initials === '') {
+        $initials = mb_strtoupper(mb_substr($accountEmail, 0, 1)) ?: '?';
+    }
+
+    $roleLabel = [
+        'admin'      => 'Administrator',
+        'supervisor' => 'Supervisor',
+        'staff'      => 'Staff',
+    ][$accountRole] ?? ucfirst($accountRole);
+
+    // The Staff Accounts page is open to the manager tier (owner + supervisor).
+    $canOpenStaffAccounts = in_array($accountRole, \App\Models\User::MANAGER_ROLES, true);
+
+    $passwordErrors = collect(['current_password', 'password'])
+        ->flatMap(fn ($field) => $errors->get($field))
+        ->all();
+
+    $gcashErrors = collect(['gcash_qr', 'gcash_phone'])
+        ->flatMap(fn ($field) => $errors->get($field))
+        ->all();
+
+    $hasQr = !empty($gcashQr);
 @endphp
 
-<p class="page-title">Account Settings</p>
+<style>
+    .as-page {
+        --as-red: #9d1c1c;
+        --as-red-dark: #821616;
+        --as-coral: #f4845f;
+        --as-peach: #fff1e9;
+        --as-cream: #fffaf7;
+        --as-ink: #342b29;
+        --as-muted: #8b7c77;
+        --as-line: #f0e4de;
+        --as-green: #2f855a;
+        max-width: 1180px;
+        margin: 0 auto;
+        color: var(--as-ink);
+        font-size: 13px;
+    }
+    .as-page *, .as-page *::before, .as-page *::after { box-sizing: border-box; }
 
-{{-- ── Account Info ── --}}
-<div class="content-card" style="margin-bottom: 1rem;">
+    .as-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 22px; }
+    .as-eyebrow { font-size: 10px; font-weight: 700; letter-spacing: 1.5px; color: var(--as-coral); text-transform: uppercase; margin: 0 0 5px; }
+    .as-title { font-family: 'Fraunces', Georgia, serif; font-size: 24px; line-height: 1.25; margin: 0; color: var(--as-red); font-weight: 700; }
+    .as-subtitle { color: var(--as-muted); font-size: 12px; margin: 7px 0 0; }
+    .as-header-icon { width: 46px; height: 46px; border-radius: 14px; background: var(--as-peach); color: var(--as-red); display: grid; place-items: center; font-size: 20px; flex-shrink: 0; }
 
-    {{-- ── Who you are signed in as ──
-         These three are shown, not edited. There is no route that changes an
-         admin's own name, email or role: the Save button that used to sit under
-         them posted to AdminController::updateAccount(), whose whole body was a
-         redirect back with "Account updated successfully." It saved nothing,
-         which is why the owner could not tell what it applied to. Rendering the
-         values as text says what is true instead of offering an edit that never
-         happened. --}}
-    <p style="font-size:0.9rem; font-weight:700; color:#333; margin-bottom:0.15rem;">
-        <i class="bi bi-person-badge"></i> Signed in as
-    </p>
-    <p style="font-size:0.75rem; color:#888; margin-bottom:1rem;">
-        Ask an administrator if any of these need to change.
-    </p>
+    .as-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(300px, .78fr); gap: 18px; align-items: start; }
+    .as-stack { display: grid; gap: 18px; min-width: 0; }
+    .as-card { background: #fff; border: 1px solid var(--as-line); border-radius: 15px; padding: 21px 22px; box-shadow: 0 5px 18px rgba(110, 48, 30, .045); min-width: 0; }
+    .as-card--soft { background: var(--as-cream); }
+    .as-card-head { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 18px; }
+    .as-card-head--tight { margin-bottom: 9px; }
+    .as-section-icon { width: 38px; height: 38px; border-radius: 11px; background: var(--as-peach); color: var(--as-red); display: grid; place-items: center; font-size: 17px; flex-shrink: 0; }
+    .as-card-head h2 { font-size: 14px; margin: 1px 0 3px; font-weight: 700; color: var(--as-ink); }
+    .as-card-head p { font-size: 11px; color: var(--as-muted); margin: 0; line-height: 1.6; }
 
-    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:0.75rem; margin-bottom:0.5rem;">
+    .as-profile { display: flex; align-items: center; gap: 14px; padding: 15px; background: var(--as-cream); border: 1px solid #f4e8e1; border-radius: 12px; margin-bottom: 17px; }
+    .as-profile-text { min-width: 0; }
+    .as-avatar { width: 48px; height: 48px; border-radius: 50%; background: var(--as-red); color: #fff; display: grid; place-items: center; font-size: 17px; font-weight: 700; flex-shrink: 0; }
+    .as-profile-name { font-weight: 700; font-size: 13px; margin: 0 0 3px; overflow-wrap: anywhere; }
+    .as-profile-email { font-size: 11px; color: var(--as-muted); margin: 0; overflow-wrap: anywhere; }
+    .as-role { margin-left: auto; background: #fff0e9; color: #bd5638; padding: 5px 9px; border-radius: 20px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .4px; white-space: nowrap; }
+
+    .as-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 13px; }
+    .as-field--full { grid-column: 1 / -1; }
+    .as-label { display: block; font-size: 10px; font-weight: 600; color: #66534d; margin: 0 0 6px; }
+    .as-input { width: 100%; height: 40px; border: 1px solid #e9dcd6; border-radius: 8px; padding: 0 12px; color: var(--as-ink); background: #fff; outline: none; font: inherit; font-size: 11px; transition: .2s; margin: 0; }
+    .as-input:focus { border-color: var(--as-coral); box-shadow: 0 0 0 3px rgba(244, 132, 95, .12); }
+    .as-input[readonly] { background: #f8f5f3; color: #746762; }
+    /* The password inputs carry `readonly` until focused (autofill defence), so
+       they must not look disabled. */
+    .as-password .as-input[readonly] { background: #fff; color: var(--as-ink); }
+    .as-helper { font-size: 10px; color: #a0928c; margin: 7px 0 0; line-height: 1.6; }
+
+    .as-password { display: grid; grid-template-columns: 1fr; gap: 13px; }
+    .as-password .pw-field > input { padding-right: 42px; }
+    .as-password .pw-field > .js-pw-toggle { right: 8px; color: #9b8982; font-size: 15px; }
+
+    .as-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 17px; }
+    .as-btn { border: 0; border-radius: 8px; padding: 10px 16px; font: inherit; font-size: 11px; font-weight: 600; cursor: pointer; transition: .2s; }
+    .as-btn-primary { background: var(--as-red); color: #fff; }
+    .as-btn-primary:hover { background: var(--as-red-dark); }
+    .as-btn-light { background: #fff2eb; color: var(--as-red); }
+    .as-btn-light:hover { background: #ffe5d8; }
+    .as-btn:focus-visible { outline: 2px solid var(--as-red); outline-offset: 2px; }
+
+    .as-staff-link { margin-top: 15px; padding: 12px 13px; border: 1px dashed #eac9ba; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; background: var(--as-cream); }
+    .as-staff-link strong { display: block; font-size: 11px; margin-bottom: 3px; }
+    .as-staff-link span { font-size: 10px; color: var(--as-muted); }
+    .as-staff-link a { color: var(--as-red); font-size: 10px; font-weight: 700; text-decoration: none; white-space: nowrap; }
+    .as-staff-link a:hover { text-decoration: underline; }
+
+    .as-gcash-grid { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 17px; align-items: start; }
+    .as-qr-preview { border: 1px solid var(--as-line); border-radius: 11px; background: var(--as-cream); padding: 12px; text-align: center; }
+    .as-qr-preview small { display: block; font-size: 9px; font-weight: 700; color: var(--as-muted); letter-spacing: .7px; margin-bottom: 9px; }
+    .as-qr-placeholder { width: 100%; aspect-ratio: 1; background: #fff; border: 1px dashed #e4cfc5; border-radius: 8px; display: grid; place-items: center; color: #c8a99b; font-size: 32px; overflow: hidden; position: relative; }
+    /* Absolutely placed so a tall QR is letterboxed inside the square instead of overflowing and being clipped. */
+    .as-qr-placeholder img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; border-radius: 7px; }
+    .as-qr-empty { font-size: 10px; color: #a0928c; margin: 8px 0 0; }
+    .as-status { display: inline-flex; align-items: center; gap: 6px; color: var(--as-green); font-size: 10px; font-weight: 600; margin-top: 10px; }
+    .as-status i { font-size: 12px; }
+    .as-status--pending { color: #bd5638; }
+    .as-upload { border: 1px dashed #e5cfc4; background: var(--as-cream); border-radius: 9px; padding: 12px; }
+    .as-upload input { width: 100%; font-size: 10px; color: var(--as-muted); }
+    .as-upload-note { font-size: 9px; color: #a0928c; margin: 7px 0 0; }
+    .as-gcash-phone { margin-top: 17px; }
+
+    .as-notice { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 15px; padding: 10px 12px; border-radius: 8px; font-size: 11px; line-height: 1.5; }
+    .as-notice i { margin-top: 1px; }
+    .as-notice--ok { background: #edf8f0; color: #286b43; }
+    .as-notice--error { background: #fdecec; color: #8f2424; }
+    .as-notice--error div + div { margin-top: 2px; }
+
+    @media (max-width: 850px) {
+        .as-layout { grid-template-columns: 1fr; }
+        .as-stack { gap: 16px; }
+    }
+    @media (max-width: 540px) {
+        .as-card { padding: 17px; }
+        .as-fields { grid-template-columns: 1fr; }
+        .as-field--full { grid-column: auto; }
+        .as-gcash-grid { grid-template-columns: 1fr; }
+        .as-qr-preview { max-width: 190px; }
+        .as-heading { margin-bottom: 17px; }
+        .as-title { font-size: 21px; }
+        .as-staff-link { align-items: flex-start; flex-direction: column; }
+        .as-actions { flex-wrap: wrap; }
+        .as-profile { flex-wrap: wrap; }
+        .as-role { margin-left: 0; }
+    }
+</style>
+
+<div class="as-page">
+
+    <header class="as-heading">
         <div>
-            <label class="form-label-custom">Name</label>
-            <input type="text" class="form-control-custom" value="{{ $adminUser->name ?? '' }}" readonly autocomplete="off" style="margin-bottom:0; background:#f0f0f0;">
+            <p class="as-eyebrow">Administration</p>
+            <h1 class="as-title">Account Settings</h1>
+            <p class="as-subtitle">Manage your account security and store payment details.</p>
         </div>
-        <div>
-            <label class="form-label-custom">Email</label>
-            <input type="email" class="form-control-custom" value="{{ $adminUser->email ?? '' }}" readonly autocomplete="off" style="margin-bottom:0; background:#f0f0f0;">
-        </div>
-        <div>
-            <label class="form-label-custom">Access Level</label>
-            <input type="text" class="form-control-custom" value="{{ $adminUser->role ?? 'admin' }}" readonly autocomplete="off" style="margin-bottom:0; background:#f0f0f0;">
-        </div>
-    </div>
+        <div class="as-header-icon" aria-hidden="true"><i class="bi bi-person-gear"></i></div>
+    </header>
 
-    <div>
+    <div class="as-layout">
 
-        {{-- Staff Table - Admin Only --}}
-        @if($adminUser && $adminUser->role === 'admin')
-        <div style="margin-bottom:1rem; overflow-x:auto;">
-            <table class="table-custom">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th>Email</th>
-                        <th>Access Level</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @if(isset($staffList) && count($staffList) > 0)
-                    @foreach($staffList as $staff)
-                    <tr>
-                        <td>{{ $staff->name }}</td>
-                        <td style="font-size:0.75rem; color:#888;">{{ $staff->email }}</td>
-                        <td>
-                            <span style="background:#F4845F; color:white; padding:0.2rem 0.6rem; border-radius:4px; font-size:0.7rem; font-weight:600;">
-                                {{ $staff->role }}
-                            </span>
-                        </td>
-                    </tr>
-                    @endforeach
-                    @else
-                    <tr>
-                        <td colspan="3" style="text-align:center; color:#aaa; padding:1rem;">No staff yet</td>
-                    </tr>
-                    @endif
-                </tbody>
-            </table>
+        {{-- ═════════════ LEFT COLUMN ═════════════ --}}
+        <div class="as-stack">
 
-            <p style="font-size:0.75rem; color:#888; margin-top:0.5rem;">
-                <i class="bi bi-info-circle"></i>
-                To add, activate or deactivate staff, go to
-                <a href="{{ route('admin.users') }}" style="color:#C0392B; font-weight:600;">Staff Accounts</a>.
-            </p>
-        </div>
-        @endif
-
-    </div>
-
-    {{-- The mid-page "Log Out" button that used to sit here is gone. It was a
-         second copy of the one already in the sidebar, on every page, and gave
-         no reason to prefer it. --}}
-</div>
-
-{{-- ══════════ CHANGE PASSWORD ══════════
-     Replaces the old dead <button type="button">Change Password</button>, which
-     had no handler, no modal and no route behind it, and the password box beside
-     it that posted to a controller stub that saved nothing.
-
-     Always the SIGNED-IN account: the form carries no user id, and
-     AdminController::updateOwnPassword() reads the account from the admin guard,
-     so neither an admin nor a staff member can change anyone else's password
-     from here. --}}
-<div class="content-card" style="margin-bottom:1rem;">
-
-    <p style="font-size:0.9rem; font-weight:700; color:#333; margin-bottom:0.15rem;">
-        <i class="bi bi-key"></i> Change Password
-    </p>
-
-    <p style="font-size:0.75rem; color:#888; margin-bottom:1rem;">
-        Changes the password for <strong>{{ $adminUser->email ?? '' }}</strong> only.
-        You will stay signed in on this device.
-    </p>
-
-    @if(session('password_success'))
-        <div style="background:#d4edda; color:#155724; border:1px solid #c3e6cb; border-radius:8px; padding:0.65rem 0.85rem; font-size:0.78rem; margin-bottom:1rem;">
-            <i class="bi bi-check-circle"></i>
-            {{ session('password_success') }}
-        </div>
-    @endif
-
-    @php
-        $passwordErrors = collect(['current_password', 'password'])
-            ->flatMap(fn ($field) => $errors->get($field))
-            ->all();
-    @endphp
-
-    @if(!empty($passwordErrors))
-        <div style="background:#f8d7da; color:#721c24; border:1px solid #f5c6cb; border-radius:8px; padding:0.65rem 0.85rem; font-size:0.78rem; margin-bottom:1rem;">
-            @foreach($passwordErrors as $error)
-                <div>{{ $error }}</div>
-            @endforeach
-        </div>
-    @endif
-
-    <form action="{{ route('admin.account.password.update') }}" method="POST" autocomplete="off">
-        <input type="text" name="prevent_autofill_username" id="prevent_autofill_username" value="" style="position:absolute; top:-9999px; left:-9999px;" tabindex="-1" aria-hidden="true" autocomplete="off" />
-        <input type="password" name="prevent_autofill_password" id="prevent_autofill_password" value="" style="position:absolute; top:-9999px; left:-9999px;" tabindex="-1" aria-hidden="true" autocomplete="off" />
-        @csrf @method('PUT')
-
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:0.75rem; margin-bottom:0.85rem;">
-            <div>
-                <label class="form-label-custom" for="current_password">Current password</label>
-                <div class="pw-field">
-                    <input id="current_password" type="password" name="current_password" class="form-control-custom"
-                           readonly onfocus="this.removeAttribute('readonly');"
-                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required style="margin-bottom:0;">
-                    <button type="button" class="js-pw-toggle" data-target="current_password"
-                        aria-label="Show password" aria-pressed="false" title="Show password">
-                        <i class="bi bi-eye" aria-hidden="true"></i>
-                    </button>
-                </div>
-            </div>
-            <div>
-                <label class="form-label-custom" for="new_password">New password</label>
-                <div class="pw-field">
-                    <input id="new_password" type="password" name="password" class="form-control-custom"
-                           readonly onfocus="this.removeAttribute('readonly');"
-                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="20" required style="margin-bottom:0;">
-                    <button type="button" class="js-pw-toggle" data-target="new_password"
-                        aria-label="Show password" aria-pressed="false" title="Show password">
-                        <i class="bi bi-eye" aria-hidden="true"></i>
-                    </button>
-                </div>
-            </div>
-            <div>
-                <label class="form-label-custom" for="new_password_confirmation">Confirm new password</label>
-                <div class="pw-field">
-                    <input id="new_password_confirmation" type="password" name="password_confirmation" class="form-control-custom"
-                           readonly onfocus="this.removeAttribute('readonly');"
-                           autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="20" required style="margin-bottom:0;">
-                    <button type="button" class="js-pw-toggle" data-target="new_password_confirmation"
-                        aria-label="Show password" aria-pressed="false" title="Show password">
-                        <i class="bi bi-eye" aria-hidden="true"></i>
-                    </button>
-                </div>
-            </div>
-        </div>
-
-        <p style="font-size:0.72rem; color:#999; margin-bottom:1rem;">
-            {{ \App\Support\PasswordPolicy::describe() }} It must also be different from your current password.
-        </p>
-
-        <button type="submit" class="btn-primary-custom" style="padding:0.6rem 1.75rem;">
-            Update Password
-        </button>
-    </form>
-</div>
-
-{{-- ══════════ CUSTOMIZATION (Admin Only) ══════════ --}}
-{{-- Hidden: admin decided not to use/expose this section. Routes/controller methods
-     (updateCustomization, updateCustomerCustomization) and Setting columns are left
-     intact so this can be re-enabled later by removing this comment wrapper. --}}
-@if($adminUser && $adminUser->role === 'admin')
-@if(false)
-
-<div class="content-card" style="margin-bottom:1rem;">
-
-    <p style="font-size:1rem; font-weight:700; color:white; margin-bottom:1.25rem; text-transform:uppercase; letter-spacing:0.5px; background:#C0392B; padding:0.6rem 1rem; border-radius:8px; text-align:center;">
-        Customization
-    </p>
-
-    {{-- ═══ Staff Interface ═══ --}}
-    <div style="margin-bottom:1.5rem;">
-        <p style="font-size:0.92rem; font-weight:700; color:#333; margin-bottom:1rem; padding-bottom:0.5rem; border-bottom:2px solid #F4845F;">
-            Staff Interface
-        </p>
-
-        <form action="{{ route('admin.customization.update') }}" method="POST" enctype="multipart/form-data">
-            @csrf
-
-            {{-- Logo Upload --}}
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.85rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Upload Logo Image</label>
-                <input type="file" name="logo" accept="image/*" class="form-control-custom" style="margin-bottom:0; padding:0.4rem 0.75rem;">
-            </div>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.85rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Business Title</label>
-                <input type="text" name="business_name" class="form-control-custom" autocomplete="off" value="{{ $settings->business_name ?? 'Peachy' }}" style="margin-bottom:0;">
-            </div>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Business Tagline</label>
-                <input type="text" name="business_tagline" class="form-control-custom" autocomplete="off" value="{{ $settings->business_tagline ?? 'Cakes and Deli Cafe' }}" style="margin-bottom:0;">
-            </div>
-
-            <p style="font-size:0.78rem; color:#555; margin-bottom:0.75rem; font-weight:700; text-transform:uppercase;">Background Layout Color Theme</p>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.6rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Background Color</label>
-                <input type="color" name="staff_bg_color" value="{{ $settings->staff_bg_color ?? '#fde8de' }}" style="width:60px; height:36px; border:1px solid #ddd; border-radius:6px; cursor:pointer; padding:2px;">
-                <span style="font-size:0.72rem; color:#888;">Preview color</span>
-            </div>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.6rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Buttons Color</label>
-                <input type="color" name="staff_btn_color" value="{{ $settings->staff_btn_color ?? '#F4845F' }}" style="width:60px; height:36px; border:1px solid #ddd; border-radius:6px; cursor:pointer; padding:2px;">
-                <span style="font-size:0.72rem; color:#888;">Preview color</span>
-            </div>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Border Color</label>
-                <input type="color" name="staff_border_color" value="{{ $settings->staff_border_color ?? '#C0392B' }}" style="width:60px; height:36px; border:1px solid #ddd; border-radius:6px; cursor:pointer; padding:2px;">
-                <span style="font-size:0.72rem; color:#888;">Preview color</span>
-            </div>
-
-            <p style="font-size:0.78rem; color:#555; margin-bottom:0.75rem; font-weight:700; text-transform:uppercase;">Core Color Buttons</p>
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Primary Buttons</label>
-                    <input type="color" name="staff_primary_color" value="{{ $settings->staff_primary_color ?? '#F4845F' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Primary Hover</label>
-                    <input type="color" name="staff_hover_color" value="{{ $settings->staff_hover_color ?? '#C0392B' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Secondary Buttons</label>
-                    <input type="color" name="staff_secondary_color" value="{{ $settings->staff_secondary_color ?? '#2e2e2e' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Secondary Hover</label>
-                    <input type="color" name="staff_secondary_hover" value="{{ $settings->staff_secondary_hover ?? '#1a1a1a' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-            </div>
-
-            <div style="display:flex; gap:0.75rem;">
-                <button type="button" class="btn-danger-custom" style="padding:0.6rem 1.75rem;" onclick="this.form.reset()">Cancel</button>
-                <button type="submit" class="btn-primary-custom" style="padding:0.6rem 1.75rem;">Save</button>
-            </div>
-
-        </form>
-    </div>
-
-    {{-- ═══ Customer Interface ═══ --}}
-    <div>
-        <p style="font-size:0.92rem; font-weight:700; color:#333; margin-bottom:1rem; padding-bottom:0.5rem; border-bottom:2px solid #F4845F;">
-            Customer Interface
-        </p>
-
-        <form action="{{ route('admin.customization.customer.update') }}" method="POST">
-            @csrf
-
-            <p style="font-size:0.78rem; color:#555; margin-bottom:0.75rem; font-weight:700; text-transform:uppercase;">Background Layout Color Theme</p>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.6rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Background Color</label>
-                <input type="color" name="customer_bg_color" value="{{ $settings->customer_bg_color ?? '#fde8de' }}" style="width:60px; height:36px; border:1px solid #ddd; border-radius:6px; cursor:pointer; padding:2px;">
-            </div>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:0.6rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Buttons Color</label>
-                <input type="color" name="customer_btn_color" value="{{ $settings->customer_btn_color ?? '#F4845F' }}" style="width:60px; height:36px; border:1px solid #ddd; border-radius:6px; cursor:pointer; padding:2px;">
-            </div>
-
-            <div style="display:flex; align-items:center; gap:0.75rem; margin-bottom:1rem;">
-                <label class="form-label-custom" style="width:160px; flex-shrink:0; margin-bottom:0;">Border Color</label>
-                <input type="color" name="customer_border_color" value="{{ $settings->customer_border_color ?? '#C0392B' }}" style="width:60px; height:36px; border:1px solid #ddd; border-radius:6px; cursor:pointer; padding:2px;">
-            </div>
-
-            <p style="font-size:0.78rem; color:#555; margin-bottom:0.75rem; font-weight:700; text-transform:uppercase;">Core Color Buttons</p>
-
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:0.75rem; margin-bottom:1rem;">
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Primary Buttons</label>
-                    <input type="color" name="customer_primary_color" value="{{ $settings->customer_primary_color ?? '#F4845F' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Primary Hover</label>
-                    <input type="color" name="customer_hover_color" value="{{ $settings->customer_hover_color ?? '#C0392B' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Secondary Buttons</label>
-                    <input type="color" name="customer_secondary_color" value="{{ $settings->customer_secondary_color ?? '#2e2e2e' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-                <div style="display:flex; align-items:center; gap:0.5rem;">
-                    <label class="form-label-custom" style="margin:0; font-size:0.75rem; flex:1;">Secondary Hover</label>
-                    <input type="color" name="customer_secondary_hover" value="{{ $settings->customer_secondary_hover ?? '#1a1a1a' }}" style="width:50px; height:32px; border:1px solid #ddd; border-radius:4px; cursor:pointer; padding:2px;">
-                </div>
-            </div>
-
-            <div style="display:flex; gap:0.75rem;">
-                <button type="button" class="btn-danger-custom" style="padding:0.6rem 1.75rem;" onclick="this.form.reset()">Cancel</button>
-                <button type="submit" class="btn-primary-custom" style="padding:0.6rem 1.75rem;">Save</button>
-            </div>
-
-        </form>
-    </div>
-
-</div>
-@endif
-{{-- ══════════ GCASH PAYMENT SETTINGS ══════════ --}}
-@if($adminUser && $adminUser->role === 'admin')
-
-@php
-    $gcashQrSetting = \App\Models\Setting::where('key', 'gcash_qr')
-        ->whereNull('branch_id')
-        ->first();
-
-    $gcashPhoneSetting = \App\Models\Setting::where('key', 'gcash_phone')
-        ->whereNull('branch_id')
-        ->first();
-@endphp
-
-<div class="content-card" style="margin-bottom:1rem;">
-    <p style="font-size:0.9rem;font-weight:700;color:#333;margin-bottom:0.35rem;">
-        <i class="bi bi-qr-code"></i> GCash Payment Settings
-    </p>
-
-    <p style="font-size:0.75rem;color:#888;margin-bottom:1rem;">
-        This QR code will be displayed to customers who choose GCash as their payment method.
-    </p>
-
-    @if(session('success'))
-        <div style="
-            background:#d4edda;
-            color:#155724;
-            border:1px solid #c3e6cb;
-            border-radius:8px;
-            padding:0.65rem 0.85rem;
-            font-size:0.78rem;
-            margin-bottom:1rem;
-        ">
-            <i class="bi bi-check-circle"></i>
-            {{ session('success') }}
-        </div>
-    @endif
-
-    @if($errors->any())
-        <div style="
-            background:#f8d7da;
-            color:#721c24;
-            border:1px solid #f5c6cb;
-            border-radius:8px;
-            padding:0.65rem 0.85rem;
-            font-size:0.78rem;
-            margin-bottom:1rem;
-        ">
-            @foreach($errors->all() as $error)
-                <div>{{ $error }}</div>
-            @endforeach
-        </div>
-    @endif
-
-    <style>
-        @media (max-width: 700px) {
-            .gcash-qr-grid { grid-template-columns: 1fr !important; }
-        }
-    </style>
-
-    <div class="gcash-qr-grid" style="
-        display:grid;
-        grid-template-columns:minmax(180px, 280px) 1fr;
-        gap:1.5rem;
-        align-items:start;
-    ">
-
-        {{-- Current QR --}}
-        <div style="
-            border:1px solid #eee;
-            border-radius:12px;
-            padding:1rem;
-            text-align:center;
-            background:#fafafa;
-        ">
-            <p style="
-                font-size:0.72rem;
-                font-weight:700;
-                color:#666;
-                margin-bottom:0.75rem;
-            ">
-                CURRENT QR CODE
-            </p>
-
-            @if($gcashQrSetting && $gcashQrSetting->value)
-                <img
-                    src="{{ \App\Support\Img::url($gcashQrSetting->value) }}"
-                    alt="Store GCash QR Code"
-                    style="
-                        width:100%;
-                        max-width:220px;
-                        aspect-ratio:1/1;
-                        object-fit:contain;
-                        background:#fff;
-                        border-radius:8px;
-                        border:1px solid #eee;
-                        padding:0.5rem;
-                    "
-                >
-            @else
-                <div style="
-                    width:100%;
-                    max-width:220px;
-                    aspect-ratio:1/1;
-                    margin:0 auto;
-                    display:flex;
-                    align-items:center;
-                    justify-content:center;
-                    background:#f5f5f5;
-                    border:2px dashed #ddd;
-                    border-radius:8px;
-                    color:#aaa;
-                    font-size:0.75rem;
-                    padding:1rem;
-                ">
+            {{-- ── Signed-in Account ── --}}
+            <section class="as-card">
+                <div class="as-card-head">
+                    <div class="as-section-icon" aria-hidden="true"><i class="bi bi-person-badge"></i></div>
                     <div>
-                        <i class="bi bi-qr-code" style="font-size:2.5rem;display:block;margin-bottom:0.5rem;"></i>
-                        No GCash QR uploaded
+                        <h2>Signed-in Account</h2>
+                        <p>Your account details and assigned access level.</p>
                     </div>
                 </div>
+
+                <div class="as-profile">
+                    <div class="as-avatar" aria-hidden="true">{{ $initials }}</div>
+                    <div class="as-profile-text">
+                        <p class="as-profile-name">{{ $accountName !== '' ? $accountName : $accountEmail }}</p>
+                        <p class="as-profile-email">{{ $accountEmail }}</p>
+                    </div>
+                    <span class="as-role">{{ $roleLabel }}</span>
+                </div>
+
+                <div class="as-fields">
+                    <div>
+                        <label class="as-label" for="as_name">Name</label>
+                        <input class="as-input" id="as_name" type="text" value="{{ $accountName }}" readonly autocomplete="off">
+                    </div>
+                    <div>
+                        <label class="as-label" for="as_email">Email Address</label>
+                        <input class="as-input" id="as_email" type="email" value="{{ $accountEmail }}" readonly autocomplete="off">
+                    </div>
+                    <div class="as-field--full">
+                        <label class="as-label" for="as_access">Access Level</label>
+                        <input class="as-input" id="as_access" type="text" value="{{ $roleLabel }}" readonly autocomplete="off">
+                    </div>
+                </div>
+
+                <p class="as-helper"><i class="bi bi-info-circle"></i> These details are managed by an administrator and cannot be edited here.</p>
+
+                @if($canOpenStaffAccounts)
+                    <div class="as-staff-link">
+                        <div>
+                            <strong>Managing staff accounts?</strong>
+                            <span>Add users, update access levels, or activate and deactivate accounts.</span>
+                        </div>
+                        <a href="{{ route('admin.users') }}">Go to Staff Accounts <i class="bi bi-arrow-up-right"></i></a>
+                    </div>
+                @endif
+            </section>
+
+            {{-- ── Change Password ──
+                 Always the SIGNED-IN account: the form carries no user id, and
+                 AdminController::updateOwnPassword() reads the account from the
+                 admin guard. Field names, ids and the autofill defences are
+                 unchanged from the previous page (AdminFormHygieneTest pins
+                 them). --}}
+            <section class="as-card" id="change-password">
+                <div class="as-card-head">
+                    <div class="as-section-icon" aria-hidden="true"><i class="bi bi-shield-lock"></i></div>
+                    <div>
+                        <h2>Change Password</h2>
+                        <p>Update the password for your signed-in account. You will stay signed in on this device.</p>
+                    </div>
+                </div>
+
+                @if(session('password_success'))
+                    <div class="as-notice as-notice--ok" role="status">
+                        <i class="bi bi-check-circle"></i>
+                        <span>{{ session('password_success') }}</span>
+                    </div>
+                @endif
+
+                @if(!empty($passwordErrors))
+                    <div class="as-notice as-notice--error" role="alert">
+                        <i class="bi bi-exclamation-circle"></i>
+                        <div>
+                            @foreach($passwordErrors as $error)
+                                <div>{{ $error }}</div>
+                            @endforeach
+                        </div>
+                    </div>
+                @endif
+
+                <form action="{{ route('admin.account.password.update') }}" method="POST" autocomplete="off">
+                    <input type="text" name="prevent_autofill_username" id="prevent_autofill_username" value="" style="position:absolute; top:-9999px; left:-9999px;" tabindex="-1" aria-hidden="true" autocomplete="off" />
+                    <input type="password" name="prevent_autofill_password" id="prevent_autofill_password" value="" style="position:absolute; top:-9999px; left:-9999px;" tabindex="-1" aria-hidden="true" autocomplete="off" />
+                    @csrf @method('PUT')
+
+                    <div class="as-password">
+                        <div>
+                            <label class="as-label" for="current_password">Current Password</label>
+                            <div class="pw-field">
+                                <input id="current_password" type="password" name="current_password" class="as-input"
+                                       placeholder="Enter current password"
+                                       readonly onfocus="this.removeAttribute('readonly');"
+                                       autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" required>
+                                <button type="button" class="js-pw-toggle" data-target="current_password"
+                                    aria-label="Show password" aria-pressed="false" title="Show password">
+                                    <i class="bi bi-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="as-label" for="new_password">New Password</label>
+                            <div class="pw-field">
+                                <input id="new_password" type="password" name="password" class="as-input"
+                                       placeholder="Enter new password"
+                                       readonly onfocus="this.removeAttribute('readonly');"
+                                       autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="20" required>
+                                <button type="button" class="js-pw-toggle" data-target="new_password"
+                                    aria-label="Show password" aria-pressed="false" title="Show password">
+                                    <i class="bi bi-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="as-label" for="new_password_confirmation">Confirm New Password</label>
+                            <div class="pw-field">
+                                <input id="new_password_confirmation" type="password" name="password_confirmation" class="as-input"
+                                       placeholder="Re-enter new password"
+                                       readonly onfocus="this.removeAttribute('readonly');"
+                                       autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other" minlength="8" maxlength="20" required>
+                                <button type="button" class="js-pw-toggle" data-target="new_password_confirmation"
+                                    aria-label="Show password" aria-pressed="false" title="Show password">
+                                    <i class="bi bi-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <p class="as-helper">
+                        {{ \App\Support\PasswordPolicy::describe() }} Your new password must be different from your current password.
+                    </p>
+
+                    <div class="as-actions">
+                        <button type="reset" class="as-btn as-btn-light">Clear</button>
+                        <button type="submit" class="as-btn as-btn-primary">Update Password <i class="bi bi-arrow-right"></i></button>
+                    </div>
+                </form>
+            </section>
+        </div>
+
+        {{-- ═════════════ RIGHT COLUMN ═════════════ --}}
+        <div class="as-stack">
+
+            {{-- ── GCash Payment Settings (owner only) ── --}}
+            @if($accountRole === 'admin')
+                <section class="as-card" id="gcash-settings">
+                    <div class="as-card-head">
+                        <div class="as-section-icon" aria-hidden="true"><i class="bi bi-qr-code"></i></div>
+                        <div>
+                            <h2>GCash Payment Settings</h2>
+                            <p>Manage the QR code and contact number shown to customers paying through GCash.</p>
+                        </div>
+                    </div>
+
+                    @if(session('success'))
+                        <div class="as-notice as-notice--ok" role="status">
+                            <i class="bi bi-check-circle"></i>
+                            <span>{{ session('success') }}</span>
+                        </div>
+                    @endif
+
+                    @if(!empty($gcashErrors))
+                        <div class="as-notice as-notice--error" role="alert">
+                            <i class="bi bi-exclamation-circle"></i>
+                            <div>
+                                @foreach($gcashErrors as $error)
+                                    <div>{{ $error }}</div>
+                                @endforeach
+                            </div>
+                        </div>
+                    @endif
+
+                    <div class="as-notice as-notice--error" id="gcash-client-error" role="alert" hidden>
+                        <i class="bi bi-exclamation-circle"></i>
+                        <div id="gcash-client-error-text"></div>
+                    </div>
+
+                    <form action="{{ route('admin.account.gcash-qr.update') }}" method="POST" enctype="multipart/form-data">
+                        @csrf
+
+                        <div class="as-gcash-grid">
+                            <div class="as-qr-preview">
+                                <small id="qrPreviewLabel">CURRENT QR CODE</small>
+                                <div class="as-qr-placeholder" id="qrPreview">
+                                    @if($hasQr)
+                                        <img src="{{ \App\Support\Img::url($gcashQr) }}" alt="Store GCash QR Code">
+                                    @else
+                                        <i class="bi bi-qr-code" aria-hidden="true"></i>
+                                    @endif
+                                </div>
+                                @if($hasQr)
+                                    <span class="as-status" id="qrStatus"><i class="bi bi-check-circle-fill"></i> Saved</span>
+                                @else
+                                    <p class="as-qr-empty" id="qrStatus">No GCash QR uploaded</p>
+                                @endif
+                            </div>
+
+                            <div>
+                                <label class="as-label" for="qrUpload">{{ $hasQr ? 'Change GCash QR' : 'Upload GCash QR' }}</label>
+                                <div class="as-upload">
+                                    <input type="file" id="qrUpload" name="gcash_qr"
+                                           accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+                                    <p class="as-upload-note">JPG, JPEG, PNG, or WEBP · Maximum 5 MB</p>
+                                </div>
+
+                                <div class="as-gcash-phone">
+                                    <label class="as-label" for="gcashPhone">GCash Phone Number</label>
+                                    <input class="as-input" id="gcashPhone" type="tel" name="gcash_phone"
+                                           value="{{ old('gcash_phone', $gcashPhone ?? '') }}"
+                                           placeholder="09XX XXX XXXX" maxlength="20" autocomplete="off">
+                                    <p class="as-helper">Displayed below the GCash QR code during checkout.</p>
+                                </div>
+
+                                <div class="as-actions">
+                                    <button type="submit" class="as-btn as-btn-primary"><i class="bi bi-cloud-arrow-up"></i> Save GCash Settings</button>
+                                </div>
+                            </div>
+                        </div>
+                    </form>
+                </section>
             @endif
+
+            {{-- ── At a glance ── --}}
+            <section class="as-card as-card--soft">
+                <div class="as-card-head as-card-head--tight">
+                    <div class="as-section-icon" aria-hidden="true"><i class="bi bi-lightbulb"></i></div>
+                    <div>
+                        <h2>Account Settings at a Glance</h2>
+                        <p>Keep this page focused on your own account and store payment configuration. Staff management stays in the Staff Accounts tab.</p>
+                    </div>
+                </div>
+            </section>
         </div>
-
-        {{-- Upload --}}
-        <div>
-            <form
-                action="{{ route('admin.account.gcash-qr.update') }}"
-                method="POST"
-                enctype="multipart/form-data"
-            >
-                @csrf
-
-                <label class="form-label-custom">
-                    {{ $gcashQrSetting && $gcashQrSetting->value ? 'Change GCash QR Code' : 'Upload GCash QR Code' }}
-                </label>
-
-                <input
-                    type="file"
-                    name="gcash_qr"
-                    class="form-control-custom"
-                    accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
-                >
-
-                <small style="
-                    display:block;
-                    margin-top:0.4rem;
-                    margin-bottom:1rem;
-                    color:#999;
-                    font-size:0.7rem;
-                ">
-                    JPG, JPEG, PNG, or WEBP. Maximum size: 5 MB.
-                </small>
-
-                <div style="margin-bottom:1rem;">
-    <label class="form-label-custom">
-        GCash Phone Number
-    </label>
-
-    <input
-        type="text"
-        name="gcash_phone"
-        class="form-control-custom"
-        value="{{ $gcashPhoneSetting->value ?? '' }}"
-        autocomplete="off"
-        maxlength="20"
-    >
-
-    <small style="
-        display:block;
-        margin-top:0.4rem;
-        color:#999;
-        font-size:0.7rem;
-    ">
-        This number will be displayed below the GCash QR code.
-    </small>
-</div>
-
-                <button
-                    type="submit"
-                    class="btn-primary-custom"
-                    style="padding:0.6rem 1.25rem;"
-                >
-                    <i class="bi bi-cloud-arrow-up"></i>
-                    {{ $gcashQrSetting && $gcashQrSetting->value ? 'Update GCash QR' : 'Upload GCash QR' }}
-                </button>
-            </form>
-        </div>
-
     </div>
 </div>
 
-@endif
+@if($accountRole === 'admin')
+<script>
+(function () {
+    'use strict';
+
+    var input = document.getElementById('qrUpload');
+    if (!input) { return; }
+
+    var preview = document.getElementById('qrPreview');
+    var label   = document.getElementById('qrPreviewLabel');
+    var status  = document.getElementById('qrStatus');
+    var errBox  = document.getElementById('gcash-client-error');
+    var errText = document.getElementById('gcash-client-error-text');
+
+    // Remember what the server rendered so choosing and then clearing a file
+    // puts the saved QR back.
+    var savedPreview = preview.innerHTML;
+    var savedStatus  = status ? status.outerHTML : '';
+    var savedLabel   = label.textContent;
+    var MAX_BYTES    = 5 * 1024 * 1024;
+    var TYPES        = ['image/jpeg', 'image/png', 'image/webp'];
+
+    function showError(message) {
+        errText.textContent = message;
+        errBox.hidden = false;
+    }
+
+    function restore() {
+        preview.innerHTML = savedPreview;
+        label.textContent = savedLabel;
+        var current = document.getElementById('qrStatus');
+        if (current && savedStatus) { current.outerHTML = savedStatus; }
+    }
+
+    input.addEventListener('change', function (event) {
+        errBox.hidden = true;
+        var file = event.target.files[0];
+
+        if (!file) { restore(); return; }
+
+        if (TYPES.indexOf(file.type) === -1) {
+            showError('Please choose a JPG, JPEG, PNG, or WEBP image.');
+            event.target.value = '';
+            restore();
+            return;
+        }
+
+        if (file.size > MAX_BYTES) {
+            showError('The selected image exceeds the 5 MB limit.');
+            event.target.value = '';
+            restore();
+            return;
+        }
+
+        var reader = new FileReader();
+        reader.onload = function (e) {
+            var img = document.createElement('img');
+            img.alt = 'Selected GCash QR preview';
+            img.src = e.target.result;
+            preview.innerHTML = '';
+            preview.appendChild(img);
+            label.textContent = 'NEW QR PREVIEW';
+            var current = document.getElementById('qrStatus');
+            if (current) {
+                current.outerHTML = '<span class="as-status as-status--pending" id="qrStatus"><i class="bi bi-info-circle-fill"></i> Not saved yet</span>';
+            }
+        };
+        reader.readAsDataURL(file);
+    });
+})();
+</script>
 @endif
 
 @endsection

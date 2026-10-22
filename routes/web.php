@@ -1480,6 +1480,13 @@ Route::prefix('admin')
                 ->whereNumber('id')
                 ->name('vouchers.toggle');
 
+            // The list's Wheel switch (Oct 2026): include on Spin & Win or not
+            // (vouchers.on_wheel). Same tier and the same per-record check as
+            // the toggle above — see AdminController::toggleVoucherWheel().
+            Route::put('/vouchers/{id}/wheel', [AdminController::class, 'toggleVoucherWheel'])
+                ->whereNumber('id')
+                ->name('vouchers.wheel');
+
             // Streak Rewards — its own admin page (Oct 2026), split out of
             // Vouchers & Game so an owner editing a promotion does not also
             // have to wade through the stamp-card settings. Same tier as the

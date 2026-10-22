@@ -1,0 +1,819 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POMIDA Data Dictionary</title>
+<style>
+:root{--ink:#111827;--muted:#475569;--rule:#cbd5e1;--bg:#ffffff;--soft:#f8fafc;--accent:#1d4ed8}
+*{box-sizing:border-box}
+body{margin:0;font:15px/1.5 "Segoe UI",Arial,sans-serif;color:var(--ink);background:var(--bg);display:flex}
+nav{position:sticky;top:0;align-self:flex-start;height:100vh;overflow:auto;width:270px;flex:none;padding:18px 14px;border-right:1px solid var(--rule);background:var(--soft);font-size:13.5px}
+nav input{width:100%;padding:7px 9px;border:1px solid var(--rule);border-radius:6px;margin-bottom:12px;font:inherit}
+.navmod{margin-bottom:12px}
+.navh{display:block;font-weight:700;color:var(--ink);text-decoration:none;border-left:5px solid;padding:2px 8px;margin-bottom:2px}
+.navt{display:block;color:var(--muted);text-decoration:none;padding:1px 8px 1px 18px}
+.navt:hover,.navh:hover{color:var(--accent)}
+main{flex:1;min-width:0;padding:28px 36px 80px;max-width:1280px}
+h1{margin:0 0 4px;font-size:30px}
+.sub{color:var(--muted);margin:0 0 18px}
+.summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:16px 0 24px}
+.summary div{border:1px solid var(--rule);border-radius:8px;padding:10px 12px;background:var(--soft)}
+.summary b{display:block;font-size:24px}
+.summary span{color:var(--muted);font-size:13px}
+h2{margin:42px 0 10px;font-size:23px;border-left:7px solid;padding-left:12px}
+h2 .cnt{font-size:13px;font-weight:400;color:var(--muted);margin-left:8px}
+.tbl{margin:0 0 30px;padding-top:6px;scroll-margin-top:8px}
+h3{margin:0;font-size:19px;font-family:Consolas,"Courier New",monospace}
+.pill{font:600 11px "Segoe UI",Arial,sans-serif;border:1.5px solid;border-radius:999px;padding:1px 9px;margin-left:8px;vertical-align:middle}
+.purpose{margin:4px 0 2px}
+.meta{margin:0 0 8px;color:var(--muted);font-size:13px}
+.scroll{overflow-x:auto}
+table{border-collapse:collapse;width:100%}
+table.cols th{background:#e2e8f0;text-align:left;font-size:12.5px;text-transform:uppercase;letter-spacing:.03em}
+table.cols th,table.cols td{border:1px solid var(--rule);padding:4px 8px;vertical-align:top}
+table.cols td.n{color:var(--muted);text-align:right;width:34px}
+table.cols td.c{text-align:center;white-space:nowrap}
+table.cols td.ty{max-width:300px}
+table.cols td:last-child{min-width:230px}
+table.cols tbody tr:nth-child(even){background:#f8fafc}
+code{font-family:Consolas,"Courier New",monospace;font-size:13px}
+.k{display:inline-block;font:700 11px "Segoe UI",Arial,sans-serif;border-radius:4px;padding:1px 5px;color:#fff}
+.pk{background:#b45309}.fk{background:#1d4ed8}.uk{background:#047857}.uc{background:#0f766e}
+.dim{color:var(--muted)}
+.warn{color:#b91c1c;font-weight:600;font-size:12.5px}
+.notes{margin:6px 0 0;padding-left:20px;color:var(--ink);font-size:13.5px}
+a{color:var(--accent)}
+.ap table{margin:8px 0 18px}
+.ap th,.ap td{border:1px solid var(--rule);padding:5px 9px;text-align:left;vertical-align:top}
+.ap th{background:#e2e8f0}
+.legend{font-size:13.5px;color:var(--muted)}
+.hidden{display:none}
+@media print{nav{display:none}body{display:block}main{padding:0;max-width:none}.tbl{break-inside:avoid-page}h2{break-after:avoid}}
+@media (max-width:820px){body{display:block}nav{position:static;height:auto;width:auto}main{padding:18px}}
+</style></head>
+<body>
+<nav><input id="q" type="search" placeholder="Filter tables&hellip;" aria-label="Filter tables"><div class="navmod"><a class="navh" href="#m-users" style="border-left-color:#2563eb">Users &amp; Branches</a><a class="navt" href="#t-users" data-name="users">users</a><a class="navt" href="#t-branches" data-name="branches">branches</a><a class="navt" href="#t-admin_bootstrap" data-name="admin_bootstrap">admin_bootstrap</a></div>
+<div class="navmod"><a class="navh" href="#m-menu" style="border-left-color:#d97706">Menu</a><a class="navt" href="#t-categories" data-name="categories">categories</a><a class="navt" href="#t-subcategories" data-name="subcategories">subcategories</a><a class="navt" href="#t-menu_items" data-name="menu_items">menu_items</a><a class="navt" href="#t-menu_item_sizes" data-name="menu_item_sizes">menu_item_sizes</a><a class="navt" href="#t-menu_options" data-name="menu_options">menu_options</a><a class="navt" href="#t-menu_item_options" data-name="menu_item_options">menu_item_options</a></div>
+<div class="navmod"><a class="navh" href="#m-orders" style="border-left-color:#16a34a">Orders &amp; Payments</a><a class="navt" href="#t-orders" data-name="orders">orders</a><a class="navt" href="#t-order_items" data-name="order_items">order_items</a><a class="navt" href="#t-order_item_options" data-name="order_item_options">order_item_options</a><a class="navt" href="#t-order_item_size_ingredients" data-name="order_item_size_ingredients">order_item_size_ingredients</a><a class="navt" href="#t-order_discount_beneficiaries" data-name="order_discount_beneficiaries">order_discount_beneficiaries</a><a class="navt" href="#t-discount_cards" data-name="discount_cards">discount_cards</a><a class="navt" href="#t-restaurant_tables" data-name="restaurant_tables">restaurant_tables</a><a class="navt" href="#t-table_access_codes" data-name="table_access_codes">table_access_codes</a><a class="navt" href="#t-table_sessions" data-name="table_sessions">table_sessions</a><a class="navt" href="#t-table_session_devices" data-name="table_session_devices">table_session_devices</a><a class="navt" href="#t-help_requests" data-name="help_requests">help_requests</a></div>
+<div class="navmod"><a class="navh" href="#m-inventory" style="border-left-color:#db2777">Inventory</a><a class="navt" href="#t-inventory" data-name="inventory">inventory</a><a class="navt" href="#t-menu_item_ingredients" data-name="menu_item_ingredients">menu_item_ingredients</a><a class="navt" href="#t-menu_item_size_ingredients" data-name="menu_item_size_ingredients">menu_item_size_ingredients</a><a class="navt" href="#t-menu_option_ingredients" data-name="menu_option_ingredients">menu_option_ingredients</a><a class="navt" href="#t-stock_movements" data-name="stock_movements">stock_movements</a></div>
+<div class="navmod"><a class="navh" href="#m-marketing" style="border-left-color:#7c3aed">Marketing &amp; Loyalty</a><a class="navt" href="#t-vouchers" data-name="vouchers">vouchers</a><a class="navt" href="#t-user_vouchers" data-name="user_vouchers">user_vouchers</a><a class="navt" href="#t-ads" data-name="ads">ads</a><a class="navt" href="#t-games_played" data-name="games_played">games_played</a><a class="navt" href="#t-loyalty_awards" data-name="loyalty_awards">loyalty_awards</a><a class="navt" href="#t-free_dessert_rewards" data-name="free_dessert_rewards">free_dessert_rewards</a><a class="navt" href="#t-free_dessert_ratings" data-name="free_dessert_ratings">free_dessert_ratings</a><a class="navt" href="#t-order_ratings" data-name="order_ratings">order_ratings</a><a class="navt" href="#t-notifications" data-name="notifications">notifications</a><a class="navt" href="#t-settings" data-name="settings">settings</a></div><div class="navmod"><a class="navh" href="#appendix" style="border-left-color:#64748b">Appendix</a><a class="navt" href="#ap-framework">A. Framework tables</a><a class="navt" href="#ap-modelonly">B. Model-only relationships</a><a class="navt" href="#ap-dead">C. Dead model relationships</a><a class="navt" href="#ap-implicit">D. Implied links</a><a class="navt" href="#ap-nomodel">E. FKs without a model relation</a><a class="navt" href="#ap-rules">F. ON DELETE rules</a></div></nav>
+<main>
+<h1>POMIDA Database &mdash; Data Dictionary</h1>
+<p class="sub">Database <b>pomida_db</b> (10.4.32-MariaDB) &middot; read from <code>information_schema</code> on <b>2026-10-22</b> &middot; fix/missing-foreign-keys (main @ d905de5 + migration 2026_10_22_000000)</p>
+<div class="summary">
+<div><b>35</b><span>application tables</span></div>
+<div><b>406</b><span>columns in those tables</span></div>
+<div><b>70</b><span>database foreign keys</span></div>
+<div><b>0</b><span>model-only relationships (no FK)</span></div>
+<div><b>8</b><span>Laravel framework tables (appendix)</span></div>
+<div><b>43</b><span>tables in the database in total</span></div>
+</div>
+<p class="legend">Key column: <span class="k pk">PK</span> primary key &middot; <span class="k fk">FK</span> declared foreign key &middot; <span class="k uk">UK</span> unique key on this column alone &middot; <span class="k uc">UK*</span> part of a composite unique key (listed under the table). &ldquo;References&rdquo; shows the parent table and the <b>ON DELETE</b> rule. Types are the exact MariaDB column types (including UNSIGNED and enum values).</p>
+<h2 id="m-users" style="border-left-color:#2563eb">Users &amp; Branches <span class="cnt">3 tables</span></h2>
+<section class="tbl" id="t-users" data-name="users">
+<h3>users <span class="pill" style="background:#dbeafe;border-color:#2563eb">Users &amp; Branches</span></h3>
+<p class="purpose">All accounts: customers, staff, supervisors and the admin (role), with points, ID-card details and home branch.</p>
+<p class="meta">25 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>email</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>role</b></td><td class="ty"><code>enum('customer',<wbr>'staff',<wbr>'admin',<wbr>'supervisor')</code></td><td class="c">NO</td><td class="c"></td><td><code>'customer'</code></td><td></td></tr>
+<tr><td class="n">5</td><td><b>points</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>bonus_points</b></td><td class="ty"><code>int(10) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">7</td><td><b>reward_claims</b></td><td class="ty"><code>int(10) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">8</td><td><b>contact_number</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>address</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>pwd_card_number</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>pwd_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>pwd_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>senior_card_number</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">14</td><td><b>senior_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">15</td><td><b>senior_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">16</td><td><b>profile_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">17</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE RESTRICT</span></td></tr>
+<tr><td class="n">18</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">19</td><td><b>verification_code</b></td><td class="ty"><code>varchar(6)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">20</td><td><b>verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">21</td><td><b>email_verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">22</td><td><b>password</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">23</td><td><b>remember_token</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">24</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">25</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-admin_bootstrap">admin_bootstrap</a>.user_id, <a href="#t-discount_cards">discount_cards</a>.user_id, <a href="#t-discount_cards">discount_cards</a>.verified_by, <a href="#t-free_dessert_ratings">free_dessert_ratings</a>.user_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.user_id, <a href="#t-games_played">games_played</a>.user_id, <a href="#t-loyalty_awards">loyalty_awards</a>.user_id, <a href="#t-notifications">notifications</a>.user_id, <a href="#t-order_ratings">order_ratings</a>.user_id, <a href="#t-orders">orders</a>.processed_by, <a href="#t-orders">orders</a>.user_id, <a href="#t-restaurant_tables">restaurant_tables</a>.code_rotated_by, <a href="#t-stock_movements">stock_movements</a>.user_id, <a href="#t-table_access_codes">table_access_codes</a>.issued_by, <a href="#t-table_sessions">table_sessions</a>.opened_by, <a href="#t-table_sessions">table_sessions</a>.released_by, <a href="#t-user_vouchers">user_vouchers</a>.issued_by, <a href="#t-user_vouchers">user_vouchers</a>.user_id</li></ul>
+</section>
+<section class="tbl" id="t-branches" data-name="branches">
+<h3>branches <span class="pill" style="background:#dbeafe;border-color:#2563eb">Users &amp; Branches</span></h3>
+<p class="purpose">The restaurant branches: name, unique code, address, contact, opening hours and active / main-branch flags.</p>
+<p class="meta">13 columns &middot; 0 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>code</b></td><td class="ty"><code>varchar(10)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>address</b></td><td class="ty"><code>text</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>contact_number</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>email</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>opening_time</b></td><td class="ty"><code>time</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>closing_time</b></td><td class="ty"><code>time</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">10</td><td><b>is_main_branch</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">11</td><td><b>image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-ads">ads</a>.branch_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.branch_id, <a href="#t-help_requests">help_requests</a>.branch_id, <a href="#t-inventory">inventory</a>.branch_id, <a href="#t-menu_items">menu_items</a>.branch_id, <a href="#t-notifications">notifications</a>.branch_id, <a href="#t-orders">orders</a>.branch_id, <a href="#t-restaurant_tables">restaurant_tables</a>.branch_id, <a href="#t-settings">settings</a>.branch_id, <a href="#t-table_access_codes">table_access_codes</a>.branch_id, <a href="#t-table_sessions">table_sessions</a>.branch_id, <a href="#t-users">users</a>.branch_id, <a href="#t-vouchers">vouchers</a>.branch_id</li><li><b>Implied link (no FK, no model relation):</b> free_dessert_rewards.used_branch_id &harr; branches.id <span class="dim">&mdash; Branch where the reward was redeemed; plain column, no FK and no model relationship.</span></li></ul>
+</section>
+<section class="tbl" id="t-admin_bootstrap" data-name="admin_bootstrap">
+<h3>admin_bootstrap <span class="pill" style="background:#dbeafe;border-color:#2563eb">Users &amp; Branches</span></h3>
+<p class="purpose">One-row guard (singleton flag) recording that the first admin account was created from the web, so that one-time setup can never run twice.</p>
+<p class="meta">5 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>singleton</b></td><td class="ty"><code>varchar(1)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">4</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<h2 id="m-menu" style="border-left-color:#d97706">Menu <span class="cnt">6 tables</span></h2>
+<section class="tbl" id="t-categories" data-name="categories">
+<h3>categories <span class="pill" style="background:#fef3c7;border-color:#d97706">Menu</span></h3>
+<p class="purpose">Top-level menu categories (shared by all branches); can be archived.</p>
+<p class="meta">9 columns &middot; 0 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>description</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>display_order</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">7</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>archived_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-menu_items">menu_items</a>.category_id, <a href="#t-subcategories">subcategories</a>.category_id</li></ul>
+</section>
+<section class="tbl" id="t-subcategories" data-name="subcategories">
+<h3>subcategories <span class="pill" style="background:#fef3c7;border-color:#d97706">Menu</span></h3>
+<p class="purpose">Sub-groups inside a category; can be archived.</p>
+<p class="meta">10 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>category_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-categories">categories</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>description</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>display_order</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">7</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">8</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>archived_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-menu_items">menu_items</a>.subcategory_id</li></ul>
+</section>
+<section class="tbl" id="t-menu_items" data-name="menu_items">
+<h3>menu_items <span class="pill" style="background:#fef3c7;border-color:#d97706">Menu</span></h3>
+<p class="purpose">Items on the menu: price, cost, category / sub-category, branch scope, stock flags and free-dessert eligibility; can be archived.</p>
+<p class="meta">24 columns &middot; 4 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>category_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-categories">categories</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>subcategory_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-subcategories">subcategories</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">4</td><td><b>inventory_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-inventory">inventory</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">5</td><td><b>inventory_amount_used</b></td><td class="ty"><code>decimal(10,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.000</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">7</td><td><b>name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>description</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>ingredients</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>price</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>cost</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>display_order</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">14</td><td><b>is_available</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">15</td><td><b>is_featured</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">16</td><td><b>free_dessert_eligible</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">17</td><td><b>track_stock</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">18</td><td><b>stock_quantity</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">19</td><td><b>low_stock_alert</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>10</code></td><td></td></tr>
+<tr><td class="n">20</td><td><b>prep_time_minutes</b></td><td class="ty"><code>int(11)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">21</td><td><b>total_sold</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">22</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">23</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">24</td><td><b>archived_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.menu_item_id, <a href="#t-menu_item_ingredients">menu_item_ingredients</a>.menu_item_id, <a href="#t-menu_item_options">menu_item_options</a>.menu_item_id, <a href="#t-menu_item_sizes">menu_item_sizes</a>.menu_item_id, <a href="#t-order_items">order_items</a>.menu_item_id</li></ul>
+</section>
+<section class="tbl" id="t-menu_item_sizes" data-name="menu_item_sizes">
+<h3>menu_item_sizes <span class="pill" style="background:#fef3c7;border-color:#d97706">Menu</span></h3>
+<p class="purpose">Size variants (e.g. Regular / Large) of a menu item, each with its own price.</p>
+<p class="meta">9 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>menu_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_items">menu_items</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>name</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>price</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>display_order</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">7</td><td><b>archived_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (menu_item_id, name) <span class="dim">&mdash; index menu_item_sizes_menu_item_id_name_unique</span></li><li><b>Referenced by:</b> <a href="#t-menu_item_size_ingredients">menu_item_size_ingredients</a>.menu_item_size_id, <a href="#t-order_items">order_items</a>.menu_item_size_id</li></ul>
+</section>
+<section class="tbl" id="t-menu_options" data-name="menu_options">
+<h3>menu_options <span class="pill" style="background:#fef3c7;border-color:#d97706">Menu</span></h3>
+<p class="purpose">Add-ons / options with an extra price, reusable across menu items; can be archived.</p>
+<p class="meta">9 columns &middot; 0 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>description</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>additional_price</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">5</td><td><b>display_order</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">7</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>archived_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-menu_item_options">menu_item_options</a>.menu_option_id, <a href="#t-menu_option_ingredients">menu_option_ingredients</a>.menu_option_id, <a href="#t-order_item_options">order_item_options</a>.menu_option_id</li></ul>
+</section>
+<section class="tbl" id="t-menu_item_options" data-name="menu_item_options">
+<h3>menu_item_options <span class="pill" style="background:#fef3c7;border-color:#d97706">Menu</span></h3>
+<p class="purpose">Link table: which add-on options can be chosen on which menu item (many-to-many).</p>
+<p class="meta">5 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>menu_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_items">menu_items</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>menu_option_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_options">menu_options</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (menu_item_id, menu_option_id) <span class="dim">&mdash; index menu_item_options_menu_item_id_menu_option_id_unique</span></li></ul>
+</section>
+<h2 id="m-orders" style="border-left-color:#16a34a">Orders &amp; Payments <span class="cnt">11 tables</span></h2>
+<section class="tbl" id="t-orders" data-name="orders">
+<h3>orders <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Customer orders (Dine-In, Pick-Up, Walk-In): totals, discount, voucher / reward code, payment, status and timestamps.</p>
+<p class="meta">37 columns &middot; 5 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_number</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>receipt_number</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">5</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">6</td><td><b>processed_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">7</td><td><b>type</b></td><td class="ty"><code>enum('dine_in',<wbr>'pick_up',<wbr>'walk_in')</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>table_number</b></td><td class="ty"><code>varchar(10)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>is_takeout</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">10</td><td><b>status</b></td><td class="ty"><code>enum('pending',<wbr>'preparing',<wbr>'serving',<wbr>'completed',<wbr>'cancelled')</code></td><td class="c">NO</td><td class="c"></td><td><code>'pending'</code></td><td></td></tr>
+<tr><td class="n">11</td><td><b>subtotal</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>discount_amount</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">13</td><td><b>tax_amount</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">14</td><td><b>total</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">15</td><td><b>discount_type</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">16</td><td><b>discount_card_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-discount_cards">discount_cards</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">17</td><td><b>discount_beneficiary_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">18</td><td><b>discount_beneficiary_card_number</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">19</td><td><b>discount_id_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">20</td><td><b>discount_beneficiary_expiration</b></td><td class="ty"><code>date</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">21</td><td><b>discount_status</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><code>'approved'</code></td><td></td></tr>
+<tr><td class="n">22</td><td><b>voucher_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-vouchers">vouchers</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">23</td><td><b>reward_code</b></td><td class="ty"><code>varchar(16)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">24</td><td><b>payment_method</b></td><td class="ty"><code>enum('cash',<wbr>'gcash',<wbr>'card')</code></td><td class="c">NO</td><td class="c"></td><td><code>'cash'</code></td><td></td></tr>
+<tr><td class="n">25</td><td><b>payment_status</b></td><td class="ty"><code>enum('pending',<wbr>'awaiting_verification',<wbr>'paid',<wbr>'rejected',<wbr>'refund_pending',<wbr>'refunded')</code></td><td class="c">NO</td><td class="c"></td><td><code>'pending'</code></td><td></td></tr>
+<tr><td class="n">26</td><td><b>amount_paid</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">27</td><td><b>change_amount</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">28</td><td><b>notes</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">29</td><td><b>cancellation_reason</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">30</td><td><b>confirmed_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">31</td><td><b>preparing_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">32</td><td><b>serving_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">33</td><td><b>completed_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">34</td><td><b>cancelled_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">35</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">36</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">37</td><td><b>spin_prompted_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-free_dessert_ratings">free_dessert_ratings</a>.order_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.order_id, <a href="#t-games_played">games_played</a>.order_id, <a href="#t-help_requests">help_requests</a>.order_id, <a href="#t-loyalty_awards">loyalty_awards</a>.order_id, <a href="#t-notifications">notifications</a>.order_id, <a href="#t-order_discount_beneficiaries">order_discount_beneficiaries</a>.order_id, <a href="#t-order_items">order_items</a>.order_id, <a href="#t-order_ratings">order_ratings</a>.order_id, <a href="#t-table_sessions">table_sessions</a>.order_id</li><li><b>Implied link (no FK, no model relation):</b> orders (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; A Dine-In order stores the table number as text, not the table id.</span></li><li><b>Implied link (no FK, no model relation):</b> stock_movements.reference_id &harr; orders.id <span class="dim">&mdash; Holds the order id when source = &quot;order&quot; (InventoryDeductionService); not a declared FK.</span></li></ul>
+</section>
+<section class="tbl" id="t-order_items" data-name="order_items">
+<h3>order_items <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Lines of an order: a snapshot of item name, size, price, quantity, free-dessert flag and ingredient cost.</p>
+<p class="meta">15 columns &middot; 3 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>menu_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-menu_items">menu_items</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">4</td><td><b>menu_item_size_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-menu_item_sizes">menu_item_sizes</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">5</td><td><b>item_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>size_name</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>item_price</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>quantity</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>subtotal</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>is_free_dessert</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">11</td><td><b>ingredient_cost</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">YES</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">12</td><td><b>ingredient_cost_estimated</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">13</td><td><b>special_instructions</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">14</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">15</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-free_dessert_ratings">free_dessert_ratings</a>.order_item_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.order_item_id, <a href="#t-order_item_options">order_item_options</a>.order_item_id, <a href="#t-order_item_size_ingredients">order_item_size_ingredients</a>.order_item_id</li></ul>
+</section>
+<section class="tbl" id="t-order_item_options" data-name="order_item_options">
+<h3>order_item_options <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Add-ons chosen on an order line, with a snapshot of the option name and price.</p>
+<p class="meta">7 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-order_items">order_items</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>menu_option_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_options">menu_options</a>.id <span class="dim">ON DELETE RESTRICT</span></td></tr>
+<tr><td class="n">4</td><td><b>option_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>additional_price</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<section class="tbl" id="t-order_item_size_ingredients" data-name="order_item_size_ingredients">
+<h3>order_item_size_ingredients <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Per-order-line frozen copy of the size recipe, used to deduct stock when the order completes.</p>
+<p class="meta">6 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-order_items">order_items</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>inventory_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-inventory">inventory</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>quantity</b></td><td class="ty"><code>decimal(12,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (order_item_id, inventory_id) <span class="dim">&mdash; index order_item_size_ingredients_order_item_id_inventory_id_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-order_discount_beneficiaries" data-name="order_discount_beneficiaries">
+<h3>order_discount_beneficiaries <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">The PWD / Senior beneficiaries (name, ID number) behind the discount on an order.</p>
+<p class="meta">7 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>position</b></td><td class="ty"><code>smallint(5) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>full_name</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>id_number</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (order_id, position) <span class="dim">&mdash; index order_discount_beneficiaries_order_id_position_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-discount_cards" data-name="discount_cards">
+<h3>discount_cards <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">PWD / Senior Citizen ID cards held by a customer account, with staff verification and expiry.</p>
+<p class="meta">13 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>type</b></td><td class="ty"><code>enum('pwd',<wbr>'senior')</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>id_number</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>full_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>id_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>expiration_date</b></td><td class="ty"><code>date</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>is_verified</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>verified_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">11</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">12</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-orders">orders</a>.discount_card_id</li></ul>
+</section>
+<section class="tbl" id="t-restaurant_tables" data-name="restaurant_tables">
+<h3>restaurant_tables <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Physical Dine-In tables per branch, with the permanent access code printed on the table QR and a code-rotation audit.</p>
+<p class="meta">10 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>table_number</b></td><td class="ty"><code>varchar(10)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>code</b></td><td class="ty"><code>varchar(12)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>previous_code</b></td><td class="ty"><code>varchar(12)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>code_rotated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>code_rotated_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">9</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (branch_id, table_number) <span class="dim">&mdash; index restaurant_tables_branch_id_table_number_unique</span></li><li><b>Implied link (no FK, no model relation):</b> orders (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; A Dine-In order stores the table number as text, not the table id.</span></li><li><b>Implied link (no FK, no model relation):</b> table_sessions (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; Same text match; table_sessions has no restaurant_tables FK.</span></li><li><b>Implied link (no FK, no model relation):</b> help_requests (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; Same text match.</span></li><li><b>Implied link (no FK, no model relation):</b> table_access_codes (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; Same text match.</span></li></ul>
+</section>
+<section class="tbl" id="t-table_access_codes" data-name="table_access_codes">
+<h3>table_access_codes <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Short-lived one-time table access codes issued by staff for a branch table, with expiry and claim details.</p>
+<p class="meta">10 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>code</b></td><td class="ty"><code>varchar(12)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">3</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>table_number</b></td><td class="ty"><code>varchar(10)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>issued_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">6</td><td><b>expires_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">NO</td><td class="c"></td><td><code>current_timestamp()</code> <span class="dim">on update current_timestamp()</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>claimed_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>claimed_ip</b></td><td class="ty"><code>varchar(45)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Implied link (no FK, no model relation):</b> table_access_codes (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; Same text match.</span></li></ul>
+</section>
+<section class="tbl" id="t-table_sessions" data-name="table_sessions">
+<h3>table_sessions <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">One Dine-In occupancy of a physical table: session token, live lock, activity times, linked order and release details.</p>
+<p class="meta">15 columns &middot; 4 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>table_number</b></td><td class="ty"><code>varchar(10)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>session_token</b></td><td class="ty"><code>varchar(64)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">6</td><td><b>active_lock</b></td><td class="ty"><code>varchar(32)</code></td><td class="c">YES</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>last_seen_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>last_activity_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>released_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>released_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">11</td><td><b>release_reason</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>started_ip</b></td><td class="ty"><code>varchar(45)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>opened_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">14</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">15</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-table_session_devices">table_session_devices</a>.table_session_id</li><li><b>Implied link (no FK, no model relation):</b> table_sessions (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; Same text match; table_sessions has no restaurant_tables FK.</span></li></ul>
+</section>
+<section class="tbl" id="t-table_session_devices" data-name="table_session_devices">
+<h3>table_session_devices <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Devices (browser tokens) that joined a shared table session.</p>
+<p class="meta">6 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>table_session_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-table_sessions">table_sessions</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>device_token</b></td><td class="ty"><code>varchar(64)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>last_activity_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (table_session_id, device_token) <span class="dim">&mdash; index table_session_devices_table_session_id_device_token_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-help_requests" data-name="help_requests">
+<h3>help_requests <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
+<p class="purpose">Dine-In &quot;Request Assistance&quot; calls raised from a table, tracked pending, assisting, resolved.</p>
+<p class="meta">11 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">4</td><td><b>table_number</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>status</b></td><td class="ty"><code>enum('pending',<wbr>'assisting',<wbr>'resolved')</code></td><td class="c">NO</td><td class="c"></td><td><code>'pending'</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>message</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>requested_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>assisting_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>resolved_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Implied link (no FK, no model relation):</b> help_requests (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; Same text match.</span></li></ul>
+</section>
+<h2 id="m-inventory" style="border-left-color:#db2777">Inventory <span class="cnt">5 tables</span></h2>
+<section class="tbl" id="t-inventory" data-name="inventory">
+<h3>inventory <span class="pill" style="background:#fce7f3;border-color:#db2777">Inventory</span></h3>
+<p class="purpose">Ingredient / stock items per branch with quantity, unit, low-stock alert level and unit cost; supports archive / restore.</p>
+<p class="meta">16 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">3</td><td><b>item_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>item_code</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>category</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>description</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>quantity</b></td><td class="ty"><code>decimal(12,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.000</code></td><td></td></tr>
+<tr><td class="n">8</td><td><b>unit</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>low_stock_alert</b></td><td class="ty"><code>decimal(12,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><code>10.000</code></td><td></td></tr>
+<tr><td class="n">10</td><td><b>unit_cost</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">11</td><td><b>supplier</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">13</td><td><b>archived_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">14</td><td><b>archived_item_code</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">15</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">16</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (branch_id, item_code) <span class="dim">&mdash; index inventory_branch_id_item_code_unique</span></li><li><b>Referenced by:</b> <a href="#t-menu_item_ingredients">menu_item_ingredients</a>.inventory_id, <a href="#t-menu_item_size_ingredients">menu_item_size_ingredients</a>.inventory_id, <a href="#t-menu_items">menu_items</a>.inventory_item_id, <a href="#t-menu_option_ingredients">menu_option_ingredients</a>.inventory_id, <a href="#t-order_item_size_ingredients">order_item_size_ingredients</a>.inventory_id, <a href="#t-stock_movements">stock_movements</a>.inventory_id</li></ul>
+</section>
+<section class="tbl" id="t-menu_item_ingredients" data-name="menu_item_ingredients">
+<h3>menu_item_ingredients <span class="pill" style="background:#fce7f3;border-color:#db2777">Inventory</span></h3>
+<p class="purpose">Recipe lines: how much of each inventory item one menu item consumes.</p>
+<p class="meta">6 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>menu_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_items">menu_items</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>inventory_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-inventory">inventory</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>quantity_used</b></td><td class="ty"><code>decimal(10,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (menu_item_id, inventory_id) <span class="dim">&mdash; index menu_item_ingredients_menu_item_id_inventory_id_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-menu_item_size_ingredients" data-name="menu_item_size_ingredients">
+<h3>menu_item_size_ingredients <span class="pill" style="background:#fce7f3;border-color:#db2777">Inventory</span></h3>
+<p class="purpose">Recipe lines for one specific size of a menu item.</p>
+<p class="meta">6 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>menu_item_size_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_item_sizes">menu_item_sizes</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>inventory_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-inventory">inventory</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>quantity</b></td><td class="ty"><code>decimal(12,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (menu_item_size_id, inventory_id) <span class="dim">&mdash; index menu_item_size_ingredients_menu_item_size_id_inventory_id_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-menu_option_ingredients" data-name="menu_option_ingredients">
+<h3>menu_option_ingredients <span class="pill" style="background:#fce7f3;border-color:#db2777">Inventory</span></h3>
+<p class="purpose">Inventory consumed by one add-on option.</p>
+<p class="meta">6 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>menu_option_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-menu_options">menu_options</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>inventory_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-inventory">inventory</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>quantity_used</b></td><td class="ty"><code>decimal(10,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (menu_option_id, inventory_id) <span class="dim">&mdash; index menu_option_ingredients_menu_option_id_inventory_id_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-stock_movements" data-name="stock_movements">
+<h3>stock_movements <span class="pill" style="background:#fce7f3;border-color:#db2777">Inventory</span></h3>
+<p class="purpose">Audit trail of every stock increase or decrease (type, amount, quantity after, source, user).</p>
+<p class="meta">12 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>inventory_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-inventory">inventory</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">3</td><td><b>deleted_item_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>movement_type</b></td><td class="ty"><code>enum('in',<wbr>'out')</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>amount</b></td><td class="ty"><code>decimal(10,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>quantity_after</b></td><td class="ty"><code>decimal(10,<wbr>3)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>reason</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>source</b></td><td class="ty"><code>enum('manual',<wbr>'order',<wbr>'spoilage',<wbr>'adjustment')</code></td><td class="c">NO</td><td class="c"></td><td><code>'manual'</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>reference_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td><span class="dim">&rarr; orders.id when source = &ldquo;order&rdquo; (implied)</span></td></tr>
+<tr><td class="n">10</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">11</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Implied link (no FK, no model relation):</b> stock_movements.reference_id &harr; orders.id <span class="dim">&mdash; Holds the order id when source = &quot;order&quot; (InventoryDeductionService); not a declared FK.</span></li></ul>
+</section>
+<h2 id="m-marketing" style="border-left-color:#7c3aed">Marketing &amp; Loyalty <span class="cnt">10 tables</span></h2>
+<section class="tbl" id="t-vouchers" data-name="vouchers">
+<h3>vouchers <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">Voucher definitions: code, fixed / percent discount, minimum order, validity window, use limits, branch scope and wheel flag.</p>
+<p class="meta">16 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">3</td><td><b>code</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>description</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>discount_type</b></td><td class="ty"><code>enum('fixed',<wbr>'percent')</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>discount_value</b></td><td class="ty"><code>decimal(8,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>max_uses</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>100</code></td><td></td></tr>
+<tr><td class="n">8</td><td><b>used_count</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>minimum_order</b></td><td class="ty"><code>decimal(8,<wbr>2)</code></td><td class="c">NO</td><td class="c"></td><td><code>0.00</code></td><td></td></tr>
+<tr><td class="n">10</td><td><b>expires_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>valid_from</b></td><td class="ty"><code>date</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">13</td><td><b>on_wheel</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">14</td><td><b>points_required</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">15</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">16</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.voucher_id, <a href="#t-orders">orders</a>.voucher_id, <a href="#t-user_vouchers">user_vouchers</a>.voucher_id</li></ul>
+</section>
+<section class="tbl" id="t-user_vouchers" data-name="user_vouchers">
+<h3>user_vouchers <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">Voucher claims: a voucher held by an account or by a guest claim code, issued at the counter or won on the wheel, with used state.</p>
+<p class="meta">11 columns &middot; 3 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>issued_by</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">4</td><td><b>voucher_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-vouchers">vouchers</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">5</td><td><b>claim_code</b></td><td class="ty"><code>varchar(32)</code></td><td class="c">YES</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>acquired_date</b></td><td class="ty"><code>date</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>valid_from</b></td><td class="ty"><code>date</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>is_used</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>used_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (user_id, voucher_id) <span class="dim">&mdash; index user_vouchers_user_id_voucher_id_unique</span></li></ul>
+</section>
+<section class="tbl" id="t-ads" data-name="ads">
+<h3>ads <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">Promotional adverts shown on customer pages (game, menu, cart, orders), optionally limited to one branch and to a start/end window.</p>
+<p class="meta">13 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">3</td><td><b>title</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>description</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>link</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>placement</b></td><td class="ty"><code>enum('game',<wbr>'menu',<wbr>'cart',<wbr>'orders')</code></td><td class="c">NO</td><td class="c"></td><td><code>'game'</code></td><td></td></tr>
+<tr><td class="n">8</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>display_order</b></td><td class="ty"><code>int(11)</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">10</td><td><b>starts_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>ends_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<section class="tbl" id="t-games_played" data-name="games_played">
+<h3>games_played <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">The server-side ledger of Spin &amp; Win spins: one row per accepted spin for an order, with the points awarded.</p>
+<p class="meta">7 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">3</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>spin_number</b></td><td class="ty"><code>tinyint(3) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>points_awarded</b></td><td class="ty"><code>smallint(5) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><code>0</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<section class="tbl" id="t-loyalty_awards" data-name="loyalty_awards">
+<h3>loyalty_awards <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">Ledger of loyalty bonuses and spin reversals paid to a customer (welcome, order bonus, stamp reward, ...); unique per user, type and award key.</p>
+<p class="meta">8 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>type</b></td><td class="ty"><code>varchar(32)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>award_key</b></td><td class="ty"><code>varchar(64)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>points</b></td><td class="ty"><code>int(10) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">7</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (user_id, type, award_key) <span class="dim">&mdash; index loyalty_awards_user_type_key_unique</span></li><li><b>Referenced by:</b> <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.loyalty_award_id</li></ul>
+</section>
+<section class="tbl" id="t-free_dessert_rewards" data-name="free_dessert_rewards">
+<h3>free_dessert_rewards <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">Stamp-card rewards earned by a customer: a free menu item or voucher terms, an owner-bound RWD code, issuing branch, status and redemption details.</p>
+<p class="meta">22 columns &middot; 7 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>loyalty_award_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-loyalty_awards">loyalty_awards</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>code</b></td><td class="ty"><code>varchar(16)</code></td><td class="c">NO</td><td class="c"><span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>reward_type</b></td><td class="ty"><code>varchar(16)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>menu_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-menu_items">menu_items</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">7</td><td><b>item_name</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>voucher_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-vouchers">vouchers</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">9</td><td><b>voucher_code</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>discount_type</b></td><td class="ty"><code>varchar(10)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>discount_value</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>minimum_order</b></td><td class="ty"><code>decimal(10,<wbr>2)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">13</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE RESTRICT</span></td></tr>
+<tr><td class="n">14</td><td><b>status</b></td><td class="ty"><code>varchar(16)</code></td><td class="c">NO</td><td class="c"></td><td><code>'available'</code></td><td></td></tr>
+<tr><td class="n">15</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">16</td><td><b>order_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-order_items">order_items</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">17</td><td><b>expires_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">18</td><td><b>used_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">19</td><td><b>used_branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td><span class="dim">&rarr; branches.id (implied, not declared anywhere)</span></td></tr>
+<tr><td class="n">20</td><td><b>notified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">21</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">22</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>Implied link (no FK, no model relation):</b> free_dessert_rewards.used_branch_id &harr; branches.id <span class="dim">&mdash; Branch where the reward was redeemed; plain column, no FK and no model relationship.</span></li></ul>
+</section>
+<section class="tbl" id="t-free_dessert_ratings" data-name="free_dessert_ratings">
+<h3>free_dessert_ratings <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">The rating and comment a customer leaves for the free dessert (stamp-card reward) received on an order; one per order.</p>
+<p class="meta">8 columns &middot; 3 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>order_item_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-order_items">order_items</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">4</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">5</td><td><b>rating</b></td><td class="ty"><code>tinyint(3) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>comment</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<section class="tbl" id="t-order_ratings" data-name="order_ratings">
+<h3>order_ratings <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">The rating a customer gives an order; one per order.</p>
+<p class="meta">7 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k fk">FK</span> <span class="k uk">UK</span></td><td><span class="dim">&mdash;</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>rating_type</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">NO</td><td class="c"></td><td><code>'stars'</code></td><td></td></tr>
+<tr><td class="n">5</td><td><b>rating</b></td><td class="ty"><code>tinyint(3) unsigned</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<section class="tbl" id="t-notifications" data-name="notifications">
+<h3>notifications <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">In-app notifications for customers and for staff / admin (audience, type, read and dismissed state).</p>
+<p class="meta">12 columns &middot; 3 foreign keys &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>user_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-users">users</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">3</td><td><b>order_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-orders">orders</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">4</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">5</td><td><b>audience</b></td><td class="ty"><code>varchar(20)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">6</td><td><b>type</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>title</b></td><td class="ty"><code>varchar(120)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>message</b></td><td class="ty"><code>varchar(500)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">9</td><td><b>read_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>dismissed_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">11</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">12</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+
+</section>
+<section class="tbl" id="t-settings" data-name="settings">
+<h3>settings <span class="pill" style="background:#ede9fe;border-color:#7c3aed">Marketing &amp; Loyalty</span></h3>
+<p class="purpose">Key / value application settings, global (branch NULL) or per branch.</p>
+<p class="meta">10 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
+<tr><td class="n">2</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span> <span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE CASCADE</span></td></tr>
+<tr><td class="n">3</td><td><b>key</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">NO</td><td class="c"><span class="k uc" title="part of a composite unique key">UK*</span></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">4</td><td><b>value</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">5</td><td><b>group</b></td><td class="ty"><code>varchar(50)</code></td><td class="c">NO</td><td class="c"></td><td><code>'general'</code></td><td></td></tr>
+<tr><td class="n">6</td><td><b>label</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">7</td><td><b>description</b></td><td class="ty"><code>text</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">8</td><td><b>type</b></td><td class="ty"><code>enum('text',<wbr>'color',<wbr>'image',<wbr>'number',<wbr>'boolean')</code></td><td class="c">NO</td><td class="c"></td><td><code>'text'</code></td><td></td></tr>
+<tr><td class="n">9</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">10</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+</tbody></table></div>
+<ul class="notes"><li><b>UK*</b> unique together: (branch_id, key) <span class="dim">&mdash; index settings_branch_id_key_unique</span></li></ul>
+</section>
+<h2 id="appendix" style="border-left-color:#64748b">Appendix</h2>
+<div class="ap">
+<h3 id="ap-framework" style="font-family:inherit">A. Laravel framework tables (left out of the diagrams)</h3>
+<table><thead><tr><th>Table</th><th>Columns</th><th>Purpose</th></tr></thead><tbody><tr><td><b>cache</b></td><td>3</td><td>Laravel cache store (database driver).</td></tr><tr><td><b>cache_locks</b></td><td>3</td><td>Laravel cache atomic locks.</td></tr><tr><td><b>failed_jobs</b></td><td>7</td><td>Laravel queue: failed jobs.</td></tr><tr><td><b>job_batches</b></td><td>10</td><td>Laravel queue: job batch tracking.</td></tr><tr><td><b>jobs</b></td><td>7</td><td>Laravel queue: pending jobs.</td></tr><tr><td><b>migrations</b></td><td>3</td><td>Laravel: which migration files have run.</td></tr><tr><td><b>password_reset_tokens</b></td><td>3</td><td>Laravel password-reset tokens.</td></tr><tr><td><b>sessions</b></td><td>6</td><td>Laravel database session store (browser sessions).</td></tr></tbody></table>
+<p class="dim">Not present in this database: personal_access_tokens.</p>
+<h3 id="ap-modelonly" style="font-family:inherit">B. Model-only relationships (declared in an Eloquent model, no database foreign key)</h3>
+<table><thead><tr><th>Column</th><th>Points to</th><th>Nullable</th><th>Declared by</th></tr></thead><tbody><tr><td colspan="4" class="dim">None: every relationship a model declares is backed by a database foreign key.</td></tr></tbody></table>
+<h3 id="ap-dead" style="font-family:inherit">C. Dead model relationships (declared in code, no backing column at all)</h3>
+<table><thead><tr><th>Declared by</th><th>Expected column</th><th>Finding</th></tr></thead><tbody><tr><td colspan="3" class="dim">None: every relationship a model declares has its column in the database.</td></tr></tbody></table>
+<h3 id="ap-implicit" style="font-family:inherit">D. Implied links (values match, but there is neither a foreign key nor a model relationship)</h3>
+<table><thead><tr><th>From</th><th>To</th><th>Note</th></tr></thead><tbody><tr><td>orders (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>A Dine-In order stores the table number as text, not the table id.</td></tr><tr><td>table_sessions (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>Same text match; table_sessions has no restaurant_tables FK.</td></tr><tr><td>help_requests (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>Same text match.</td></tr><tr><td>table_access_codes (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>Same text match.</td></tr><tr><td>free_dessert_rewards.used_branch_id</td><td>branches.id</td><td>Branch where the reward was redeemed; plain column, no FK and no model relationship.</td></tr><tr><td>stock_movements.reference_id</td><td>orders.id</td><td>Holds the order id when source = &quot;order&quot; (InventoryDeductionService); not a declared FK.</td></tr></tbody></table>
+<h3 id="ap-nomodel" style="font-family:inherit">E. Foreign keys that no model declares as a relationship (still real FKs, drawn solid)</h3>
+<table><thead><tr><th>child.column &rarr; parent</th></tr></thead><tbody><tr><td>admin_bootstrap.user_id-&gt;users</td></tr><tr><td>free_dessert_ratings.user_id-&gt;users</td></tr><tr><td>free_dessert_rewards.voucher_id-&gt;vouchers</td></tr><tr><td>notifications.branch_id-&gt;branches</td></tr><tr><td>notifications.user_id-&gt;users</td></tr><tr><td>table_access_codes.branch_id-&gt;branches</td></tr><tr><td>table_access_codes.issued_by-&gt;users</td></tr><tr><td>user_vouchers.issued_by-&gt;users</td></tr></tbody></table>
+<h3 id="ap-rules" style="font-family:inherit">F. ON DELETE rules used by the 70 foreign keys</h3>
+<table><thead><tr><th>Rule</th><th>Foreign keys</th></tr></thead><tbody><tr><td>CASCADE</td><td>35</td></tr><tr><td>RESTRICT</td><td>3</td></tr><tr><td>SET NULL</td><td>32</td></tr></tbody></table>
+<p class="dim">Every foreign key uses ON UPDATE RESTRICT. Counts above: 35 application + 8 framework = 43 tables; 406 application columns + 42 framework columns = 448.</p>
+</div>
+</main>
+<script>
+(function(){var q=document.getElementById('q');if(!q)return;q.addEventListener('input',function(){var v=q.value.trim().toLowerCase();
+document.querySelectorAll('.tbl').forEach(function(s){s.classList.toggle('hidden',v&&s.getAttribute('data-name').indexOf(v)<0);});
+document.querySelectorAll('.navt[data-name]').forEach(function(a){a.classList.toggle('hidden',v&&a.getAttribute('data-name').indexOf(v)<0);});});})();
+</script>
+</body></html>

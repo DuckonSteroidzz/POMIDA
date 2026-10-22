@@ -50,6 +50,7 @@ class AdminManagerRouteIdConstraintTest extends TestCase
             'inventory.update'           => ['PUT',    'inventory/%s'],
             'vouchers.update'            => ['PUT',    'vouchers/%s'],
             'vouchers.toggle'            => ['PUT',    'vouchers/%s/toggle'],
+            'vouchers.wheel'             => ['PUT',    'vouchers/%s/wheel'],
             'ads.update'                 => ['PUT',    'ads/%s'],
             'ads.toggle'                 => ['PUT',    'ads/%s/toggle'],
             'ads.delete'                 => ['DELETE', 'ads/%s'],

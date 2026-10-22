@@ -1,0 +1,563 @@
+%% POMIDA ERD - POMIDA — Full ERD - generated 2026-10-22 from pomida_db
+%% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
+%% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
+erDiagram
+    admin_bootstrap {
+        bigint id PK
+        varchar(1) singleton UK
+        bigint user_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    ads {
+        bigint id PK
+        bigint branch_id FK
+        varchar(255) title
+        varchar(255) description
+        varchar(255) image
+        varchar(255) link
+        enum placement
+        tinyint(1) is_active
+        int display_order
+        timestamp starts_at
+        timestamp ends_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    branches {
+        bigint id PK
+        varchar(255) name
+        varchar(10) code UK
+        text address
+        varchar(20) contact_number
+        varchar(255) email
+        time opening_time
+        time closing_time
+        tinyint(1) is_active
+        tinyint(1) is_main_branch
+        varchar(255) image
+        timestamp created_at
+        timestamp updated_at
+    }
+    categories {
+        bigint id PK
+        varchar(255) name
+        text description
+        varchar(255) image
+        int display_order
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    discount_cards {
+        bigint id PK
+        bigint user_id FK
+        enum type
+        varchar(50) id_number
+        varchar(255) full_name
+        varchar(255) id_image
+        date expiration_date
+        tinyint(1) is_verified
+        timestamp verified_at
+        bigint verified_by FK
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+    }
+    free_dessert_ratings {
+        bigint id PK
+        bigint order_id FK, UK
+        bigint order_item_id FK
+        bigint user_id FK
+        tinyint rating
+        text comment
+        timestamp created_at
+        timestamp updated_at
+    }
+    free_dessert_rewards {
+        bigint id PK
+        bigint user_id FK
+        bigint loyalty_award_id FK, UK
+        varchar(16) code UK
+        varchar(16) reward_type
+        bigint menu_item_id FK
+        varchar(255) item_name
+        bigint voucher_id FK
+        varchar(50) voucher_code
+        varchar(10) discount_type
+        decimal(10_2) discount_value
+        decimal(10_2) minimum_order
+        bigint branch_id FK
+        varchar(16) status
+        bigint order_id FK
+        bigint order_item_id FK
+        timestamp expires_at
+        timestamp used_at
+        bigint used_branch_id
+        timestamp notified_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    games_played {
+        bigint id PK
+        bigint user_id FK
+        bigint order_id FK
+        tinyint spin_number
+        smallint points_awarded
+        timestamp created_at
+        timestamp updated_at
+    }
+    help_requests {
+        bigint id PK
+        bigint branch_id FK
+        bigint order_id FK
+        varchar(255) table_number
+        enum status
+        text message
+        timestamp requested_at
+        timestamp assisting_at
+        timestamp resolved_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    inventory {
+        bigint id PK
+        bigint branch_id FK "UK with item_code"
+        varchar(255) item_name
+        varchar(50) item_code "UK with branch_id"
+        varchar(100) category
+        text description
+        decimal(12_3) quantity
+        varchar(20) unit
+        decimal(12_3) low_stock_alert
+        decimal(10_2) unit_cost
+        varchar(255) supplier
+        tinyint(1) is_active
+        timestamp archived_at
+        varchar(50) archived_item_code
+        timestamp created_at
+        timestamp updated_at
+    }
+    loyalty_awards {
+        bigint id PK
+        bigint user_id FK "UK with type, award_key"
+        varchar(32) type "UK with user_id, award_key"
+        varchar(64) award_key "UK with user_id, type"
+        int points
+        bigint order_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_item_ingredients {
+        bigint id PK
+        bigint menu_item_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with menu_item_id"
+        decimal(10_3) quantity_used
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_item_options {
+        bigint id PK
+        bigint menu_item_id FK "UK with menu_option_id"
+        bigint menu_option_id FK "UK with menu_item_id"
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_item_size_ingredients {
+        bigint id PK
+        bigint menu_item_size_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with menu_item_size_id"
+        decimal(12_3) quantity
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_item_sizes {
+        bigint id PK
+        bigint menu_item_id FK "UK with name"
+        varchar(20) name "UK with menu_item_id"
+        decimal(10_2) price
+        int display_order
+        tinyint(1) is_active
+        timestamp archived_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_items {
+        bigint id PK
+        bigint category_id FK
+        bigint subcategory_id FK
+        bigint inventory_item_id FK
+        decimal(10_3) inventory_amount_used
+        bigint branch_id FK
+        varchar(255) name
+        text description
+        text ingredients
+        decimal(10_2) price
+        decimal(10_2) cost
+        varchar(255) image
+        int display_order
+        tinyint(1) is_available
+        tinyint(1) is_featured
+        tinyint(1) free_dessert_eligible
+        tinyint(1) track_stock
+        int stock_quantity
+        int low_stock_alert
+        int prep_time_minutes
+        int total_sold
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    menu_option_ingredients {
+        bigint id PK
+        bigint menu_option_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with menu_option_id"
+        decimal(10_3) quantity_used
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_options {
+        bigint id PK
+        varchar(255) name
+        text description
+        decimal(10_2) additional_price
+        int display_order
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    notifications {
+        bigint id PK
+        bigint user_id FK
+        bigint order_id FK
+        bigint branch_id FK
+        varchar(20) audience
+        varchar(50) type
+        varchar(120) title
+        varchar(500) message
+        timestamp read_at
+        timestamp dismissed_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_discount_beneficiaries {
+        bigint id PK
+        bigint order_id FK "UK with position"
+        smallint position "UK with order_id"
+        varchar(100) full_name
+        varchar(100) id_number
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_item_options {
+        bigint id PK
+        bigint order_item_id FK
+        bigint menu_option_id FK
+        varchar(255) option_name
+        decimal(10_2) additional_price
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_item_size_ingredients {
+        bigint id PK
+        bigint order_item_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with order_item_id"
+        decimal(12_3) quantity
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_items {
+        bigint id PK
+        bigint order_id FK
+        bigint menu_item_id FK
+        bigint menu_item_size_id FK
+        varchar(255) item_name
+        varchar(20) size_name
+        decimal(10_2) item_price
+        int quantity
+        decimal(10_2) subtotal
+        tinyint(1) is_free_dessert
+        decimal(10_2) ingredient_cost
+        tinyint(1) ingredient_cost_estimated
+        text special_instructions
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_ratings {
+        bigint id PK
+        bigint order_id FK, UK
+        bigint user_id FK
+        varchar(20) rating_type
+        tinyint rating
+        timestamp created_at
+        timestamp updated_at
+    }
+    orders {
+        bigint id PK
+        varchar(20) order_number UK
+        varchar(20) receipt_number
+        bigint user_id FK
+        bigint branch_id FK
+        bigint processed_by FK
+        enum type
+        varchar(10) table_number
+        tinyint(1) is_takeout
+        enum status
+        decimal(10_2) subtotal
+        decimal(10_2) discount_amount
+        decimal(10_2) tax_amount
+        decimal(10_2) total
+        varchar(50) discount_type
+        bigint discount_card_id FK
+        varchar(255) discount_beneficiary_name
+        varchar(100) discount_beneficiary_card_number
+        varchar(255) discount_id_image
+        date discount_beneficiary_expiration
+        varchar(255) discount_status
+        bigint voucher_id FK
+        varchar(16) reward_code
+        enum payment_method
+        enum payment_status
+        decimal(10_2) amount_paid
+        decimal(10_2) change_amount
+        text notes
+        text cancellation_reason
+        timestamp confirmed_at
+        timestamp preparing_at
+        timestamp serving_at
+        timestamp completed_at
+        timestamp cancelled_at
+        timestamp created_at
+        timestamp updated_at
+        timestamp spin_prompted_at
+    }
+    restaurant_tables {
+        bigint id PK
+        bigint branch_id FK "UK with table_number"
+        varchar(10) table_number "UK with branch_id"
+        varchar(12) code UK
+        tinyint(1) is_active
+        varchar(12) previous_code
+        timestamp code_rotated_at
+        bigint code_rotated_by FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    settings {
+        bigint id PK
+        bigint branch_id FK "UK with key"
+        varchar(100) key "UK with branch_id"
+        text value
+        varchar(50) group
+        varchar(255) label
+        text description
+        enum type
+        timestamp created_at
+        timestamp updated_at
+    }
+    stock_movements {
+        bigint id PK
+        bigint inventory_id FK
+        varchar(255) deleted_item_name
+        enum movement_type
+        decimal(10_3) amount
+        decimal(10_3) quantity_after
+        varchar(255) reason
+        enum source
+        bigint reference_id
+        bigint user_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    subcategories {
+        bigint id PK
+        bigint category_id FK
+        varchar(255) name
+        text description
+        varchar(255) image
+        int display_order
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    table_access_codes {
+        bigint id PK
+        varchar(12) code UK
+        bigint branch_id FK
+        varchar(10) table_number
+        bigint issued_by FK
+        timestamp expires_at
+        timestamp claimed_at
+        varchar(45) claimed_ip
+        timestamp created_at
+        timestamp updated_at
+    }
+    table_session_devices {
+        bigint id PK
+        bigint table_session_id FK "UK with device_token"
+        varchar(64) device_token "UK with table_session_id"
+        timestamp last_activity_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    table_sessions {
+        bigint id PK
+        bigint branch_id FK
+        varchar(10) table_number
+        varchar(64) session_token UK
+        bigint order_id FK
+        varchar(32) active_lock UK
+        timestamp last_seen_at
+        timestamp last_activity_at
+        timestamp released_at
+        bigint released_by FK
+        varchar(20) release_reason
+        varchar(45) started_ip
+        bigint opened_by FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    user_vouchers {
+        bigint id PK
+        bigint user_id FK "UK with voucher_id"
+        bigint issued_by FK
+        bigint voucher_id FK "UK with user_id"
+        varchar(32) claim_code UK
+        date acquired_date
+        date valid_from
+        tinyint(1) is_used
+        timestamp used_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    users {
+        bigint id PK
+        varchar(255) name
+        varchar(255) email UK
+        enum role
+        int points
+        int bonus_points
+        int reward_claims
+        varchar(20) contact_number
+        text address
+        varchar(255) pwd_card_number
+        varchar(255) pwd_name
+        varchar(255) pwd_image
+        varchar(255) senior_card_number
+        varchar(255) senior_name
+        varchar(255) senior_image
+        varchar(255) profile_image
+        bigint branch_id FK
+        tinyint(1) is_active
+        varchar(6) verification_code
+        timestamp verified_at
+        timestamp email_verified_at
+        varchar(255) password
+        varchar(100) remember_token
+        timestamp created_at
+        timestamp updated_at
+    }
+    vouchers {
+        bigint id PK
+        bigint branch_id FK
+        varchar(255) code UK
+        varchar(255) description
+        enum discount_type
+        decimal(8_2) discount_value
+        int max_uses
+        int used_count
+        decimal(8_2) minimum_order
+        timestamp expires_at
+        date valid_from
+        tinyint(1) is_active
+        tinyint(1) on_wheel
+        int points_required
+        timestamp created_at
+        timestamp updated_at
+    }
+
+    branches |o--o{ ads : "runs"
+    branches |o--o{ free_dessert_rewards : "issues"
+    branches ||--o{ help_requests : "receives"
+    branches |o--o{ inventory : "stocks"
+    branches |o--o{ menu_items : "offers"
+    branches |o--o{ notifications : "is audience of"
+    branches ||--o{ orders : "receives"
+    branches ||--o{ restaurant_tables : "has table"
+    branches |o--o{ settings : "configures"
+    branches ||--o{ table_access_codes : "issues code for"
+    branches ||--o{ table_sessions : "hosts"
+    branches |o--o{ users : "employs"
+    branches |o--o{ vouchers : "scopes"
+    categories ||--o{ menu_items : "groups"
+    categories ||--o{ subcategories : "contains"
+    discount_cards |o--o{ orders : "discounts"
+    inventory ||--o{ menu_item_ingredients : "is used in"
+    inventory ||--o{ menu_item_size_ingredients : "is used in"
+    inventory |o--o{ menu_items : "is stock source of"
+    inventory ||--o{ menu_option_ingredients : "is used in"
+    inventory ||--o{ order_item_size_ingredients : "is deducted via"
+    inventory |o--o{ stock_movements : "logs"
+    loyalty_awards ||--o| free_dessert_rewards : "unlocks"
+    menu_item_sizes ||--o{ menu_item_size_ingredients : "has recipe line"
+    menu_item_sizes |o--o{ order_items : "is sold as"
+    menu_items |o--o{ free_dessert_rewards : "is given as"
+    menu_items ||--o{ menu_item_ingredients : "has recipe line"
+    menu_items ||--o{ menu_item_options : "offers option"
+    menu_items ||--o{ menu_item_sizes : "comes in"
+    menu_items |o--o{ order_items : "is sold as"
+    menu_options ||--o{ menu_item_options : "is offered on"
+    menu_options ||--o{ menu_option_ingredients : "has recipe line"
+    menu_options ||--o{ order_item_options : "is chosen as"
+    order_items |o--o{ free_dessert_ratings : "has dessert rated in"
+    order_items |o--o{ free_dessert_rewards : "is redeemed as"
+    order_items ||--o{ order_item_options : "has add-on"
+    order_items ||--o{ order_item_size_ingredients : "freezes recipe line"
+    orders ||--o| free_dessert_ratings : "receives"
+    orders |o--o{ free_dessert_rewards : "is redeemed on"
+    orders ||--o{ games_played : "unlocks spin"
+    orders |o--o{ help_requests : "is linked to"
+    orders |o--o{ loyalty_awards : "triggers"
+    orders |o--o{ notifications : "triggers"
+    orders ||--o{ order_discount_beneficiaries : "lists"
+    orders ||--o{ order_items : "contains"
+    orders ||--o| order_ratings : "receives"
+    orders |o--o{ table_sessions : "is placed in"
+    subcategories |o--o{ menu_items : "groups"
+    table_sessions ||--o{ table_session_devices : "has device"
+    users |o--o{ admin_bootstrap : "is recorded as first admin in"
+    users ||--o{ discount_cards : "owns"
+    users |o--o{ discount_cards : "verifies"
+    users |o--o{ free_dessert_ratings : "writes"
+    users ||--o{ free_dessert_rewards : "earns"
+    users |o--o{ games_played : "spins"
+    users ||--o{ loyalty_awards : "receives"
+    users |o--o{ notifications : "receives"
+    users |o--o{ order_ratings : "writes"
+    users |o--o{ orders : "processes"
+    users |o--o{ orders : "places"
+    users |o--o{ restaurant_tables : "rotates code of"
+    users |o--o{ stock_movements : "records"
+    users |o--o{ table_access_codes : "issues"
+    users |o--o{ table_sessions : "opens"
+    users |o--o{ table_sessions : "releases"
+    users |o--o{ user_vouchers : "issues"
+    users |o--o{ user_vouchers : "claims"
+    vouchers |o--o{ free_dessert_rewards : "defines"
+    vouchers |o--o{ orders : "is applied to"
+    vouchers ||--o{ user_vouchers : "is claimed as"
+
+    classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef mod_orders fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
+    classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
+    class admin_bootstrap,branches,users mod_users
+    class categories,menu_item_options,menu_item_sizes,menu_items,menu_options,subcategories mod_menu
+    class discount_cards,help_requests,order_discount_beneficiaries,order_item_options,order_item_size_ingredients,order_items,orders,restaurant_tables,table_access_codes,table_session_devices,table_sessions mod_orders
+    class inventory,menu_item_ingredients,menu_item_size_ingredients,menu_option_ingredients,stock_movements mod_inventory
+    class ads,free_dessert_ratings,free_dessert_rewards,games_played,loyalty_awards,notifications,order_ratings,settings,user_vouchers,vouchers mod_marketing

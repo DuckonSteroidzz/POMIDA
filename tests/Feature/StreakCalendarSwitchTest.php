@@ -246,7 +246,6 @@ class StreakCalendarSwitchTest extends TestCase
         $user = $this->customer();
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()
             ->assertSee('id="streak"', false)
-            ->assertSee('data-testid="free-dessert-challenge"', false)
             ->assertSee('data-testid="free-dessert-card"', false)
             ->assertSee('data-testid="benefit-streak"', false)
             ->assertSee('data-testid="benefit-free-dessert"', false);
@@ -286,7 +285,6 @@ class StreakCalendarSwitchTest extends TestCase
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()
             ->assertDontSee('id="streak"', false)
             ->assertDontSee('Streak Calendar')
-            ->assertDontSee('data-testid="free-dessert-challenge"', false)
             ->assertDontSee('data-testid="free-dessert-card"', false)
             ->assertDontSee('data-testid="benefit-streak"', false)
             ->assertDontSee('data-testid="benefit-free-dessert"', false)
@@ -471,7 +469,7 @@ class StreakCalendarSwitchTest extends TestCase
         // The calendar is back on the account page.
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()
             ->assertSee('id="streak"', false)
-            ->assertSee('data-testid="free-dessert-ready"', false);
+            ->assertSee('data-testid="free-dessert-available"', false);
     }
 
     // ══════════ who can switch it ══════════

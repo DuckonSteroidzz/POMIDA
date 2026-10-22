@@ -46,11 +46,8 @@ class Branch extends Model
         return $this->hasMany(User::class);
     }
 
-    // Branch has many categories
-    public function categories(): HasMany
-    {
-        return $this->hasMany(Category::class);
-    }
+    // No categories(): categories are shared by every branch
+    // (categories.branch_id was dropped on 2026-09-27).
 
     // Branch has many menu items
     public function menuItems(): HasMany

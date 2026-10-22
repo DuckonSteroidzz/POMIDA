@@ -982,6 +982,12 @@
                 'admin.completed-orders',
                 'admin.inventory',
                 'admin.menu-items',
+                // Menu Options (Oct 2026): acts on the bar itself — the
+                // page reads ViewingBranch and defines pcBranchSelectHandler.
+                'admin.menu-options',
+                // Staff Accounts (Oct 2026): acts on the bar itself — the page
+                // reads ViewingBranch and defines pcBranchSelectHandler.
+                'admin.users',
                 'admin.summary',
                 'admin.qr-generator',
                 'admin.ads',

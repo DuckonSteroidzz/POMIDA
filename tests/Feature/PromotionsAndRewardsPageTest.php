@@ -130,7 +130,8 @@ class PromotionsAndRewardsPageTest extends TestCase
 
     public function test_the_tab_bar_lists_exactly_the_tabs_each_role_can_reach(): void
     {
-        $expected = ['admin' => 3, 'supervisor' => 3, 'staff' => 1];
+        // Staff reach only Vouchers, and a bar with one pill is not drawn.
+        $expected = ['admin' => 3, 'supervisor' => 3, 'staff' => 0];
 
         foreach ($expected as $role => $count) {
             $user = $this->portal($role);
@@ -425,7 +426,7 @@ class PromotionsAndRewardsPageTest extends TestCase
         $this->assertStringContainsString('20d left', $row($left));
         $this->assertStringContainsString('Expired 5d ago', $row($ago));
         $this->assertStringContainsString('No expiry', $row($none));
-        $this->assertStringContainsString('Last day', $row($last));
+        $this->assertStringContainsString('Expires today', $row($last));
     }
 
     public function test_the_row_shows_usage_scope_and_status_badges(): void
@@ -440,12 +441,12 @@ class PromotionsAndRewardsPageTest extends TestCase
 
         $this->assertStringContainsString('2 / 8', $rowV);
         $this->assertStringContainsString('aria-valuenow="25"', $rowV);
-        $this->assertStringContainsString('>Global<', $rowV);
+        $this->assertStringContainsString('</span> Global<', $rowV);
         $this->assertStringContainsString('vch-status is-active">Active<', $rowV);
-        $this->assertStringContainsString('data-wheel="1"', $rowV);
+        $this->assertMatchesRegularExpression('/<input[^>]*data-vch-wheel="' . $v->id . '"[^>]*checked/', $rowV);
         $this->assertStringContainsString('12 pts', $rowV);
         $this->assertStringContainsString('vch-status is-inactive">Inactive<', $rowB);
-        $this->assertStringContainsString('data-wheel="0"', $rowB);
+        $this->assertDoesNotMatchRegularExpression('/<input[^>]*data-vch-wheel="' . $b->id . '"[^>]*checked/', $rowB);
         $this->assertStringContainsString('Main Branch', $rowB);
     }
 
@@ -479,7 +480,7 @@ class PromotionsAndRewardsPageTest extends TestCase
         // ...and no Edit on a global voucher (read-only for them).
         $this->assertStringNotContainsString('openEditVoucherModal(this)', $menu('supervisor', $global));
 
-        // Staff: Issue code only.
+        // Staff: Issue Voucher only.
         $staff = $menu('staff', $mine);
         $this->assertStringContainsString(route('admin.vouchers.issue-code', $mine->id), $staff);
         $this->assertStringNotContainsString('openEditVoucherModal', $staff);

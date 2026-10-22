@@ -138,8 +138,8 @@ class PromotionsRewardsViewingAndScopeTest extends TestCase
         $this->assertContains($own->id, $listed);
         $this->assertContains($global->id, $listed);
         $this->assertNotContains($other->id, $listed, 'another branch\'s voucher was listed while viewing this branch');
-        $this->assertStringContainsString('vch-badge is-branch">' . e($this->mine->name) . '<', $html);
-        $this->assertStringContainsString('vch-badge is-global">Global<', $html);
+        $this->assertStringContainsString('vch-badge is-branch"><span aria-hidden="true">📍</span> ' . e($this->mine->name) . '<', $html);
+        $this->assertStringContainsString('vch-badge is-global"><span aria-hidden="true">🌐</span> Global<', $html);
 
         // The bar says so, and remembers it.
         $this->assertMatchesRegularExpression('/<span class="value">\s*' . preg_quote(e($this->mine->name), '/') . '\s*</', $html);

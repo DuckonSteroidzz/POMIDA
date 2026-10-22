@@ -243,6 +243,7 @@ class RolePermissionMatrixTest extends TestCase
             'create vouchers'        => ['POST',   'admin.vouchers.store',      ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'edit vouchers'          => ['PUT',    'admin.vouchers.update',     ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'toggle vouchers'        => ['PUT',    'admin.vouchers.toggle',     ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
+            'switch voucher wheel'   => ['PUT',    'admin.vouchers.wheel',      ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'delete vouchers'        => ['DELETE', 'admin.vouchers.delete',     ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
             'view summary'           => ['GET',    'admin.summary',             ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
             'view analytics'         => ['GET',    'admin.analytics',           ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
@@ -348,6 +349,7 @@ class RolePermissionMatrixTest extends TestCase
         return match ($route) {
             'admin.vouchers.update',
             'admin.vouchers.toggle',
+            'admin.vouchers.wheel',
             'admin.vouchers.delete' => [
                 // $actor->branch_id, NOT $branch: the owner must get a global
                 // voucher (null) so their unrestricted reach is what is tested,
@@ -1011,14 +1013,24 @@ class RolePermissionMatrixTest extends TestCase
         $theirs     = $this->staff($far->id);
         $peer       = $this->manager(self::HOME_BRANCH);
 
-        $html = $this->actingAs($this->manager(self::HOME_BRANCH), 'admin')
-            ->get(route('admin.users'))
+        $viewer = $this->manager(self::HOME_BRANCH);
+
+        // The roster is paginated, so each account is looked for by searching
+        // for its address. A search narrows WITHIN the viewer's scope, so an
+        // out-of-scope account that does not turn up here is proof the scope
+        // held, not an accident of paging.
+        $find = fn (User $who) => $this->actingAs($viewer, 'admin')
+            ->get(route('admin.users', ['q' => $who->email]))
             ->assertOk()
             ->getContent();
 
-        $this->assertStringContainsString($mine->email, $html, "A manager cannot see their own branch's staff.");
-        $this->assertStringNotContainsString($theirs->email, $html, "A manager can see another branch's staff.");
-        $this->assertStringNotContainsString($peer->email, $html, 'A manager can see a peer supervisor.');
+        // Asserted on the account's table ROW, not its address: the search box
+        // echoes what was typed, so the address is on the page either way.
+        $row = fn (User $who) => 'data-staff-row="' . $who->id . '"';
+
+        $this->assertStringContainsString($row($mine), $find($mine), "A manager cannot see their own branch's staff.");
+        $this->assertStringNotContainsString($row($theirs), $find($theirs), "A manager can see another branch's staff.");
+        $this->assertStringNotContainsString($row($peer), $find($peer), 'A manager can see a peer supervisor.');
     }
 
     /**

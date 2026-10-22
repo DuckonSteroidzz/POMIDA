@@ -1,0 +1,761 @@
+[
+    {
+        "model": "Ad",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "ads",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Branch",
+        "method": "users",
+        "kind": "HasMany",
+        "child_table": "users",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Branch",
+        "method": "menuItems",
+        "kind": "HasMany",
+        "child_table": "menu_items",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Branch",
+        "method": "orders",
+        "kind": "HasMany",
+        "child_table": "orders",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Branch",
+        "method": "inventory",
+        "kind": "HasMany",
+        "child_table": "inventory",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Branch",
+        "method": "settings",
+        "kind": "HasMany",
+        "child_table": "settings",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Branch",
+        "method": "ads",
+        "kind": "HasMany",
+        "child_table": "ads",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Category",
+        "method": "subcategories",
+        "kind": "HasMany",
+        "child_table": "subcategories",
+        "child_col": "category_id",
+        "parent_table": "categories",
+        "parent_col": "id"
+    },
+    {
+        "model": "Category",
+        "method": "menuItems",
+        "kind": "HasMany",
+        "child_table": "menu_items",
+        "child_col": "category_id",
+        "parent_table": "categories",
+        "parent_col": "id"
+    },
+    {
+        "model": "DiscountCard",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "discount_cards",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "DiscountCard",
+        "method": "verifier",
+        "kind": "BelongsTo",
+        "child_table": "discount_cards",
+        "child_col": "verified_by",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertRating",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_ratings",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertRating",
+        "method": "orderItem",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_ratings",
+        "child_col": "order_item_id",
+        "parent_table": "order_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertReward",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_rewards",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertReward",
+        "method": "loyaltyAward",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_rewards",
+        "child_col": "loyalty_award_id",
+        "parent_table": "loyalty_awards",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertReward",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_rewards",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertReward",
+        "method": "orderItem",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_rewards",
+        "child_col": "order_item_id",
+        "parent_table": "order_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertReward",
+        "method": "menuItem",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_rewards",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "FreeDessertReward",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "free_dessert_rewards",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "GamePlayed",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "games_played",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "GamePlayed",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "games_played",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "HelpRequest",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "help_requests",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "HelpRequest",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "help_requests",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "Inventory",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "inventory",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "LoyaltyAward",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "loyalty_awards",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "LoyaltyAward",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "loyalty_awards",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "category",
+        "kind": "BelongsTo",
+        "child_table": "menu_items",
+        "child_col": "category_id",
+        "parent_table": "categories",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "subcategory",
+        "kind": "BelongsTo",
+        "child_table": "menu_items",
+        "child_col": "subcategory_id",
+        "parent_table": "subcategories",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "menu_items",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "options",
+        "kind": "BelongsToMany",
+        "pivot_table": "menu_item_options",
+        "pivot_col_to_this": "menu_item_id",
+        "this_table": "menu_items",
+        "pivot_col_to_related": "menu_option_id",
+        "related_table": "menu_options"
+    },
+    {
+        "model": "MenuItem",
+        "method": "orderItems",
+        "kind": "HasMany",
+        "child_table": "order_items",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "inventoryItem",
+        "kind": "BelongsTo",
+        "child_table": "menu_items",
+        "child_col": "inventory_item_id",
+        "parent_table": "inventory",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "recipeIngredients",
+        "kind": "HasMany",
+        "child_table": "menu_item_ingredients",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "sizes",
+        "kind": "HasMany",
+        "child_table": "menu_item_sizes",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItem",
+        "method": "allSizes",
+        "kind": "HasMany",
+        "child_table": "menu_item_sizes",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItemIngredient",
+        "method": "menuItem",
+        "kind": "BelongsTo",
+        "child_table": "menu_item_ingredients",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItemIngredient",
+        "method": "inventory",
+        "kind": "BelongsTo",
+        "child_table": "menu_item_ingredients",
+        "child_col": "inventory_id",
+        "parent_table": "inventory",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItemSize",
+        "method": "menuItem",
+        "kind": "BelongsTo",
+        "child_table": "menu_item_sizes",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItemSize",
+        "method": "ingredients",
+        "kind": "HasMany",
+        "child_table": "menu_item_size_ingredients",
+        "child_col": "menu_item_size_id",
+        "parent_table": "menu_item_sizes",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItemSizeIngredient",
+        "method": "size",
+        "kind": "BelongsTo",
+        "child_table": "menu_item_size_ingredients",
+        "child_col": "menu_item_size_id",
+        "parent_table": "menu_item_sizes",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuItemSizeIngredient",
+        "method": "inventory",
+        "kind": "BelongsTo",
+        "child_table": "menu_item_size_ingredients",
+        "child_col": "inventory_id",
+        "parent_table": "inventory",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuOption",
+        "method": "menuItems",
+        "kind": "BelongsToMany",
+        "pivot_table": "menu_item_options",
+        "pivot_col_to_this": "menu_option_id",
+        "this_table": "menu_options",
+        "pivot_col_to_related": "menu_item_id",
+        "related_table": "menu_items"
+    },
+    {
+        "model": "MenuOption",
+        "method": "ingredients",
+        "kind": "HasMany",
+        "child_table": "menu_option_ingredients",
+        "child_col": "menu_option_id",
+        "parent_table": "menu_options",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuOptionIngredient",
+        "method": "menuOption",
+        "kind": "BelongsTo",
+        "child_table": "menu_option_ingredients",
+        "child_col": "menu_option_id",
+        "parent_table": "menu_options",
+        "parent_col": "id"
+    },
+    {
+        "model": "MenuOptionIngredient",
+        "method": "inventory",
+        "kind": "BelongsTo",
+        "child_table": "menu_option_ingredients",
+        "child_col": "inventory_id",
+        "parent_table": "inventory",
+        "parent_col": "id"
+    },
+    {
+        "model": "Notification",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "notifications",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "customer",
+        "kind": "BelongsTo",
+        "child_table": "orders",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "orders",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "processor",
+        "kind": "BelongsTo",
+        "child_table": "orders",
+        "child_col": "processed_by",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "items",
+        "kind": "HasMany",
+        "child_table": "order_items",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "discountCard",
+        "kind": "BelongsTo",
+        "child_table": "orders",
+        "child_col": "discount_card_id",
+        "parent_table": "discount_cards",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "discountBeneficiaries",
+        "kind": "HasMany",
+        "child_table": "order_discount_beneficiaries",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "Order",
+        "method": "voucher",
+        "kind": "BelongsTo",
+        "child_table": "orders",
+        "child_col": "voucher_id",
+        "parent_table": "vouchers",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderDiscountBeneficiary",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "order_discount_beneficiaries",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItem",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "order_items",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItem",
+        "method": "menuItem",
+        "kind": "BelongsTo",
+        "child_table": "order_items",
+        "child_col": "menu_item_id",
+        "parent_table": "menu_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItem",
+        "method": "options",
+        "kind": "BelongsToMany",
+        "pivot_table": "order_item_options",
+        "pivot_col_to_this": "order_item_id",
+        "this_table": "order_items",
+        "pivot_col_to_related": "menu_option_id",
+        "related_table": "menu_options"
+    },
+    {
+        "model": "OrderItem",
+        "method": "sizeIngredients",
+        "kind": "HasMany",
+        "child_table": "order_item_size_ingredients",
+        "child_col": "order_item_id",
+        "parent_table": "order_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItem",
+        "method": "size",
+        "kind": "BelongsTo",
+        "child_table": "order_items",
+        "child_col": "menu_item_size_id",
+        "parent_table": "menu_item_sizes",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItemSizeIngredient",
+        "method": "orderItem",
+        "kind": "BelongsTo",
+        "child_table": "order_item_size_ingredients",
+        "child_col": "order_item_id",
+        "parent_table": "order_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItemSizeIngredient",
+        "method": "inventory",
+        "kind": "BelongsTo",
+        "child_table": "order_item_size_ingredients",
+        "child_col": "inventory_id",
+        "parent_table": "inventory",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderRating",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "order_ratings",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderRating",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "order_ratings",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "RestaurantTable",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "restaurant_tables",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "RestaurantTable",
+        "method": "rotatedBy",
+        "kind": "BelongsTo",
+        "child_table": "restaurant_tables",
+        "child_col": "code_rotated_by",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "Setting",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "settings",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "StockMovement",
+        "method": "inventory",
+        "kind": "BelongsTo",
+        "child_table": "stock_movements",
+        "child_col": "inventory_id",
+        "parent_table": "inventory",
+        "parent_col": "id"
+    },
+    {
+        "model": "StockMovement",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "stock_movements",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "Subcategory",
+        "method": "category",
+        "kind": "BelongsTo",
+        "child_table": "subcategories",
+        "child_col": "category_id",
+        "parent_table": "categories",
+        "parent_col": "id"
+    },
+    {
+        "model": "Subcategory",
+        "method": "menuItems",
+        "kind": "HasMany",
+        "child_table": "menu_items",
+        "child_col": "subcategory_id",
+        "parent_table": "subcategories",
+        "parent_col": "id"
+    },
+    {
+        "model": "TableSession",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "table_sessions",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "TableSession",
+        "method": "order",
+        "kind": "BelongsTo",
+        "child_table": "table_sessions",
+        "child_col": "order_id",
+        "parent_table": "orders",
+        "parent_col": "id"
+    },
+    {
+        "model": "TableSession",
+        "method": "releaser",
+        "kind": "BelongsTo",
+        "child_table": "table_sessions",
+        "child_col": "released_by",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "TableSession",
+        "method": "opener",
+        "kind": "BelongsTo",
+        "child_table": "table_sessions",
+        "child_col": "opened_by",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "TableSession",
+        "method": "devices",
+        "kind": "HasMany",
+        "child_table": "table_session_devices",
+        "child_col": "table_session_id",
+        "parent_table": "table_sessions",
+        "parent_col": "id"
+    },
+    {
+        "model": "TableSessionDevice",
+        "method": "tableSession",
+        "kind": "BelongsTo",
+        "child_table": "table_session_devices",
+        "child_col": "table_session_id",
+        "parent_table": "table_sessions",
+        "parent_col": "id"
+    },
+    {
+        "model": "User",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "users",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    },
+    {
+        "model": "User",
+        "method": "orders",
+        "kind": "HasMany",
+        "child_table": "orders",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "User",
+        "method": "discountCards",
+        "kind": "HasMany",
+        "child_table": "discount_cards",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "User",
+        "method": "loyaltyAwards",
+        "kind": "HasMany",
+        "child_table": "loyalty_awards",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "User",
+        "method": "freeDessertRewards",
+        "kind": "HasMany",
+        "child_table": "free_dessert_rewards",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "UserVoucher",
+        "method": "voucher",
+        "kind": "BelongsTo",
+        "child_table": "user_vouchers",
+        "child_col": "voucher_id",
+        "parent_table": "vouchers",
+        "parent_col": "id"
+    },
+    {
+        "model": "UserVoucher",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "user_vouchers",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
+        "model": "Voucher",
+        "method": "branch",
+        "kind": "BelongsTo",
+        "child_table": "vouchers",
+        "child_col": "branch_id",
+        "parent_table": "branches",
+        "parent_col": "id"
+    }
+]

@@ -213,9 +213,10 @@ class VoucherListBackgroundFilterTest extends TestCase
 
         $html = $this->fragment($supervisor, 'q=' . $this->tag)->getContent();
 
-        // Edit buttons carry data-id; only the supervisor's own voucher has one.
-        preg_match_all('/class="vch-menu-item"\s+title="Edit voucher"\s+data-id="(\d+)"/', $html, $m);
-        $this->assertSame([(string) $own->id], $m[1]);
+        // Edit buttons carry data-id; only the supervisor's own voucher has one
+        // (drawn twice since Oct 2026: the table row and the phone card).
+        preg_match_all('/class="vch-menu-item"\s+data-id="(\d+)"/', $html, $m);
+        $this->assertSame([(string) $own->id], array_values(array_unique($m[1])));
         $this->assertStringNotContainsString('data-id="' . $global->id . '"', $html);
         // The owner-only Delete never appears for a supervisor.
         $this->assertStringNotContainsString('vch-menu-item is-danger', $html);
@@ -237,21 +238,25 @@ class VoucherListBackgroundFilterTest extends TestCase
         $this->assertContains($own->id, $this->rows($html));
         $this->assertNotContains($other->id, $this->rows($html));
 
-        // Read-only: no on/off toggle, no Edit, no Delete — just Issue code.
-        $this->assertStringNotContainsString('vch-toggle', $html);
-        $this->assertStringNotContainsString('title="Edit voucher"', $html);
+        // Read-only: no activate/deactivate, no Edit, no Delete, no live Wheel
+        // switch — just Issue Voucher.
+        $this->assertStringNotContainsString('/toggle"', $html);
+        $this->assertStringNotContainsString('Edit Voucher', $html);
         $this->assertStringNotContainsString('vch-menu-item is-danger', $html);
-        $this->assertStringContainsString('Issue code', $html);
+        $this->assertStringNotContainsString('/wheel"', $html);
+        $this->assertStringContainsString('Issue Voucher', $html);
     }
 
     public function test_the_owner_gets_the_row_controls_through_the_fragment(): void
     {
-        $this->voucher('A');
+        // A points voucher, so its Wheel switch is live (a 0-point one is disabled).
+        $a = $this->voucher('A', ['points_required' => 10]);
 
         $html = $this->fragment($this->portal('admin'), 'q=' . $this->tag)->getContent();
 
-        $this->assertStringContainsString('vch-toggle', $html);
-        $this->assertStringContainsString('title="Edit voucher"', $html);
+        $this->assertStringContainsString(route('admin.vouchers.toggle', $a->id), $html);
+        $this->assertStringContainsString(route('admin.vouchers.wheel', $a->id), $html);
+        $this->assertStringContainsString('Edit Voucher', $html);
         $this->assertStringContainsString('vch-menu-item is-danger', $html);
         $this->assertStringContainsString('data-vch-menu-btn', $html);
         // Each swapped-in form carries its own CSRF token.
@@ -272,9 +277,13 @@ class VoucherListBackgroundFilterTest extends TestCase
     {
         $html = $this->page($this->portal('admin'), 'q=' . $this->tag)->assertOk()->getContent();
 
-        // The old whole-page submit on change is gone; the swap region, the
-        // error slot and the script that drives them are there.
-        $this->assertStringNotContainsString('onchange="this.form.submit()"', $html);
+        // The old whole-page submit on change is gone from the filters (the
+        // owner's Spin Wheel switch still submits its own small form); the swap
+        // region, the error slot and the script that drives them are there.
+        $filters = substr($html, strpos($html, 'data-testid="voucher-filters"'));
+        $filters = substr($filters, 0, strpos($filters, '</form>'));
+        $this->assertStringContainsString('name="status"', $filters);
+        $this->assertStringNotContainsString('onchange=', $filters);
         $this->assertStringContainsString('id="vchResults"', $html);
         $this->assertStringContainsString('id="vchError"', $html);
         $this->assertStringContainsString("'X-Vouchers-Fragment': '1'", $html);

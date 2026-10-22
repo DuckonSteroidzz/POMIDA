@@ -181,8 +181,12 @@ class MenuAdPopupAndPlacementCleanupTest extends TestCase
         $this->assertStringNotContainsString('Orders Page', $html);
         $this->assertStringNotContainsString('value="cart"', $html);
         $this->assertStringNotContainsString('value="orders"', $html);
-        $this->assertSame(2, substr_count($html, '<option value="game">Game Page</option>'), 'create + edit forms');
-        $this->assertSame(2, substr_count($html, '<option value="menu">Menu Page</option>'), 'create + edit forms');
+        // Defect Report 3 part B: the create form's Placement is two radio
+        // cards; the edit modal keeps its select. Exactly Game and Menu in each.
+        preg_match_all('/<input type="radio" name="placement" value="([a-z]+)"/', $html, $radios);
+        $this->assertSame(['game', 'menu'], $radios[1], 'create form radio cards');
+        $this->assertSame(1, substr_count($html, '<option value="game">Game Page</option>'), 'edit modal');
+        $this->assertSame(1, substr_count($html, '<option value="menu">Menu Page</option>'), 'edit modal');
     }
 
     // ══════════════════ 2. Old cart/orders ads: nothing breaks ══════════════════
@@ -199,7 +203,9 @@ class MenuAdPopupAndPlacementCleanupTest extends TestCase
 
             $this->assertStringContainsString($cart->title, $html);
             $this->assertStringContainsString($orders->title, $html);
-            $this->assertSame(2, substr_count($html, 'No longer used'), 'each old ad carries the label');
+            // Each ad is drawn as a table row and as a phone card (Defect
+            // Report 3 part B), so each old ad's label appears twice.
+            $this->assertSame(4, substr_count($html, 'No longer used'), 'each old ad carries the label');
             if ($canEdit) {
                 // The edit control for the old ad is still there, so it can be re-pointed.
                 $this->assertStringContainsString('data-placement="cart"', $html);

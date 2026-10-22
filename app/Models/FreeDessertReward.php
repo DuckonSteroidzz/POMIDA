@@ -117,7 +117,7 @@ class FreeDessertReward extends Model
         return $this->belongsTo(MenuItem::class);
     }
 
-    /** The branch that issued it, and the only one it can be used at (no foreign key — see the migration). */
+    /** The branch that issued it, and the only one it can be used at (foreign key ON DELETE RESTRICT since 2026-10-22, never SET NULL — a NULL would open it to every branch). */
     public function branch(): BelongsTo
     {
         return $this->belongsTo(Branch::class);

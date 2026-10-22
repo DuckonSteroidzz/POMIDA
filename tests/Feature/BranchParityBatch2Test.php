@@ -319,8 +319,10 @@ class BranchParityBatch2Test extends TestCase
         $closed = $this->otherBranch(active: false);
         $staff  = $this->staffAt($closed->id);
 
+        // Searched for by address: the roster is paginated, so a new account is
+        // not reliably on the first page of the whole list.
         $html = $this->actingAs($this->admin(), 'admin')
-            ->get('/admin/users')
+            ->get('/admin/users?q=' . urlencode($staff->email))
             ->assertOk()
             ->getContent();
 

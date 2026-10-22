@@ -111,7 +111,15 @@ class AdminFormHygieneTest extends TestCase
     {
         $html = $this->html('/admin/users');
 
-        $this->assertStringContainsString(PasswordPolicy::describe(), $html);
+        // The redesigned create form (Oct 2026) states the length rule in the
+        // wording the design calls for. The full complexity sentence
+        // (PasswordPolicy::describe()) still appears on every row's Set
+        // Password form, and the server enforces PasswordPolicy either way: a
+        // weak password is refused, under the field (StaffAccountsRedesignTest).
+        $this->assertStringContainsString(
+            'Password must be 8–20 characters. Use a combination that is difficult to guess.',
+            $html
+        );
         $this->assertMatchesRegularExpression('/name="name"[^>]*autocomplete="off"/s', $html);
         $this->assertMatchesRegularExpression('/name="email"[^>]*autocomplete="off"/s', $html);
     }

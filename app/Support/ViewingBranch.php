@@ -13,7 +13,7 @@ use App\Services\AdminOrderAccess;
  * and ResolvesBranchScope::getSelectedBranch() reads ('all' or a branch id).
  * One choice, so picking Branch 1 on Vouchers is still Branch 1 on Streak
  * Rewards, on Ads and on Active Orders, and the bar never disagrees with the
- * list under it.
+ * list under it. Menu Options (?branch=) reads it the same way.
  *
  * A page may name the branch in its own query string (Vouchers: ?branch=,
  * Streak Rewards: ?streak_branch=) so a view can be bookmarked and the list can

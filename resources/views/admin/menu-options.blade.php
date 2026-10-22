@@ -462,8 +462,19 @@
         </div>
 
         <div class="pchy-chips">
+            {{-- Options are global (no branch_id) and every one stays listed
+                 whichever branch is being viewed, so this number never moves.
+                 Categories follow the Viewing branch: the ones that have a
+                 menu item in the picker. All Branches counts every category,
+                 as it always has. The Archived entry below is global too — it
+                 opens the one Archived page, which lists every branch. --}}
+            @php
+                $categoryChipCount = $viewingBranchId === null
+                    ? count($categories)
+                    : $categories->filter(fn ($cat) => $cat->menuItems->isNotEmpty())->count();
+            @endphp
             <span class="pchy-chip">{{ count($options) }} Options</span>
-            <span class="pchy-chip">{{ count($categories) }} Categories</span>
+            <span class="pchy-chip">{{ $categoryChipCount }} Categories</span>
             {{-- Archived add-ons live off this list on purpose; this is how you get
                  back to them. Always shown, even at zero — see menu-items.blade.php
                  for why the entry point cannot be conditional. --}}
@@ -719,9 +730,14 @@
                             comments, so a literal directive name inside a
                             comment is still compiled.)
                         --}}
+                        {{-- Viewing one branch (owner only; $viewingBranchId is
+                             always null for a locked supervisor) keeps that
+                             branch's items and the company-wide ones, the same
+                             two kinds the Menu Items picker lists. --}}
                         @php
                             $usedInItems = $option->menuItems
                                 ->filter(fn ($mi) => $lockedBranchId === null || ($mi->branch_id !== null && (int) $mi->branch_id === $lockedBranchId))
+                                ->filter(fn ($mi) => $viewingBranchId === null || $mi->branch_id === null || (int) $mi->branch_id === $viewingBranchId)
                                 ->sortBy('name')
                                 ->values();
                         @endphp
@@ -762,6 +778,16 @@
                             $optionBranchIds = $option->menuItems
                                 ->filter(fn ($mi) => $lockedBranchId === null || ($mi->branch_id !== null && (int) $mi->branch_id === $lockedBranchId))
                                 ->pluck('branch_id')->filter()->unique()->sort()->values();
+
+                            // Viewing one branch: just that branch's badge. A
+                            // company-wide item is offered by every branch, so
+                            // an option used only by one still has a status
+                            // here — whether THIS branch can supply it.
+                            if ($viewingBranchId !== null) {
+                                $optionBranchIds = $usedInItems->isNotEmpty()
+                                    ? collect([$viewingBranchId])
+                                    : collect();
+                            }
                             $badgeTitleOk = 'Has an ingredient link for this branch.';
                             $badgeTitleOff = 'No ingredient link for this branch yet — hidden from this branch\'s customer menu.';
                             $badgeTitleEmpty = 'This branch has no active inventory yet, so there is nothing here to link. Add inventory items for that branch first.';
@@ -1269,7 +1295,11 @@
                             All categories
                         </option>
 
+                        {{-- Viewing one branch: only categories that have an
+                             item in the list below, so no choice ends empty. --}}
                         @foreach($categories as $catFilter)
+
+                            @continue($viewingBranchId !== null && $catFilter->menuItems->isEmpty())
 
                             <option value="{{ strtolower($catFilter->name) }}">
                                 {{ $catFilter->name }}
@@ -1405,7 +1435,7 @@
                                 <td colspan="3">
                                     <div class="pchy-branch-section">
                                         <i class="bi bi-building"></i>
-                                        <span class="value">{{ $itemBranchName }}</span>
+                                        <span class="value">{{ $itemBranchName }}@if($viewingBranchId !== null && $item->branch_id === null) (company-wide)@endif</span>
                                         <span class="count">{{ $pickerBranchCount }} item{{ $pickerBranchCount === 1 ? '' : 's' }}</span>
                                     </div>
                                 </td>
@@ -1922,6 +1952,16 @@
 @push('scripts')
 
 <script>
+// The "Viewing:" bar (owner only). The lists here are rendered by the server,
+// so a change is a reload of this page on the chosen branch — ?branch= makes
+// the URL bookmarkable and the server remembers it for the other admin pages.
+// Navigating here rather than via /admin/branches/select also keeps a stale
+// ?branch= from the Referer overriding the new choice.
+window.pcBranchSelectHandler = function (value) {
+    window.location.href = '{{ route('admin.menu-options') }}?branch=' + encodeURIComponent(value || 'all');
+    return true;
+};
+
 (function () {
 
     const state = {

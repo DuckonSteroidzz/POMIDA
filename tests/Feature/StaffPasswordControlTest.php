@@ -468,7 +468,10 @@ class StaffPasswordControlTest extends TestCase
         $admin = $this->makeAdmin();
         $staff = $this->makeStaff();
 
-        $html = $this->actingAs($admin, 'admin')->get('/admin/users')->getContent();
+        // The list is paginated, so find the new account the way an admin
+        // would: by searching for it. (The testing DB holds dozens of portal
+        // accounts, so it would not reliably be on page 1.)
+        $html = $this->actingAs($admin, 'admin')->get('/admin/users?q=' . urlencode($staff->email))->getContent();
 
         // CONTROL: the staff member IS on the page, so the assertions below
         // are not just observing an empty list.

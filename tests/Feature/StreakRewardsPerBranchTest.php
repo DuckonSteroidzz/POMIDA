@@ -675,7 +675,6 @@ class StreakRewardsPerBranchTest extends TestCase
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get(route('customer.account'))->assertOk()
             ->assertDontSee('data-testid="streak-calendar"', false)
             ->assertDontSee('data-testid="free-dessert-card"', false)
-            ->assertDontSee('data-testid="free-dessert-challenge"', false)
             ->assertSee('id="benefits"', false);
 
         // The reward is still listed, and spent at its branch.
@@ -842,15 +841,14 @@ class StreakRewardsPerBranchTest extends TestCase
         $this->assertStringNotContainsString('data-streak-day="2026-10-01"', $html);
         $this->assertStringContainsString('data-testid="free-dessert-card" data-branch="2"', $html);
         $this->assertStringContainsString('2 / 7 stamps', $html);
-        $this->assertStringContainsString('Day 2 of 7', $html);
-        $this->assertStringContainsString('1 stamp per day you completed an order at ' . $name2 . '.', $html);
+        $this->assertStringContainsString('Earn 1 stamp per day when you complete at least one order at ' . $name2 . '.', $html);
 
         // Dine-In at a branch-3 table: branch 3's own card (5 days, its own reward).
         $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => 3, 'order_type' => 'dine_in', 'table_number' => '4'])
             ->get(route('customer.account'))->assertOk()->getContent();
         $this->assertStringContainsString('data-testid="streak-calendar" data-branch="3"', $html);
         $this->assertStringContainsString('1 / 5 stamps', $html);
-        $this->assertStringContainsString('Collect 5 stamps for a reward: Free SRB Dine In Cake.', $html);
+        $this->assertStringContainsString('Collect 5 stamps to receive a Free SRB Dine In Cake.', $html);
         $this->assertSame(1, substr_count($html, 'data-streak-day="'));
 
         // No branch picked yet: a prompt to choose one, no calendar or card.

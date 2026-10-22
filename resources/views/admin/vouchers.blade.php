@@ -87,47 +87,50 @@
     }
     .voucher-page-gap { color: #C4B6AE; padding: 0 0.15rem; }
 
-    /* ── Promotions & Rewards > Vouchers (Oct 2026) ── */
-    .vch-section-head { margin: 0 0 0.9rem; }
-    .vch-section-title { font-family: 'Fraunces', Georgia, serif; font-size: 1.15rem; font-weight: 700; color: #8B1A1A; margin: 0; }
-    .vch-section-sub { font-size: 0.82rem; color: #8A6A61; margin: 0.1rem 0 0; }
+    /* ── Promotions & Rewards > Vouchers (Oct 2026; aligned with the tester's
+         reference, docs/design-refs/peachy-promotions-rewards.html) ── */
+    .vch-section-head { margin: 0 0 1rem; padding: 0.2rem 0 0.8rem; border-bottom: 2px dashed rgba(244, 132, 95, 0.28); }
+    .vch-section-title { font-size: 1.05rem; font-weight: 700; color: #8B1A1A; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+    .vch-section-sub { font-size: 0.8rem; color: #9A837B; margin: 0.1rem 0 0; }
 
-    .vch-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.85rem; margin-bottom: 1rem; }
-    @media (max-width: 900px) { .vch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    .vch-stat { display: flex; align-items: center; gap: 0.75rem; min-width: 0; background: #fff; border: 1px solid #F0E2D5; border-radius: 16px; padding: 0.9rem 1rem; }
-    .vch-stat-icon { display: grid; place-items: center; flex: 0 0 auto; width: 40px; height: 40px; border-radius: 12px; font-size: 1.1rem; }
-    .vch-stat-icon.is-total { background: #FDE8DE; color: #C0392B; }
-    .vch-stat-icon.is-active { background: #E4F2EA; color: #2E7D5B; }
-    .vch-stat-icon.is-wheel { background: #FFF1D0; color: #B36B00; }
-    .vch-stat-icon.is-expired { background: #F1ECE9; color: #7B645C; }
-    .vch-stat-num { font-family: 'Fraunces', Georgia, serif; font-size: 1.45rem; font-weight: 700; line-height: 1.1; color: #5A2920; margin: 0; }
-    .vch-stat-label { font-size: 0.74rem; color: #8A6A61; margin: 0.1rem 0 0; }
+    .vch-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1.2rem; }
+    @media (max-width: 1100px) { .vch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    .vch-stat { position: relative; min-width: 0; background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1rem; box-shadow: 0 10px 30px -18px rgba(139, 26, 26, 0.45); }
+    .vch-stat-icon { float: right; font-size: 1.3rem; line-height: 1; }
+    .vch-stat-num { font-size: 1.5rem; font-weight: 700; line-height: 1.2; color: #8B1A1A; margin: 0; }
+    .vch-stat-label { font-size: 0.78rem; color: #9A837B; margin: 0; }
+    @media (max-width: 640px) { .vch-stat-num { font-size: 1.25rem; } }
 
-    .vch-card { background: #fff; border: 1px solid #F0E2D5; border-radius: 16px; padding: 1.1rem 1.15rem; margin-bottom: 1rem; min-width: 0; }
-    .vch-card-head { margin-bottom: 0.9rem; }
-    .vch-card-title { font-size: 0.95rem; font-weight: 700; color: #333; margin: 0; }
-    .vch-card-sub { font-size: 0.76rem; color: #8A6A61; margin: 0.1rem 0 0; }
-    .vch-count { display: inline-block; margin-left: 0.35rem; background: #FDE8DE; color: #C0392B; border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.72rem; font-weight: 700; vertical-align: middle; }
+    .vch-card { background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.2rem; min-width: 0; box-shadow: 0 10px 30px -18px rgba(139, 26, 26, 0.45); }
+    @media (max-width: 640px) { .vch-card { padding: 1rem; } }
+    .vch-card-head { display: flex; align-items: center; justify-content: space-between; gap: 0.8rem; flex-wrap: wrap; margin-bottom: 1rem; padding-bottom: 0.8rem; border-bottom: 2px dashed rgba(244, 132, 95, 0.28); }
+    .vch-card-title { font-size: 1.05rem; font-weight: 700; color: #8B1A1A; margin: 0; display: flex; align-items: center; gap: 0.5rem; }
+    .vch-card-sub { font-size: 0.8rem; color: #9A837B; margin: 0.1rem 0 0; }
+    .vch-count { display: inline-block; background: #FDE8DE; color: #C0392B; border-radius: 999px; padding: 0.05rem 0.55rem; font-size: 0.72rem; font-weight: 700; }
 
-    .vch-wheelbar { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
-    .vch-wheelbar-text { display: flex; align-items: center; gap: 0.7rem; min-width: 0; }
-    .vch-wheelbar-icon { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 12px; background: #FFF1D0; color: #B36B00; font-size: 1.1rem; flex: 0 0 auto; }
+    /* The Spin Wheel card (owner only). */
+    .vch-master { display: flex; align-items: center; justify-content: space-between; gap: 1rem; background: linear-gradient(135deg, #FDF1E6, #F8D7B0); border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1.1rem 1.25rem; margin-bottom: 1.2rem; }
+    .vch-master > div { min-width: 0; }
+    .vch-master-title { font-size: 1rem; font-weight: 700; color: #8B1A1A; margin: 0; }
+    .vch-master-sub { font-size: 0.8rem; color: #4A3B36; margin: 0.15rem 0 0; }
+    .vch-master form { margin: 0; flex: 0 0 auto; }
 
-    .vch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1rem 1.1rem; align-items: start; }
+    .vch-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.9rem 1rem; align-items: start; }
     .vch-grid > div { min-width: 0; }
     .vch-wide { grid-column: span 2; }
-    @media (max-width: 900px) { .vch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-    @media (max-width: 560px) { .vch-grid { grid-template-columns: minmax(0, 1fr); } .vch-wide { grid-column: auto; } }
-    .vch-hint { display: block; font-size: 0.7rem; color: #9a837b; margin-top: 0.2rem; }
-    .vch-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.6rem; margin-top: 1.1rem; }
-    .vch-btn-ghost { background: #fff; color: #C0392B; border: 1.5px solid #F6B49B; border-radius: 8px; padding: 0.6rem 1.1rem; font-size: 0.85rem; font-weight: 700; cursor: pointer; font-family: 'Poppins', sans-serif; }
-    .vch-btn-ghost:hover { background: #fff4ec; }
+    @media (max-width: 1100px) { .vch-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .vch-grid { grid-template-columns: minmax(0, 1fr); } .vch-wide { grid-column: auto; } }
+    .vch-hint { display: block; font-size: 0.72rem; color: #9A837B; margin-top: 0.25rem; }
+    .vch-actions { display: flex; justify-content: flex-end; align-items: center; gap: 0.6rem; margin-top: 1rem; flex-wrap: wrap; }
+    @media (max-width: 640px) { .vch-actions > * { flex: 1; } }
+    .vch-btn-ghost { background: #fff; color: #C0392B; border: 1.5px solid #F6B49B; border-radius: 10px; padding: 0.6rem 1.1rem; min-height: 42px; font-size: 0.85rem; font-weight: 700; cursor: pointer; font-family: 'Poppins', sans-serif; }
+    .vch-btn-ghost:hover { background: #FFF4EC; }
 
     .vch-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6rem; margin-bottom: 0.9rem; }
-    .vch-search { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 240px; min-width: 0; margin: 0; padding: 0 0.8rem; min-height: 40px; background: #fff; border: 1.5px solid #F0E2D5; border-radius: 10px; color: #9a837b; }
-    .vch-search:focus-within { border-color: #F4845F; }
+    .vch-search { display: flex; align-items: center; gap: 0.5rem; flex: 1 1 160px; min-width: 160px; margin: 0; padding: 0 0.8rem; min-height: 42px; background: #fff; border: 1.5px solid #F6B49B; border-radius: 10px; color: #9A837B; }
+    .vch-search:focus-within { border-color: #F4845F; box-shadow: 0 0 0 3px rgba(244, 132, 95, 0.18); }
     .vch-search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 0.85rem; color: #333; font-family: inherit; }
-    .vch-filter { flex: 0 1 170px; min-width: 0; width: auto; margin: 0; }
+    .vch-filter { flex: 0 0 auto; min-width: 150px; width: auto; margin: 0; }
     .vch-clear-filters { font-size: 0.8rem; font-weight: 600; color: #C0392B; text-decoration: none; }
     .vch-clear-filters:hover { text-decoration: underline; }
     .vch-clear-filters[hidden] { display: none; }
@@ -138,73 +141,90 @@
     .vch-error { margin: 0 0 0.8rem; padding: 0.55rem 0.8rem; border-radius: 10px; background: #FDE2DC; color: #8B1A1A; font-size: 0.8rem; font-weight: 600; }
     .vch-error[hidden] { display: none; }
     .vch-error-retry { margin-left: 0.4rem; border: 0; background: none; padding: 0; color: #C0392B; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
-    @media (max-width: 560px) { .vch-filter { flex: 1 1 100%; } }
+    @media (max-width: 640px) { .vch-search, .vch-filter { flex: 1 1 100%; } }
 
     /* The table scrolls inside its own wrapper; the page never does. */
-    .vch-table-wrap { overflow-x: auto; max-width: 100%; border: 1px solid #F0E2D5; border-radius: 12px; }
+    .vch-table-wrap { overflow-x: auto; max-width: 100%; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 12px; }
     .vch-table { width: 100%; min-width: 900px; border-collapse: collapse; font-size: 0.82rem; }
-    .vch-table th { background: #FBF6F1; color: #7B645C; font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; text-align: left; padding: 0.6rem 0.55rem; border-bottom: 1px solid #F0E2D5; white-space: nowrap; }
-    .vch-table td { padding: 0.65rem 0.55rem; border-bottom: 1px solid #F6EEE7; vertical-align: middle; color: #5B4740; }
-    .vch-table tr:last-child td { border-bottom: 0; }
-    .vch-table .is-center { text-align: center; }
+    .vch-table th { background: #FDF1E6; color: #8B1A1A; font-size: 0.74rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; text-align: left; padding: 0.7rem 0.6rem; white-space: nowrap; }
+    .vch-table td { padding: 0.7rem 0.6rem; border-top: 1px solid rgba(244, 132, 95, 0.28); vertical-align: middle; color: #4A3B36; }
+    .vch-table tbody tr:hover td { background: #FFFAF6; }
     .vch-table td > span { display: block; }
     .vch-cell-voucher { min-width: 140px; }
-    .vch-code { font-weight: 700; color: #C0392B; letter-spacing: 0.02em; }
-    .vch-desc { font-size: 0.75rem; color: #8A6A61; max-width: 170px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .vch-strong { font-weight: 700; color: #333; }
-    .vch-muted { font-size: 0.72rem; color: #9a837b; }
-    .vch-cell-usage { min-width: 95px; }
-    .vch-track { display: block; height: 6px; margin-top: 0.3rem; border-radius: 999px; background: #F1E7DE; overflow: hidden; }
-    .vch-track-fill { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #F4845F, #E86B5A); }
+    .vch-code { font-weight: 800; color: #8B1A1A; letter-spacing: 0.04em; overflow-wrap: anywhere; }
+    .vch-desc { font-size: 0.74rem; color: #9A837B; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vch-strong { font-weight: 700; color: #4A3B36; }
+    .vch-muted { font-size: 0.74rem; color: #9A837B; }
+    .vch-cell-usage { min-width: 96px; }
+    .vch-track { display: block; width: 96px; max-width: 100%; height: 6px; margin-top: 0.3rem; border-radius: 9px; background: #FDF1E6; overflow: hidden; }
+    .vch-track-fill { display: block; height: 100%; background: linear-gradient(90deg, #F4845F, #C0392B); }
     .vch-track-fill.is-full { background: #8B7A72; }
-    .vch-cell-valid { min-width: 130px; }
-    .vch-left { font-size: 0.72rem; font-weight: 600; color: #2E7D5B; }
-    .vch-left.is-soon { color: #B36B00; }
-    .vch-left.is-expired { color: #C0392B; }
-    .vch-badge { display: inline-block !important; padding: 0.15rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
-    .vch-badge.is-global { background: #E4F2EA; color: #2E7D5B; }
-    .vch-badge.is-branch { background: #FDE8DE; color: #C0392B; }
-    .vch-status { display: inline-block !important; padding: 0.15rem 0.6rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; margin-right: 0.35rem; vertical-align: middle; }
-    .vch-status.is-active { background: #E4F2EA; color: #2E7D5B; }
-    .vch-status.is-used-up { background: #FFF1D0; color: #B36B00; }
-    .vch-status.is-expired { background: #FDE2DC; color: #C0392B; }
-    .vch-status.is-inactive { background: #EFEBE8; color: #7B645C; }
+    .vch-cell-valid { min-width: 118px; }
+    .vch-left { font-size: 0.74rem; color: #9A837B; }
+    .vch-left.is-soon { color: #B7791F; font-weight: 600; }
+    .vch-left.is-expired { color: #C0392B; font-weight: 600; }
+    .vch-badge { display: inline-flex !important; align-items: center; gap: 0.25rem; padding: 0.18rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+    .vch-badge.is-global { background: #F8D7B0; color: #8B1A1A; }
+    .vch-badge.is-branch { background: #FFF4EC; color: #C0392B; border: 1px solid #F6B49B; }
+    .vch-status { display: inline-flex !important; align-items: center; gap: 0.25rem; padding: 0.18rem 0.55rem; border-radius: 999px; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+    .vch-status.is-active { background: #E6F5EC; color: #2E8B57; }
+    .vch-status.is-active::before { content: "●"; }
+    .vch-status.is-inactive { background: #F1ECEA; color: #8A7A75; }
+    .vch-status.is-inactive::before { content: "○"; }
+    .vch-status.is-expired { background: #FDECEA; color: #C0392B; }
+    .vch-status.is-expired::before { content: "⏰"; }
+    .vch-status.is-used-up { background: #FDF3DC; color: #B7791F; }
     .vch-cell-status { white-space: nowrap; }
+    .vch-cell-wheel { white-space: nowrap; }
+    .vch-wheel-note { display: block; margin-top: 0.25rem; font-size: 0.68rem; font-weight: 600; color: #B7791F; }
+    .vch-wheel-note[hidden] { display: none !important; }
 
-    /* Switches. .vch-switch only reports (Wheel); .vch-toggle is the real
-       on/off button (Status). */
-    .vch-switch { display: inline-block !important; position: relative; width: 34px; height: 20px; border-radius: 999px; background: #D9CFC8; vertical-align: middle; }
-    .vch-switch::after { content: ''; position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s ease; }
-    .vch-switch.is-on { background: #F4845F; }
-    .vch-switch.is-on::after { transform: translateX(14px); }
-    .vch-toggle { position: relative; width: 34px; height: 20px; padding: 0; border: 0; border-radius: 999px; background: #D9CFC8; cursor: pointer; vertical-align: middle; transition: background 0.15s ease; }
-    .vch-toggle:focus-visible { outline: 3px solid rgba(244, 132, 95, 0.5); outline-offset: 2px; }
-    .vch-toggle.is-on { background: #4CAF50; }
-    .vch-toggle-knob { position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%; background: #fff; transition: transform 0.15s ease; }
-    .vch-toggle.is-on .vch-toggle-knob { transform: translateX(14px); }
-
-    .vch-kebab { width: 34px; height: 34px; border: 0; border-radius: 8px; background: transparent; color: #7B645C; font-size: 1.1rem; cursor: pointer; }
-    .vch-kebab:hover, .vch-kebab[aria-expanded="true"] { background: #FDE8DE; color: #C0392B; }
-    .vch-kebab:focus-visible { outline: 3px solid rgba(244, 132, 95, 0.5); outline-offset: 1px; }
-    .vch-menu { position: fixed; z-index: 1100; min-width: 168px; padding: 0.3rem; text-align: left; background: #fff; border: 1px solid #F0E2D5; border-radius: 12px; box-shadow: 0 14px 30px -12px rgba(90, 41, 32, 0.35); }
+    /* The ⋮ button and its menu. The menu is display:none when closed, so it
+       can never sit over another row's controls. */
+    .vch-kebab { display: inline-grid; place-items: center; width: 38px; height: 36px; padding: 0; border: 1px solid #F6B49B; border-radius: 10px; background: #fff; color: #8B1A1A; font-size: 1.25rem; font-weight: 800; line-height: 1; cursor: pointer; transition: background 0.15s ease, border-color 0.15s ease; }
+    .vch-kebab:hover, .vch-kebab[aria-expanded="true"] { background: #FFF4EC; border-color: #F4845F; }
+    .vch-kebab:focus-visible { outline: 3px solid rgba(244, 132, 95, 0.25); outline-offset: 2px; }
+    .vch-menu { position: fixed; z-index: 1100; display: grid; gap: 3px; min-width: 168px; padding: 6px; text-align: left; background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 12px; box-shadow: 0 12px 28px rgba(74, 59, 54, 0.16); }
     .vch-menu[hidden] { display: none; }
     .vch-menu form { margin: 0; }
-    .vch-menu-item { display: flex; align-items: center; gap: 0.55rem; width: 100%; min-height: 38px; padding: 0 0.7rem; border: 0; border-radius: 8px; background: transparent; color: #5B4740; font-family: 'Poppins', sans-serif; font-size: 0.8rem; font-weight: 600; text-align: left; cursor: pointer; }
-    .vch-menu-item:hover, .vch-menu-item:focus-visible { background: #FFF4EC; color: #C0392B; outline: none; }
-    .vch-menu-item.is-issue { color: #2E7D5B; }
-    .vch-menu-item.is-issue:hover, .vch-menu-item.is-issue:focus-visible { background: #E4F2EA; color: #2E7D5B; }
+    .vch-menu-item { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 36px; padding: 0.55rem 0.7rem; border: 0; border-radius: 8px; background: transparent; color: #4A3B36; font-family: 'Poppins', sans-serif; font-size: 0.8rem; font-weight: 600; text-align: left; white-space: nowrap; cursor: pointer; }
+    .vch-menu-item:hover, .vch-menu-item:focus-visible { background: #FFF4EC; color: #8B1A1A; outline: none; }
     .vch-menu-item.is-danger { color: #C0392B; }
-    .vch-menu-item.is-disabled, .vch-menu-item:disabled { color: #b5a79f; cursor: not-allowed; background: transparent; }
+    .vch-menu-item.is-disabled, .vch-menu-item:disabled { opacity: 0.4; cursor: not-allowed; background: transparent; color: #4A3B36; }
+    .vch-menu-ico { display: inline-block; width: 1.2em; text-align: center; }
+    .vch-menu-lock { padding: 0.55rem 0.7rem; color: #9A837B; font-size: 0.75rem; white-space: nowrap; }
 
-    .vch-empty { text-align: center; padding: 2rem 1rem; color: #aaa; font-size: 0.85rem; }
-    .vch-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #ddd; }
+    /* A phone: cards instead of the table, as in the reference. */
+    .vch-cards { display: none; }
+    @media (max-width: 640px) {
+        .vch-table-wrap { display: none; }
+        .vch-cards { display: block; }
+    }
+    .vch-mc { border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 14px; padding: 0.9rem; margin-bottom: 0.7rem; background: #fff; }
+    .vch-mc-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 0.6rem; }
+    .vch-mc-name { min-width: 0; }
+    .vch-mc-name > span { display: block; }
+    .vch-mc .vch-desc { max-width: none; white-space: normal; }
+    .vch-mc-dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0.4rem 0.8rem; margin: 0.7rem 0; font-size: 0.8rem; }
+    .vch-mc-dl dt { color: #9A837B; font-size: 0.7rem; font-weight: 400; }
+    .vch-mc-dl dd { margin: 0; font-weight: 600; overflow-wrap: anywhere; color: #4A3B36; }
+    .vch-mc-dl .vch-track { width: 100%; }
+    .vch-mc-actions { display: flex; align-items: center; gap: 0.35rem; }
+
+    .vch-empty { text-align: center; padding: 2rem 1rem; color: #9A837B; font-size: 0.85rem; }
+    .vch-empty i { font-size: 2.5rem; display: block; margin-bottom: 0.5rem; color: #E5D6CF; }
     .vch-empty a { color: #C0392B; font-weight: 600; }
+
+    /* Messages from the Wheel switch: what changed, or why the server said no. */
+    .vch-toast { position: fixed; left: 50%; bottom: 1.2rem; z-index: 1200; max-width: calc(100vw - 2rem); padding: 0.7rem 1.1rem; border-radius: 12px; background: #8B1A1A; color: #fff; font-size: 0.85rem; font-weight: 600; text-align: center; box-shadow: 0 12px 28px rgba(74, 59, 54, 0.25); transform: translateX(-50%) translateY(12px); opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 0.25s, transform 0.25s, visibility 0.25s; }
+    .vch-toast.is-shown { transform: translateX(-50%) translateY(0); opacity: 1; visibility: visible; }
+    .vch-toast.is-error { background: #C0392B; }
 </style>
 
 @include('admin.partials.promotions-header', ['active' => 'vouchers'])
 
 <div class="vch-section-head">
-    <h2 class="vch-section-title">Vouchers</h2>
+    <h2 class="vch-section-title"><span aria-hidden="true">🎟️</span> Vouchers</h2>
     <p class="vch-section-sub">Create, issue and manage voucher promotions.</p>
 </div>
 
@@ -221,20 +241,20 @@
      Voucher::listStatus() / isOnWheel(). --}}
 <div class="vch-stats" data-testid="voucher-stats">
     <div class="vch-stat">
-        <span class="vch-stat-icon is-total"><i class="bi bi-ticket-perforated" aria-hidden="true"></i></span>
-        <div><p class="vch-stat-num" data-stat="total">{{ number_format($voucherStats['total']) }}</p><p class="vch-stat-label">Total vouchers</p></div>
+        <span class="vch-stat-icon" aria-hidden="true">🎟️</span>
+        <p class="vch-stat-num" data-stat="total">{{ number_format($voucherStats['total']) }}</p><p class="vch-stat-label">Total vouchers</p>
     </div>
     <div class="vch-stat">
-        <span class="vch-stat-icon is-active"><i class="bi bi-check-circle" aria-hidden="true"></i></span>
-        <div><p class="vch-stat-num" data-stat="active">{{ number_format($voucherStats['active']) }}</p><p class="vch-stat-label">Active now</p></div>
+        <span class="vch-stat-icon" aria-hidden="true">✅</span>
+        <p class="vch-stat-num" data-stat="active">{{ number_format($voucherStats['active']) }}</p><p class="vch-stat-label">Active now</p>
     </div>
     <div class="vch-stat">
-        <span class="vch-stat-icon is-wheel"><i class="bi bi-bullseye" aria-hidden="true"></i></span>
-        <div><p class="vch-stat-num" data-stat="on_wheel">{{ number_format($voucherStats['on_wheel']) }}</p><p class="vch-stat-label">On spin wheel</p></div>
+        <span class="vch-stat-icon" aria-hidden="true">🎡</span>
+        <p class="vch-stat-num" data-stat="on_wheel">{{ number_format($voucherStats['on_wheel']) }}</p><p class="vch-stat-label">On spin wheel</p>
     </div>
     <div class="vch-stat">
-        <span class="vch-stat-icon is-expired"><i class="bi bi-hourglass-bottom" aria-hidden="true"></i></span>
-        <div><p class="vch-stat-num" data-stat="expired">{{ number_format($voucherStats['expired']) }}</p><p class="vch-stat-label">Expired</p></div>
+        <span class="vch-stat-icon" aria-hidden="true">⏰</span>
+        <p class="vch-stat-num" data-stat="expired">{{ number_format($voucherStats['expired']) }}</p><p class="vch-stat-label">Expired</p>
     </div>
 </div>
 
@@ -322,20 +342,19 @@
 // endpoint enforces — see Setting::gameEnabled().
 $gameEnabled = \App\Models\Setting::gameEnabled();
 @endphp
-<div class="vch-card vch-wheelbar" data-testid="spin-wheel-bar">
-    <div class="vch-wheelbar-text">
-        <span class="vch-wheelbar-icon"><i class="bi bi-dice-5" aria-hidden="true"></i></span>
-        <div>
-            <p class="vch-card-title" style="margin:0;">Spin Wheel</p>
-            <p class="vch-card-sub" style="margin:0;">Enable or disable the game for customers</p>
-        </div>
+{{-- The same ON/OFF switch as the list's Wheel column. Flipping it submits
+     the unchanged admin.game.toggle form (which flips the one global row). --}}
+<div class="vch-master" data-testid="spin-wheel-bar">
+    <div>
+        <p class="vch-master-title"><span aria-hidden="true">🎡</span> Spin Wheel</p>
+        <p class="vch-master-sub">Enable or disable the game for customers</p>
     </div>
-    <form action="{{ route('admin.game.toggle') }}" method="POST" style="margin:0;">
+    <form action="{{ route('admin.game.toggle') }}" method="POST">
         @csrf
-        <button type="submit"
-            style="background:{{ $gameEnabled ? '#4CAF50' : '#ccc' }};color:white;border:none;border-radius:20px;padding:0.4rem 1.2rem;font-size:0.78rem;font-weight:600;cursor:pointer;font-family:'Poppins',sans-serif;">
-            {{ $gameEnabled ? '✓ Enabled' : '✗ Disabled' }}
-        </button>
+        <x-admin.on-off-switch :checked="$gameEnabled" label="Spin Wheel game for customers"
+            :title="$gameEnabled ? 'On: customers can play Spin & Win · click to turn it off' : 'Off: the game is hidden from customers · click to turn it on'"
+            data-testid="spin-wheel-switch" onchange="this.form.submit()" />
+        <noscript><button type="submit" class="vch-btn-ghost">{{ $gameEnabled ? 'Turn off' : 'Turn on' }}</button></noscript>
     </form>
 </div>
 @endif
@@ -345,14 +364,16 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
 @if($canAuthorVouchers)
 <div class="vch-card" data-testid="create-voucher-card">
     <div class="vch-card-head">
-        <p class="vch-card-title">Create New Voucher</p>
-        <p class="vch-card-sub">
-            @if($lockedBranchId === null)
-                Leave as All Branches for a company-wide promo
-            @else
-                Your voucher is scoped to your own branch
-            @endif
-        </p>
+        <div>
+            <p class="vch-card-title"><span aria-hidden="true">➕</span> Create New Voucher</p>
+            <p class="vch-card-sub">
+                @if($lockedBranchId === null)
+                    Leave as All Branches for a company-wide promo
+                @else
+                    Your voucher is scoped to your own branch
+                @endif
+            </p>
+        </div>
     </div>
     <form action="{{ route('admin.vouchers.store') }}" method="POST" autocomplete="off">
         @csrf
@@ -362,7 +383,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
         <div class="vch-grid">
             <div>
                 <label class="form-label-custom" for="vchCode">Voucher Code *</label>
-                <input type="text" id="vchCode" name="code" class="form-control-custom" required style="text-transform:uppercase;">
+                <input type="text" id="vchCode" name="code" class="form-control-custom" required maxlength="50" placeholder="PEACHY50" style="text-transform:uppercase;">
                 @error('code')<span style="color:red;font-size:0.75rem;">{{ $message }}</span>@enderror
             </div>
             <div>
@@ -374,7 +395,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
             </div>
             <div>
                 <label class="form-label-custom" for="vchValue">Discount Value *</label>
-                <input type="number" id="vchValue" name="discount_value" class="form-control-custom">
+                <input type="number" id="vchValue" name="discount_value" class="form-control-custom" min="1" step="0.01" required>
             </div>
             <div>
                 <label class="form-label-custom" for="vchMax">Max Uses *</label>
@@ -409,7 +430,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                  the Staff Accounts page — no new component. Defaults to
                  global; the owner picks a branch only when they mean to. --}}
             @if($lockedBranchId === null)
-            <div>
+            <div class="vch-wide">
                 <label class="form-label-custom" for="vchBranch">Branch Scope</label>
                 <select id="vchBranch" name="branch_id" class="form-control-custom">
                     <option value="">All Branches (global)</option>
@@ -442,7 +463,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
 <div class="vch-card vch-list" data-testid="voucher-list-card">
     <div class="vch-card-head vch-list-head">
         <div>
-            <p class="vch-card-title">Vouchers <span class="vch-count" id="vchCount" data-testid="voucher-count">{{ $vouchers->total() }}</span></p>
+            <p class="vch-card-title"><span aria-hidden="true">🎟️</span> Vouchers <span class="vch-count" id="vchCount" data-testid="voucher-count">{{ $vouchers->total() }}</span></p>
             <p class="vch-card-sub">Usage, validity and spin wheel status</p>
         </div>
     </div>
@@ -476,7 +497,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
         </select>
         <select name="scope" class="form-control-custom vch-filter" aria-label="Filter by scope">
             <option value="">All scopes</option>
-            <option value="global" @selected($filters['scope'] === 'global')>Global</option>
+            <option value="global" @selected($filters['scope'] === 'global')>Global only</option>
             {{-- Viewing one branch, the other branches' scopes could only list
                  nothing, so they are hidden (and re-shown by the script when
                  the Viewing branch changes). --}}
@@ -587,10 +608,10 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
      in place; the stat cards, the create form and the search box itself are
      never touched, so nothing typed there is lost and the cursor stays put.
 
-     Per-row actions need no re-wiring: the three-dot menu is one delegated
-     document listener, Edit is an inline onclick calling a global, and the
-     toggle / issue / delete controls are ordinary <form>s inside the swapped
-     HTML (each with a fresh CSRF token).
+     Per-row actions need no re-wiring: the three-dot menu and the Wheel
+     switch are each one delegated document listener, Edit is an inline
+     onclick calling a global, and the activate / issue / delete controls are
+     ordinary <form>s inside the swapped HTML (each with a fresh CSRF token).
 
      Nothing here is required for the page to work: the form is a plain GET
      form with a noscript Search button, and every pager link is a real href. --}}
@@ -772,6 +793,101 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
     })();
 </script>
 
+{{-- The Wheel switch (Defect Report 3 part B).
+
+     ONE listener on the document, not one per row: the rows are replaced
+     whenever the list refreshes in the background, and anything bound to the
+     old rows would be lost with them. A switch the viewer may change carries
+     data-url (admin.vouchers.wheel); one they may not is disabled, has no
+     URL, and is refused by the server anyway.
+
+     The request SETS the state the switch now shows. Until the server answers,
+     both copies of that voucher's switch (table row and phone card) are held
+     still; then they show what the server saved. If the server refuses, the
+     switch goes back and the reason is shown — never a silent no-op. --}}
+<div class="vch-toast" id="vchToast" role="status" aria-live="polite"></div>
+<script>
+    (function () {
+        var toastEl = document.getElementById('vchToast');
+        var toastTimer = null;
+
+        function toast(message, isError) {
+            toastEl.textContent = message;
+            toastEl.classList.toggle('is-error', !!isError);
+            toastEl.setAttribute('role', isError ? 'alert' : 'status');
+            toastEl.classList.add('is-shown');
+            clearTimeout(toastTimer);
+            toastTimer = setTimeout(function () { toastEl.classList.remove('is-shown'); }, isError ? 6000 : 2400);
+        }
+
+        function each(selector, fn) { Array.prototype.forEach.call(document.querySelectorAll(selector), fn); }
+
+        function hold(id, on, busy) {
+            each('[data-vch-wheel="' + id + '"]', function (input) {
+                input.checked = on;
+                input.disabled = busy || !input.getAttribute('data-url');
+                var wrap = input.closest('.pc-switch');
+                if (wrap) { wrap.classList.toggle('is-busy', busy); }
+            });
+        }
+
+        function why(response, body) {
+            if (response.redirected) {
+                return /\/admin\/login/.test(response.url)
+                    ? 'Your session has ended. Please sign in again.'
+                    : "You don't have permission to change this voucher.";
+            }
+            if (response.status === 422) { return body.message || 'That change was not accepted.'; }
+            if (response.status === 403) { return body.message || 'Company-wide vouchers can only be managed by the owner.'; }
+            if (response.status === 404) { return 'This voucher is not in your branch, or it was deleted. Refresh the list.'; }
+            if (response.status === 419) { return 'Your session expired. Reloading the page…'; }
+            if (response.status === 429) { return 'Too many changes at once. Wait a moment and try again.'; }
+            return "Couldn't change the spin wheel setting (error " + response.status + '). Nothing was changed.';
+        }
+
+        document.addEventListener('change', function (e) {
+            var input = e.target.closest ? e.target.closest('[data-vch-wheel]') : null;
+            if (!input) { return; }
+
+            var id = input.getAttribute('data-vch-wheel');
+            var url = input.getAttribute('data-url');
+            var want = input.checked;
+            if (!url) { input.checked = !want; return; }
+
+            hold(id, want, true);
+
+            fetch(url, {
+                method: 'PUT',
+                headers: { 'Accept': 'application/json', 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+                credentials: 'same-origin',
+                body: JSON.stringify({ on_wheel: want })
+            })
+                .then(function (response) {
+                    return response.json().catch(function () { return {}; }).then(function (body) {
+                        if (!response.ok || response.redirected || typeof body.on_wheel !== 'boolean') {
+                            throw new Error(why(response, body));
+                        }
+                        return body;
+                    });
+                })
+                .then(function (body) {
+                    hold(id, body.on_wheel, false);
+                    each('[data-vch-wheel-note="' + id + '"]', function (note) {
+                        note.textContent = body.paused || '';
+                        note.hidden = !body.paused;
+                    });
+                    var count = document.querySelector('[data-stat="on_wheel"]');
+                    if (count && body.stats) { count.textContent = Number(body.stats.on_wheel).toLocaleString('en-US'); }
+                    toast(body.message, false);
+                })
+                .catch(function (err) {
+                    hold(id, !want, false);
+                    toast(err && err.message && err.name !== 'TypeError' ? err.message : "Couldn't reach the server. The spin wheel setting was not changed.", true);
+                });
+        });
+    })();
+</script>
+
 
 @if($canAuthorVouchers)
 {{-- Edit Voucher Modal --}}
@@ -827,12 +943,22 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                     <input type="number" name="points_required" id="editVoucherPointsRequired" class="form-control-custom" min="0">
                     <small style="font-size:0.7rem;color:#aaa;">0 = direct voucher (no points needed)</small>
                 </div>
+                {{-- "Active on spin wheel" is the wheel flag (on_wheel), the
+                     same one the list's Wheel switch sets. It used to post
+                     is_active, so unticking it switched the whole voucher off.
+                     Activate / Deactivate now lives in the ⋮ menu, and the
+                     hidden is_active below carries the voucher's current state
+                     through unchanged (the script disables it for an inactive
+                     voucher, because updateVoucher() reads "present" as on). --}}
                 <div>
                     <label class="form-label-custom">Wheel</label>
                     <div style="display:flex;align-items:center;gap:0.5rem;padding-top:0.4rem;">
-                        <input type="checkbox" name="is_active" id="editVoucherIsActive" value="1" style="width:16px;height:16px;">
-                        <label for="editVoucherIsActive" style="font-size:0.82rem;color:#555;margin:0;">Active on spin wheel</label>
+                        <input type="hidden" name="on_wheel" value="0">
+                        <input type="checkbox" name="on_wheel" id="editVoucherOnWheel" value="1" style="width:16px;height:16px;accent-color:#C0392B;">
+                        <label for="editVoucherOnWheel" style="font-size:0.82rem;color:#555;margin:0;">Active on spin wheel</label>
                     </div>
+                    <small style="font-size:0.7rem;color:#aaa;">Only vouchers with Points Required above 0 can be won.</small>
+                    <input type="hidden" name="is_active" value="1" id="editVoucherIsActive">
                 </div>
                 {{-- Owner only. A supervisor can only ever reach this modal for
                      a voucher already in their own branch, and updateVoucher()
@@ -872,7 +998,9 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
         document.getElementById('editVoucherValidFrom').value = btn.dataset.validFrom || '';
         document.getElementById('editVoucherExpiresAt').value = btn.dataset.expiresAt || '';
         document.getElementById('editVoucherPointsRequired').value = btn.dataset.pointsRequired || '0';
-        document.getElementById('editVoucherIsActive').checked = btn.dataset.isActive === '1';
+        document.getElementById('editVoucherOnWheel').checked = btn.dataset.onWheel === '1';
+        // Not submitted for an inactive voucher, so saving keeps it inactive.
+        document.getElementById('editVoucherIsActive').disabled = btn.dataset.isActive !== '1';
 
         // Absent for a supervisor — the field is not rendered for them.
         var branchField = document.getElementById('editVoucherBranch');

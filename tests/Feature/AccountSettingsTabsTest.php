@@ -173,8 +173,8 @@ class AccountSettingsTabsTest extends TestCase
     {
         $x = $this->xpath($this->page($this->customer(['email_verified_at' => null])));
 
-        // Overview: bonus banner, Streak Calendar, Reward Challenge, Reward Stamp Card.
-        foreach (['bonus-banner', 'streak-calendar', 'free-dessert-challenge', 'free-dessert-card'] as $id) {
+        // Overview: Streak Calendar, Bonus points card, Reward Stamp Card.
+        foreach (['bonus-banner', 'streak-calendar', 'free-dessert-card'] as $id) {
             $this->assertTrue($this->inPanel($x, 'overview', '//*[@data-testid="' . $id . '"]'), "$id belongs to Overview");
         }
         // Rewards: Account Benefits and Recent Bonuses.
@@ -244,13 +244,14 @@ class AccountSettingsTabsTest extends TestCase
         $this->assertSame(1, $x->query('//form[@action="' . $update . '"]')->length);
     }
 
-    public function test_the_save_and_delete_bar_is_in_the_form_but_in_no_panel_so_every_tab_shows_it(): void
+    public function test_the_save_and_delete_bar_is_in_the_form_but_in_no_panel_and_hidden_on_overview(): void
     {
         $x = $this->xpath($this->page($this->customer()));
 
         $bar = $this->one($x, '//*[@data-testid="account-action-bar"]');
-        $this->assertFalse($bar->hasAttribute('hidden'));
-        $this->assertSame(0, $x->query('ancestor::*[@role="tabpanel"]', $bar)->length, 'a hidden panel would hide the bar');
+        // Overview is the start tab: nothing to save or delete there.
+        $this->assertTrue($bar->hasAttribute('hidden'));
+        $this->assertSame(0, $x->query('ancestor::*[@role="tabpanel"]', $bar)->length, 'the tab script, not a hidden panel, decides the bar');
         $this->assertSame(1, $x->query('ancestor::form[@id="account-form"]', $bar)->length);
         $this->assertSame(1, $x->query('.//button[@type="submit"][contains(normalize-space(.), "Save Changes")]', $bar)->length);
         $this->assertSame(1, $x->query('.//button[@onclick="confirmDelete()"]', $bar)->length);
@@ -272,6 +273,95 @@ class AccountSettingsTabsTest extends TestCase
         $this->assertSame(0, $x->query('following-sibling::*', $bar)->length, 'something follows the action bar in the form');
         // And no padding is reserved for a floating bar.
         $this->assertStringNotContainsString('scroll-padding-bottom', $html);
+    }
+
+    public function test_the_save_and_delete_bar_shows_when_a_rejected_field_opens_profile_or_security(): void
+    {
+        foreach ([
+            'profile'  => ['email' => 'not-an-email'],
+            'security' => ['password' => 'abc', 'current_password' => 'Aa1!aaaaaa'],
+        ] as $tabName => $overrides) {
+            $tab = $this->startTab($this->submit($this->customer(), $overrides));
+
+            $this->assertSame($tabName, $tab['selected']);
+            $bar = $this->one($tab['x'], '//*[@data-testid="account-action-bar"]');
+            $this->assertFalse($bar->hasAttribute('hidden'), "the bar must show when $tabName opens");
+        }
+
+        // A saved page starts on Overview again, bar hidden until the script
+        // returns the customer to the tab they saved from.
+        $tab = $this->startTab($this->submit($this->customer(), ['name' => 'Renamed']));
+        $this->assertSame('overview', $tab['selected']);
+        $this->assertTrue($this->one($tab['x'], '//*[@data-testid="account-action-bar"]')->hasAttribute('hidden'));
+    }
+
+    public function test_the_tab_script_shows_the_bar_on_profile_and_security_only(): void
+    {
+        $html = $this->page($this->customer());
+
+        // One place decides it: select(), which every path (click, keys, hash,
+        // invalid field, saved-tab return, forced start tab) goes through.
+        $this->assertStringContainsString("var actionBar = document.getElementById('acct-action-bar');", $html);
+        $this->assertStringContainsString("actionBar.hidden = !(name === 'profile' || name === 'security');", $html);
+        $this->assertSame(1, substr_count($html, 'actionBar.hidden ='), 'a second place toggles the bar');
+        $this->assertStringContainsString('id="acct-action-bar"', $html);
+    }
+
+    // ══════════ Overview right column (tester's updated reference) ══════════
+
+    public function test_the_bonus_points_card_leads_the_right_column_above_the_stamp_card(): void
+    {
+        $user = $this->customer();
+        $user->forceFill(['bonus_points' => 12])->save();
+
+        $x = $this->xpath($this->page($user));
+
+        // Same column: the bonus card, then the stamp card; the calendar is its sibling.
+        $this->assertSame(1, $x->query('//*[@data-testid="bonus-banner"]/following-sibling::*[@data-testid="free-dessert-card"]')->length);
+        $this->assertSame(1, $x->query('//*[@data-testid="streak-calendar"]/following-sibling::*[.//*[@data-testid="bonus-banner"]]')->length);
+        $this->assertSame('12 pts', preg_replace('/\s+/', ' ', trim($this->one($x, '//*[@data-testid="bonus-points"]')->textContent)));
+        $this->assertSame(1, $x->query('//*[@data-testid="bonus-banner"]//a[@href="' . route('customer.game') . '"]')->length, 'Spin & Win link');
+        $this->assertStringContainsString('Count toward Spin &amp; Win vouchers.', $this->page($user));
+
+        // The Reward Challenge card is gone, and nothing is left above the grid.
+        $this->assertSame(0, $x->query('//*[@data-testid="free-dessert-challenge"]')->length);
+        $this->assertSame(0, $x->query('//*[@id="p-overview"]/*[@data-testid="bonus-banner"]')->length, 'the bonus card is in the grid, not a full-width banner above it');
+    }
+
+    public function test_the_bonus_card_shows_without_a_branch_and_without_the_stamp_card(): void
+    {
+        $user = $this->customer();
+
+        // No branch picked: the choose-a-branch prompt, and the balance is still there.
+        $x = $this->xpath($this->page($user, withBranch: false));
+        $this->assertTrue($this->inPanel($x, 'overview', '//*[@data-testid="bonus-banner"]'));
+        $this->assertTrue($this->inPanel($x, 'overview', '//*[@data-testid="streak-choose-branch"]'));
+        $this->assertSame(0, $x->query('//*[@data-testid="free-dessert-card"]')->length);
+
+        // Stamp card switched off: the bonus card is still there.
+        config(['loyalty.free_dessert_visit_days' => 0]);
+        $x = $this->xpath($this->page($user));
+        $this->assertTrue($this->inPanel($x, 'overview', '//*[@data-testid="bonus-banner"]'));
+        $this->assertSame(0, $x->query('//*[@data-testid="free-dessert-card"]')->length);
+    }
+
+    public function test_two_columns_from_761px_up_for_overview_and_rewards(): void
+    {
+        $html = $this->page($this->customer());
+
+        $this->assertStringContainsString('min-[761px]:col-span-7', $html);
+        $this->assertStringContainsString('min-[761px]:col-span-5', $html);
+        $this->assertStringNotContainsString('min-[1100px]', $html, 'the old 1100px stacking breakpoint is gone');
+    }
+
+    public function test_the_stamp_card_and_benefits_carry_the_updated_copy(): void
+    {
+        $html = $this->page($this->customer());
+
+        $this->assertStringContainsString('data-testid="free-dessert-rule"', $html);
+        $this->assertStringContainsString('Earn 1 stamp per day when you complete at least one order at Main Branch. Collect 7 stamps to receive', $html);
+        $this->assertStringContainsString('The days do not need to be consecutive.', $html);
+        $this->assertSame(2, substr_count($html, 'The days do not need to be consecutive.'), 'stamp card + Account Benefits');
     }
 
     public function test_the_header_shows_the_standard_nav_with_more_lit_for_every_order_type(): void

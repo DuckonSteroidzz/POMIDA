@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Account Settings | Peachy Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+:root{--red:#9d1c1c;--red-dark:#821616;--coral:#f4845f;--peach:#fff1e9;--cream:#fffaf7;--ink:#342b29;--muted:#8b7c77;--line:#f0e4de;--white:#fff;--green:#2f855a}
+*{box-sizing:border-box}
+body{margin:0;background:#fffaf8;color:var(--ink);font-family:Poppins,Arial,sans-serif;font-size:13px}
+.page{max-width:1180px;margin:0 auto;padding:30px 28px 44px}
+.page-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:22px}
+.eyebrow{font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--coral);text-transform:uppercase;margin:0 0 5px}
+h1{font-size:24px;line-height:1.25;margin:0;color:var(--red);font-weight:700}
+.subtitle{color:var(--muted);font-size:12px;margin:7px 0 0}
+.header-icon{width:46px;height:46px;border-radius:14px;background:var(--peach);color:var(--red);display:grid;place-items:center;font-size:20px;flex-shrink:0}
+.layout{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.78fr);gap:18px;align-items:start}
+.stack{display:grid;gap:18px}
+.card{background:var(--white);border:1px solid var(--line);border-radius:15px;padding:21px 22px;box-shadow:0 5px 18px rgba(110,48,30,.045)}
+.card-head{display:flex;align-items:flex-start;gap:12px;margin-bottom:18px}
+.section-icon{width:38px;height:38px;border-radius:11px;background:var(--peach);color:var(--red);display:grid;place-items:center;font-size:17px;flex-shrink:0}
+.card-head h2{font-size:14px;margin:1px 0 3px;font-weight:700;color:var(--ink)}
+.card-head p{font-size:11px;color:var(--muted);margin:0;line-height:1.6}
+.profile{display:flex;align-items:center;gap:14px;padding:15px;background:var(--cream);border:1px solid #f4e8e1;border-radius:12px;margin-bottom:17px}
+.avatar{width:48px;height:48px;border-radius:50%;background:var(--red);color:white;display:grid;place-items:center;font-size:17px;font-weight:700;flex-shrink:0}
+.profile-name{font-weight:700;font-size:13px;margin:0 0 3px}
+.profile-email{font-size:11px;color:var(--muted);margin:0}
+.role{margin-left:auto;background:#fff0e9;color:#bd5638;padding:5px 9px;border-radius:20px;font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:.4px;white-space:nowrap}
+.fields{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.field.full{grid-column:1/-1}
+label{display:block;font-size:10px;font-weight:600;color:#66534d;margin:0 0 6px}
+input{font:inherit}
+.input{width:100%;height:40px;border:1px solid #e9dcd6;border-radius:8px;padding:0 12px;color:var(--ink);background:#fff;outline:none;font-size:11px;transition:.2s}
+.input:focus{border-color:var(--coral);box-shadow:0 0 0 3px rgba(244,132,95,.12)}
+.input[readonly]{background:#f8f5f3;color:#746762}
+.helper{font-size:10px;color:#a0928c;margin:7px 0 0;line-height:1.6}
+.password-fields{display:grid;grid-template-columns:1fr;gap:13px}
+.password-wrap{position:relative}
+.password-wrap .input{padding-right:42px}
+.toggle{position:absolute;right:10px;top:50%;transform:translateY(-50%);border:0;background:transparent;color:#9b8982;cursor:pointer;font-size:15px;padding:5px}
+.actions{display:flex;justify-content:flex-end;gap:9px;margin-top:17px}
+.btn{border:0;border-radius:8px;padding:10px 16px;font:600 11px Poppins;cursor:pointer;transition:.2s}
+.btn-primary{background:var(--red);color:#fff}
+.btn-primary:hover{background:var(--red-dark)}
+.btn-light{background:#fff2eb;color:var(--red)}
+.btn-light:hover{background:#ffe5d8}
+.staff-link{margin-top:15px;padding:12px 13px;border:1px dashed #eac9ba;border-radius:10px;display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fffaf7}
+.staff-link strong{display:block;font-size:11px;margin-bottom:3px}
+.staff-link span{font-size:10px;color:var(--muted)}
+.staff-link a{color:var(--red);font-size:10px;font-weight:700;text-decoration:none;white-space:nowrap}
+.staff-link a:hover{text-decoration:underline}
+.gcash-grid{display:grid;grid-template-columns:150px 1fr;gap:17px;align-items:start}
+.qr-preview{border:1px solid var(--line);border-radius:11px;background:var(--cream);padding:12px;text-align:center}
+.qr-preview small{display:block;font-size:9px;font-weight:700;color:var(--muted);letter-spacing:.7px;margin-bottom:9px}
+.qr-placeholder{width:100%;aspect-ratio:1;background:#fff;border:1px dashed #e4cfc5;border-radius:8px;display:grid;place-items:center;color:#c8a99b;font-size:32px}
+.qr-placeholder img{width:100%;height:100%;object-fit:contain;border-radius:7px}
+.upload{border:1px dashed #e5cfc4;background:#fffaf7;border-radius:9px;padding:12px}
+.upload input{width:100%;font-size:10px;color:var(--muted)}
+.upload-note{font-size:9px;color:#a0928c;margin:7px 0 0}
+.status{display:inline-flex;align-items:center;gap:6px;color:var(--green);font-size:10px;font-weight:600;margin-top:10px}
+.status i{font-size:12px}
+.toast{display:none;margin-bottom:15px;padding:10px 12px;border-radius:8px;background:#edf8f0;color:#286b43;font-size:11px}
+@media(max-width:850px){.layout{grid-template-columns:1fr}.page{padding:24px 18px}.stack{gap:16px}}
+@media(max-width:540px){.page{padding:20px 13px}.card{padding:17px}.fields{grid-template-columns:1fr}.field.full{grid-column:auto}.gcash-grid{grid-template-columns:1fr}.qr-preview{max-width:190px}.page-heading{margin-bottom:17px}h1{font-size:21px}.staff-link{align-items:flex-start;flex-direction:column}.actions{flex-wrap:wrap}}
+</style>
+</head>
+<body>
+<main class="page">
+  <header class="page-heading">
+    <div>
+      <p class="eyebrow">Administration</p>
+      <h1>Account Settings</h1>
+      <p class="subtitle">Manage your account security and store payment details.</p>
+    </div>
+    <div class="header-icon"><i class="bi bi-person-gear"></i></div>
+  </header>
+
+  <div class="toast" id="toast"><i class="bi bi-check-circle"></i> <span id="toastText">Changes saved.</span></div>
+
+  <div class="layout">
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <div class="section-icon"><i class="bi bi-person-badge"></i></div>
+          <div><h2>Signed-in Account</h2><p>Your account details and assigned access level.</p></div>
+        </div>
+        <div class="profile">
+          <div class="avatar" id="avatar">TA</div>
+          <div><p class="profile-name" id="profileName">Test Admin</p><p class="profile-email" id="profileEmail">testadmin@peachycafe.com</p></div>
+          <span class="role">Administrator</span>
+        </div>
+        <div class="fields">
+          <div class="field"><label for="name">Name</label><input class="input" id="name" value="Test Admin" readonly></div>
+          <div class="field"><label for="email">Email Address</label><input class="input" id="email" value="testadmin@peachycafe.com" readonly></div>
+          <div class="field full"><label for="access">Access Level</label><input class="input" id="access" value="Administrator" readonly></div>
+        </div>
+        <p class="helper"><i class="bi bi-info-circle"></i> These details are managed by an administrator and cannot be edited here.</p>
+        <div class="staff-link">
+          <div><strong>Managing staff accounts?</strong><span>Add users, update access levels, or activate and deactivate accounts.</span></div>
+          <a href="#" onclick="showToast('Connect this link to your Staff Accounts page.');return false;">Go to Staff Accounts <i class="bi bi-arrow-up-right"></i></a>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-head">
+          <div class="section-icon"><i class="bi bi-shield-lock"></i></div>
+          <div><h2>Change Password</h2><p>Update the password for your signed-in account.</p></div>
+        </div>
+        <form id="passwordForm">
+          <div class="password-fields">
+            <div><label for="currentPassword">Current Password</label><div class="password-wrap"><input class="input" id="currentPassword" type="password" placeholder="Enter current password" required><button class="toggle" type="button" data-target="currentPassword" aria-label="Show password"><i class="bi bi-eye"></i></button></div></div>
+            <div><label for="newPassword">New Password</label><div class="password-wrap"><input class="input" id="newPassword" type="password" placeholder="Enter new password" minlength="8" maxlength="20" required><button class="toggle" type="button" data-target="newPassword" aria-label="Show password"><i class="bi bi-eye"></i></button></div></div>
+            <div><label for="confirmPassword">Confirm New Password</label><div class="password-wrap"><input class="input" id="confirmPassword" type="password" placeholder="Re-enter new password" minlength="8" maxlength="20" required><button class="toggle" type="button" data-target="confirmPassword" aria-label="Show password"><i class="bi bi-eye"></i></button></div></div>
+          </div>
+          <p class="helper">Use a strong password that meets your system's password requirements. Your new password must be different from your current password.</p>
+          <div class="actions"><button type="reset" class="btn btn-light">Clear</button><button type="submit" class="btn btn-primary">Update Password <i class="bi bi-arrow-right"></i></button></div>
+        </form>
+      </section>
+    </div>
+
+    <div class="stack">
+      <section class="card">
+        <div class="card-head">
+          <div class="section-icon"><i class="bi bi-qr-code"></i></div>
+          <div><h2>GCash Payment Settings</h2><p>Manage the QR code and contact number shown to customers paying through GCash.</p></div>
+        </div>
+        <div class="gcash-grid">
+          <div class="qr-preview">
+            <small>CURRENT QR CODE</small>
+            <div class="qr-placeholder" id="qrPreview"><i class="bi bi-qr-code"></i></div>
+            <span class="status"><i class="bi bi-check-circle-fill"></i> Preview</span>
+          </div>
+          <div>
+            <label for="qrUpload">Upload or Change GCash QR</label>
+            <div class="upload"><input type="file" id="qrUpload" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"><p class="upload-note">JPG, JPEG, PNG, or WEBP · Maximum 5 MB</p></div>
+            <div style="margin-top:17px"><label for="gcashPhone">GCash Phone Number</label><input class="input" id="gcashPhone" type="tel" placeholder="e.g. 09XX XXX XXXX" maxlength="20"><p class="helper">Displayed below the GCash QR code during checkout.</p></div>
+            <div class="actions"><button type="button" class="btn btn-primary" onclick="showToast('Preview only — connect this form to your GCash settings route to save changes.')"><i class="bi bi-cloud-arrow-up"></i> Save GCash Settings</button></div>
+          </div>
+        </div>
+      </section>
+      <section class="card" style="background:var(--cream)">
+        <div class="card-head" style="margin-bottom:9px">
+          <div class="section-icon"><i class="bi bi-lightbulb"></i></div>
+          <div><h2>Account Settings at a Glance</h2><p>Keep this page focused on your own account and store payment configuration. Staff management stays in the Staff Accounts tab.</p></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</main>
+<script>
+document.querySelectorAll('.toggle').forEach(button=>{
+  button.addEventListener('click',()=>{
+    const input=document.getElementById(button.dataset.target);
+    const show=input.type==='password';
+    input.type=show?'text':'password';
+    button.innerHTML=show?'<i class="bi bi-eye-slash"></i>':'<i class="bi bi-eye"></i>';
+    button.setAttribute('aria-label',show?'Hide password':'Show password');
+  });
+});
+function showToast(message){
+  const toast=document.getElementById('toast');
+  document.getElementById('toastText').textContent=message;
+  toast.style.display='block';
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+document.getElementById('passwordForm').addEventListener('submit',e=>{
+  e.preventDefault();
+  const current=document.getElementById('currentPassword').value;
+  const next=document.getElementById('newPassword').value;
+  const confirm=document.getElementById('confirmPassword').value;
+  if(next===current){showToast('Your new password must be different from your current password.');return;}
+  if(next!==confirm){showToast('The new password and confirmation do not match.');return;}
+  showToast('Preview only — connect this form to your password update route to save changes.');
+});
+document.getElementById('qrUpload').addEventListener('change',e=>{
+  const file=e.target.files[0]; if(!file)return;
+  if(file.size>5*1024*1024){showToast('The selected image exceeds the 5 MB limit.');e.target.value='';return;}
+  const reader=new FileReader();
+  reader.onload=event=>{document.getElementById('qrPreview').innerHTML='<img alt="Selected GCash QR preview" src="'+event.target.result+'">';};
+  reader.readAsDataURL(file);
+});
+</script>
+</body>
+</html>

@@ -237,18 +237,28 @@ class DeadCodeRemovalAndNavConsistencyTest extends TestCase
     public function test_admin_users_page_keeps_its_mobile_overflow_guards(): void
     {
         $src = file_get_contents(base_path('resources/views/admin/users.blade.php'));
+        // The table moved into the results partial in the Oct 2026 redesign
+        // (it is swapped on its own for the background refresh).
+        $table = file_get_contents(base_path('resources/views/admin/partials/staff-list-results.blade.php'));
 
-        // The "All Staff" table's own horizontal-scroll wrapper (added earlier).
-        $this->assertMatchesRegularExpression('/overflow-x:\s*auto/', $src, 'the staff table scroll wrapper must stay');
+        // The accounts table's own horizontal-scroll wrapper (added earlier).
+        $this->assertMatchesRegularExpression('/overflow-x:\s*auto/', $table, 'the staff table scroll wrapper must stay');
 
         // The page-level two-column grid must collapse to ONE shrinkable track
-        // on a phone — a bare "1fr" is not shrinkable and reintroduces the
-        // +341px horizontal overflow this pass fixed.
-        $this->assertStringContainsString('.staff-cols', $src);
+        // when there is no room — a bare "1fr" is not shrinkable and
+        // reintroduces the +341px horizontal overflow this pass fixed. (Renamed
+        // .staff-cols -> .su-cols; it now collapses at 1100px, not 820px, as the
+        // list card wants more width than the create card.)
+        $this->assertStringContainsString('.su-cols', $src);
         $this->assertMatchesRegularExpression(
-            '/@media[^{]*\(max-width:\s*820px\)\s*\{[^}]*\.staff-cols\s*\{\s*grid-template-columns:\s*minmax\(0/s',
+            '/@media[^{]*\(max-width:\s*1100px\)\s*\{[^}]*\.su-cols\s*\{\s*grid-template-columns:\s*minmax\(0/s',
             $src,
-            'the .staff-cols grid must collapse to minmax(0, 1fr) on narrow screens'
+            'the .su-cols grid must collapse to minmax(0, 1fr) on narrow screens'
+        );
+        $this->assertMatchesRegularExpression(
+            '/\.su-cols\s*\{[^}]*grid-template-columns:\s*minmax\(0,\s*4fr\)\s*minmax\(0,\s*7fr\)/s',
+            $src,
+            'the desktop tracks must be minmax(0, …) too'
         );
     }
 

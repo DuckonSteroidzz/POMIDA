@@ -462,7 +462,7 @@ class FreeDessertRewardTest extends TestCase
 
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')
             ->assertOk()
-            ->assertSee('Day 6 of 7');
+            ->assertSee('6 / 7 stamps');
     }
 
     public function test_six_stamps_earn_nothing_and_the_seventh_earns_exactly_one(): void
@@ -648,10 +648,10 @@ class FreeDessertRewardTest extends TestCase
         $this->assertStringContainsString('a reward for every 3 stamps (1 stamp per day you completed an order).', (string) Loyalty::guestTeaser());
 
         $account = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()->getContent();
-        $this->assertStringContainsString('Reward ready', $account);
-        $this->assertStringContainsString('Collect 3 stamps for a reward: ' . $what . '. 1 stamp per day you completed an order at Main Branch.', $account);
+        $this->assertStringContainsString('1 reward ready to use', $account);
+        $this->assertStringContainsString('Earn 1 stamp per day when you complete at least one order at Main Branch. Collect 3 stamps to receive a ' . $what . '. The days do not need to be consecutive.', $account);
         $this->assertStringContainsString('0 / 3 stamps', $account);
-        $this->assertStringContainsString('A reward (' . $what . ') every 3 stamps.', $account);
+        $this->assertStringContainsString('Collect 3 stamps to receive a ' . $what . '.', $account);
         $this->assertSame(3, substr_count($account, 'data-stamp="'));
         $this->assertStringNotContainsString('7 stamps', $account);
 
@@ -683,12 +683,9 @@ class FreeDessertRewardTest extends TestCase
         $this->assertStringContainsString('a reward for every 10 stamps', (string) Loyalty::guestTeaser());
 
         $account = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()->getContent();
-        $this->assertStringContainsString('Day 7 of 10', $account);
-        $this->assertStringContainsString('aria-valuemax="10" aria-valuenow="7"', $account);
-        $this->assertStringContainsString('3 more days to a reward.', $account);
         $this->assertStringContainsString('7 / 10 stamps', $account);
         $this->assertStringContainsString('3 more stamps to your next reward.', $account);
-        $this->assertStringContainsString('Collect 10 stamps for a reward', $account);
+        $this->assertStringContainsString('Collect 10 stamps to receive', $account);
         $this->assertSame(7, substr_count($account, 'data-stamp="filled"'));
         $this->assertSame(3, substr_count($account, 'data-stamp="empty"'));
         // 8-12 stamps sit in two rows.
@@ -714,7 +711,6 @@ class FreeDessertRewardTest extends TestCase
         $this->assertStringContainsString('data-testid="free-dessert-stamp-bar"', $account);
         $this->assertStringNotContainsString('data-testid="free-dessert-stamp-grid"', $account);
         $this->assertStringContainsString('4 / 13 stamps', $account);
-        $this->assertStringContainsString('Day 4 of 13', $account);
     }
 
     // ══════════ spending, with the code ══════════
@@ -1253,7 +1249,7 @@ class FreeDessertRewardTest extends TestCase
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')
             ->assertOk()
             ->assertSee('data-testid="benefit-free-dessert"', false)
-            ->assertSee('A reward (Free ' . $this->defaultRewardItem->name . ') every 7 stamps.')
+            ->assertSee('Collect 7 stamps to receive a Free ' . $this->defaultRewardItem->name . '. The days do not need to be consecutive.')
             ->assertDontSee('in a row. Once per streak.');
 
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/help')
@@ -1267,7 +1263,6 @@ class FreeDessertRewardTest extends TestCase
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')
             ->assertOk()
             ->assertDontSee('data-testid="free-dessert-card"', false)
-            ->assertDontSee('data-testid="free-dessert-challenge"', false)
             ->assertDontSee('data-testid="benefit-free-dessert"', false);
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/vouchers')
             ->assertOk()
@@ -1277,7 +1272,7 @@ class FreeDessertRewardTest extends TestCase
             ->assertDontSee('data-testid="help-free-dessert"', false);
     }
 
-    public function test_the_account_page_shows_the_challenge_bar_under_the_calendar_then_the_stamp_card(): void
+    public function test_the_account_page_shows_the_bonus_card_then_the_stamp_card_beside_the_calendar(): void
     {
         $user = $this->customer();
 
@@ -1288,26 +1283,24 @@ class FreeDessertRewardTest extends TestCase
 
         $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()->getContent();
 
-        // Calendar, then the challenge bar, then the stamp card, then benefits.
+        // Calendar, then the bonus-points card, then the stamp card, then benefits.
         $calendar = strpos($html, 'id="streak"');
-        $bar = strpos($html, 'data-testid="free-dessert-challenge"');
+        $bar = strpos($html, 'data-testid="bonus-banner"');
         $card = strpos($html, 'data-testid="free-dessert-card"');
         $benefits = strpos($html, 'id="benefits"');
         $this->assertNotFalse($calendar);
         $this->assertTrue($calendar < $bar && $bar < $card && $card < $benefits, 'cards are out of order');
 
-        // The bar: "Day D of X", filled to D, with the reward icon at its end.
-        $this->assertStringContainsString('Day 3 of 7', $html);
-        $this->assertStringContainsString('aria-valuemax="7" aria-valuenow="3"', $html);
-        $this->assertStringContainsString('style="width: 43%"', $html);
-        $this->assertStringContainsString('4 more days to a reward.', $html);
-        $this->assertStringNotContainsString('data-testid="free-dessert-ready"', $html);
+        // The Reward Challenge card ("Day D of X") is gone from this page.
+        $this->assertStringNotContainsString('data-testid="free-dessert-challenge"', $html);
+        $this->assertStringNotContainsString('Reward Challenge', $html);
+        $this->assertStringNotContainsString('Day 3 of 7', $html);
 
         // The stamp card: 3 of 7 stamped, the copy that names the rule and the reward.
         $this->assertStringContainsString('3 / 7 stamps', $html);
         $this->assertSame(3, substr_count($html, 'data-stamp="filled"'));
         $this->assertSame(4, substr_count($html, 'data-stamp="empty"'));
-        $this->assertStringContainsString('Collect 7 stamps for a reward: Free ' . $this->defaultRewardItem->name . '. 1 stamp per day you completed an order at Main Branch.', $html);
+        $this->assertStringContainsString('Earn 1 stamp per day when you complete at least one order at Main Branch. Collect 7 stamps to receive a Free ' . $this->defaultRewardItem->name . '. The days do not need to be consecutive.', $html);
         $this->assertStringContainsString('4 more stamps to your next reward.', $html);
 
         // The old consecutive-days wording is gone.
@@ -1315,17 +1308,16 @@ class FreeDessertRewardTest extends TestCase
         $this->assertStringNotContainsString('days in a row. Once per streak', $html);
     }
 
-    public function test_a_new_customer_sees_day_0_and_how_to_get_the_first_stamp(): void
+    public function test_a_new_customer_sees_0_stamps_and_how_to_get_the_first_one(): void
     {
         $html = $this->actingAs($this->customer(), 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()->getContent();
 
-        $this->assertStringContainsString('Day 0 of 7', $html);
         $this->assertStringContainsString('0 / 7 stamps', $html);
         $this->assertStringContainsString('Complete an order to collect your first stamp.', $html);
         $this->assertSame(7, substr_count($html, 'data-stamp="empty"'));
     }
 
-    public function test_reward_ready_replaces_the_challenge_bar_and_links_to_the_code(): void
+    public function test_a_ready_reward_shows_on_the_stamp_card_and_links_to_the_code(): void
     {
         $user = $this->customer();
 
@@ -1334,10 +1326,8 @@ class FreeDessertRewardTest extends TestCase
 
         $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')->assertOk()->getContent();
 
-        $this->assertStringContainsString('data-testid="free-dessert-ready"', $html);
-        $this->assertStringContainsString('Reward ready', $html);
-        $this->assertStringNotContainsString('data-testid="free-dessert-day"', $html);
-        $this->assertStringContainsString('Use it by Nov 14, 2026.', $html);
+        $this->assertStringContainsString('data-testid="free-dessert-available"', $html);
+        $this->assertStringNotContainsString('data-testid="free-dessert-ready"', $html);
         $this->assertStringContainsString(route('customer.vouchers') . '#rewards', $html);
         // The full card was handed in: the stamp card starts a new one.
         $this->assertStringContainsString('0 / 7 stamps', $html);
@@ -1347,16 +1337,16 @@ class FreeDessertRewardTest extends TestCase
         $this->reward($user, 2);
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')
             ->assertOk()
-            ->assertSee('2 rewards ready');
+            ->assertSee('2 rewards ready to use');
 
-        // Once spent (and a full card not yet reached), the bar is back.
+        // Once spent (and a full card not yet reached), the notice is gone.
         foreach ($this->rewardsOf($user) as $reward) {
             $reward->forceFill(['status' => FreeDessertReward::STATUS_USED, 'used_at' => now()])->save();
         }
         $this->actingAs($user, 'customer')->withSession(['branch_id' => 1])->get('/customer/account')
             ->assertOk()
-            ->assertDontSee('data-testid="free-dessert-ready"', false)
-            ->assertSee('Day 0 of 7');
+            ->assertDontSee('data-testid="free-dessert-available"', false)
+            ->assertSee('0 / 7 stamps');
     }
 
     public function test_vouchers_and_rewards_lists_each_reward_with_its_code_status_and_history(): void
@@ -1397,8 +1387,6 @@ class FreeDessertRewardTest extends TestCase
             ->assertSee('See code')
             ->assertDontSee($available->displayCode());
 
-        // The challenge bar belongs to the Account page only.
-        $this->assertStringNotContainsString('data-testid="free-dessert-challenge"', $html);
     }
 
     public function test_staff_see_the_loyalty_reward_label_on_the_board_receipts_completed_list_print_and_csv(): void

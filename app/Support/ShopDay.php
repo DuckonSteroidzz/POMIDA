@@ -218,6 +218,44 @@ final class ShopDay
         });
     }
 
+    /**
+     * Whether a start has been reached — the mirror of hasExpired().
+     *
+     * A start at exactly midnight is a DATE (the admin form stores it that
+     * way) and begins at 00:00 Manila on that date; read as an instant under
+     * APP_TIMEZONE=UTC it would begin at 8:00 AM Manila. Any other value is a
+     * precise instant and begins at that instant. No start means no limit.
+     */
+    public static function hasStartedAt(?DateTimeInterface $startsAt): bool
+    {
+        if ($startsAt === null) {
+            return true;
+        }
+
+        if (self::isDateOnly($startsAt)) {
+            return self::todayString() >= $startsAt->format('Y-m-d');
+        }
+
+        return ! Carbon::instance($startsAt)->isFuture();
+    }
+
+    /**
+     * The SQL twin of hasStartedAt(): keep rows whose $column is empty or
+     * already started by the same rule. Grouped so it can sit next to other
+     * where clauses safely.
+     */
+    public static function whereStarted(BuilderContract $query, string $column): BuilderContract
+    {
+        return $query->where(function ($q) use ($column) {
+            $q->whereNull($column)
+                ->orWhere($column, '<=', now())
+                ->orWhere(function ($q) use ($column) {
+                    $q->whereTime($column, '=', '00:00:00')
+                        ->where($column, '<=', self::todayString() . ' 00:00:00');
+                });
+        });
+    }
+
     private static function isDateOnly(DateTimeInterface $value): bool
     {
         return $value->format('H:i:s') === '00:00:00';

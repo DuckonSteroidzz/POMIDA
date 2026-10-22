@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peachy User Manual – October 21, 2026 Update</title>
+<style>
+  :root {
+    --bg: #FFF4EC;
+    --card: #FFFFFF;
+    --line: #F0E2D5;
+    --ink: #4A2F2A;
+    --muted: #8A6A61;
+    --head: #8B1A1A;
+    --accent: #C0392B;
+    --soft: #FFE9DB;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+    font-size: 17px;
+    line-height: 1.65;
+  }
+  .wrap { max-width: 760px; margin: 0 auto; padding: 28px 16px 64px; }
+  h1, h2, h3 { font-family: Georgia, "Times New Roman", serif; color: var(--head); line-height: 1.25; }
+  h1 { font-size: 2rem; margin: 0 0 0.4rem; }
+  h2 { font-size: 1.55rem; margin: 3rem 0 0.4rem; padding-bottom: 0.4rem; border-bottom: 2px solid var(--line); }
+  h3 { font-size: 1.15rem; margin: 2rem 0 0.2rem; }
+  p { margin: 0.7rem 0; }
+  .date { color: var(--muted); font-size: 0.95rem; margin: 0 0 1.2rem; }
+  .intro { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 4px 20px; }
+  nav.toc { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px 20px 16px; margin: 1.4rem 0 0; }
+  nav.toc p { margin: 0 0 0.3rem; font-weight: 700; color: var(--head); }
+  nav.toc ol { margin: 0; padding-left: 1.2rem; }
+  nav.toc ol ol { margin: 0.1rem 0 0.5rem; padding-left: 1.1rem; font-size: 0.93rem; }
+  nav.toc li { margin: 0.12rem 0; }
+  a { color: var(--accent); }
+  ol.steps { margin: 0.6rem 0; padding-left: 1.4rem; }
+  ol.steps li { margin: 0.3rem 0; }
+  .note { background: var(--soft); border-left: 4px solid var(--accent); border-radius: 6px; padding: 2px 14px; margin: 1rem 0; font-size: 0.97rem; }
+  .role-note { color: var(--muted); font-size: 0.95rem; margin-top: 0.2rem; }
+  em.ui { font-style: normal; font-weight: 600; color: var(--head); }
+  footer { margin-top: 3rem; color: var(--muted); font-size: 0.88rem; border-top: 1px solid var(--line); padding-top: 1rem; }
+
+  @media (max-width: 480px) {
+    body { font-size: 16px; }
+    h1 { font-size: 1.6rem; }
+    h2 { font-size: 1.35rem; }
+  }
+
+  @media print {
+    @page { margin: 18mm 16mm; }
+    :root { --bg: #fff; --card: #fff; --soft: #fff; }
+    body { background: #fff !important; color: #000; font-size: 11.5pt; line-height: 1.5; }
+    .wrap { max-width: none; padding: 0; }
+    .intro, nav.toc { border: 1px solid #999; border-radius: 0; background: none; }
+    .note { background: none; border: 1px solid #999; border-left: 4px solid #8B1A1A; }
+    h2.role { page-break-before: always; break-before: page; margin-top: 0; }
+    h1 + .date + .intro { page-break-before: avoid; }
+    h2, h3 { page-break-after: avoid; break-after: avoid; }
+    p, li, .note { orphans: 3; widows: 3; }
+    ol.steps, .note { page-break-inside: avoid; break-inside: avoid; }
+    a { color: #000; text-decoration: none; }
+    nav.toc a { text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Peachy User Manual</h1>
+<p class="date">What changed on October 21, 2026</p>
+
+<div class="intro">
+  <p>This manual covers only the changes made on October 21, 2026. Nothing else in Peachy was changed that day, so if a screen is not mentioned here, it works the way it did before. Several admin screens were tidied up and given new controls: the Vouchers and Ads Management tabs, the owner's Account Settings page, the Viewing bar on Menu Options, and the Staff Accounts page. Customers also see a new look on the Overview tab of My Account.</p>
+  <p>The manual is split by role, in this order: Customer, Owner/Admin, Supervisor and Staff. Each part describes only what that role can actually do. Where a screen is the same for several roles, the later parts say only what is different. "Owner" and "Admin" mean the same account.</p>
+</div>
+
+<nav class="toc" aria-label="Contents">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#customer">Customer</a>
+      <ol>
+        <li><a href="#c-bar">Delete Account and Save Changes</a></li>
+        <li><a href="#c-bonus">The Bonus points card</a></li>
+        <li><a href="#c-stamp">The stamp card wording</a></li>
+      </ol>
+    </li>
+    <li><a href="#owner">Owner / Admin</a>
+      <ol>
+        <li><a href="#o-viewing">The Viewing bar</a></li>
+        <li><a href="#o-vouchers">Promotions &amp; Rewards: Vouchers</a></li>
+        <li><a href="#o-ads">Promotions &amp; Rewards: Ads Management</a></li>
+        <li><a href="#o-account">Account Settings</a></li>
+        <li><a href="#o-options">Menu Options</a></li>
+        <li><a href="#o-staff">Staff Accounts</a></li>
+      </ol>
+    </li>
+    <li><a href="#supervisor">Supervisor</a>
+      <ol>
+        <li><a href="#s-viewing">The Viewing bar</a></li>
+        <li><a href="#s-vouchers">Vouchers</a></li>
+        <li><a href="#s-ads">Ads Management</a></li>
+        <li><a href="#s-options">Menu Options</a></li>
+        <li><a href="#s-staff">Staff Accounts</a></li>
+        <li><a href="#s-account">Account Settings</a></li>
+      </ol>
+    </li>
+    <li><a href="#staff">Staff</a>
+      <ol>
+        <li><a href="#t-vouchers">Vouchers</a></li>
+        <li><a href="#t-none">What Staff cannot open</a></li>
+      </ol>
+    </li>
+  </ol>
+</nav>
+
+
+<!-- ============================ CUSTOMER ============================ -->
+<h2 class="role" id="customer">Customer</h2>
+<p class="role-note">These changes are on the My Account page, which you reach from <em class="ui">More</em> &rarr; <em class="ui">My Account</em>. The page is for customers who have signed in with an account.</p>
+
+<h3 id="c-bar">Delete Account and Save Changes</h3>
+<p>My Account has four tabs: Overview, Rewards, Profile and Security. The bar holding the <em class="ui">Delete Account</em> and <em class="ui">Save Changes</em> buttons now appears only on the Profile and Security tabs, because those are the only tabs with anything to save. On Overview and Rewards the bar is hidden, so you can no longer press either button by accident while you are just looking at your points.</p>
+<p>To change your details, open the Profile or Security tab, edit what you need, then press <em class="ui">Save Changes</em>. <em class="ui">Delete Account</em> asks you to confirm first, and deleting an account cannot be undone.</p>
+
+<h3 id="c-bonus">The Bonus points card</h3>
+<p>On the Overview tab, the right-hand side now starts with a Bonus points card. It shows your bonus points as a large number, with a short line saying they count toward Spin &amp; Win vouchers. If the Spin &amp; Win game is switched on, the card also has a <em class="ui">Go to Spin &amp; Win</em> button.</p>
+<p>This card took the place of the old Reward Challenge card, which has been removed. The card is always shown, even if you have not picked a branch yet. On a phone, the Overview cards stack in a single column, and the Spin &amp; Win button moves under the number.</p>
+
+<h3 id="c-stamp">The stamp card wording</h3>
+<p>Under the Bonus points card is the Reward Stamp Card, which appears when the shop has the stamp card switched on. Its explanation now reads, for example: "Earn 1 stamp per day when you complete at least one order at Main Branch. Collect 7 stamps to receive a Free Chocolate Cake. The days do not need to be consecutive." The branch name, the number of stamps and the reward come from the branch you are ordering from. If the reward is a free item, the sentence reads like "to receive a Free Chocolate Cake". If it is a discount, it reads like "to receive a reward: 20% off".</p>
+<p>In practice this means two things. You earn one stamp for each day you finish an order, no matter how many orders you finish that day. And you do not lose your progress if you skip a day. The same sentence is shown in the Account benefits list, in the "Stamp card reward" entry.</p>
+
+
+<!-- ============================ OWNER ============================ -->
+<h2 class="role" id="owner">Owner / Admin</h2>
+<p class="role-note">The owner can open every screen described in this part. Where Supervisor and Staff differ, you will find it in their parts.</p>
+
+<h3 id="o-viewing">The Viewing bar</h3>
+<p>At the top of many admin pages there is a bar that says <em class="ui">Viewing:</em> followed by a branch name and a drop-down. As of this update, the bar works on Vouchers, Ads Management, Menu Options and Staff Accounts, as well as the pages where it already worked. Pick <em class="ui">All Branches</em> to see everything, or pick one branch to narrow the page to it. Closed branches are still in the list and are marked "(Closed)".</p>
+<p>Your choice is remembered while you are signed in. If you choose Branch 1 on Vouchers and then open Ads Management, you are still viewing Branch 1. On Vouchers, Ads Management and Staff Accounts, the list updates in the background without reloading the page. On Menu Options, the page reloads on the branch you chose.</p>
+
+<h3 id="o-vouchers">Promotions &amp; Rewards: Vouchers</h3>
+<p>Open <em class="ui">Promotions &amp; Rewards</em> in the sidebar. Across the top is a tab bar with Vouchers, Streak Rewards and Ads Management. The Vouchers tab starts with four count cards: Total vouchers, Active now, On spin wheel and Expired. These follow the Viewing bar. When you view one branch, the numbers include that branch's vouchers plus the company-wide ones.</p>
+<p>Below the cards is the <em class="ui">Spin Wheel</em> card, which only you can see. It has one ON/OFF switch that turns the Spin &amp; Win game on or off for all customers. After that comes the <em class="ui">Create New Voucher</em> form. It asks for a code, a discount type (fixed peso amount or percent), the discount value, max uses, an optional description, an optional minimum order, points required, a start date, an expiry date and a branch scope. Leave the branch scope on "All Branches (global)" for a company-wide voucher, or choose one branch. Points required at 0 means a direct voucher that needs no points. Press <em class="ui">Create Voucher</em> to save, or <em class="ui">Clear</em> to empty the form.</p>
+<p>The voucher list has a search box (code or description), a status filter (Active, Inactive, Expired, Used up) and a scope filter (Global only, or one branch). They update the list as you type or choose, and a <em class="ui">Clear filters</em> link appears when any filter is on. The list is shown 25 vouchers to a page. On a phone, each voucher becomes a card instead of a table row.</p>
+<p>Every switch in this area now has the words ON or OFF written inside it, so you do not have to guess from the colour. The <em class="ui">Wheel</em> column has one such switch per voucher. It decides whether that voucher can be won on the spin wheel. It saves the moment you click it, and the "On spin wheel" count at the top updates. A voucher with 0 points cannot be put on the wheel, because a 0-point voucher is a public code and not a prize. Its switch is greyed out and reads OFF; hover over it to see the reason, and set a Points Required value above 0 in the voucher's Edit form to unlock it. An expired, inactive or used-up voucher is different. Its switch can still be turned on, but the wheel will not offer it. A small note under the switch, such as "Paused: expired", tells you why.</p>
+<p>The <em class="ui">Status</em> column now shows just a badge: Active, Inactive, Expired or Used up. Everything you can do to a voucher is in the <em class="ui">&#8942;</em> menu at the end of its row:</p>
+<ol class="steps">
+  <li><em class="ui">Activate Voucher</em> or <em class="ui">Deactivate Voucher</em> turns the voucher on or off.</li>
+  <li><em class="ui">Issue Voucher</em> makes a single-use code for a customer at the counter. It asks you to confirm and then shows the new code in a pop-up with a Copy Code button. Each code counts against the voucher's usage limit. The item is greyed out, with the reason as a tooltip, if the voucher is inactive, expired, used up, or not open yet.</li>
+  <li><em class="ui">Edit Voucher</em> opens the edit form. It includes an "Active on spin wheel" tick box, which is the same setting as the Wheel switch.</li>
+  <li><em class="ui">Delete Voucher</em> asks you to confirm. Only the owner has this item.</li>
+</ol>
+
+<h3 id="o-ads">Promotions &amp; Rewards: Ads Management</h3>
+<p>The Ads Management tab has been redone. At the top are four cards: Total ads, Live now, Game Page and Menu Page. "Live now" counts exactly the ads customers can see at this moment. The cards follow the Viewing bar.</p>
+<p>To create an ad, fill in the <em class="ui">Create Advertisement</em> card and press <em class="ui">Publish Ad</em>. The title is required. Everything else is optional: a link (it must be a full web address), a description of up to 500 characters, and an image. The image can be JPG, PNG or WebP, up to 2 MB, and you see a preview as soon as you pick it. Choose a placement: <em class="ui">Game Page</em>, or <em class="ui">Menu Page</em>, which shows the ad as a pop-up once per visit. Then set the dates and the branch scope. Leave the start date empty to start right away, and leave the end date empty for an ad that never ends. For branch scope, "All Branches (global)" gives you a company-wide campaign, or you can choose a single branch. A new ad is switched on from the start.</p>
+<p>The dates work in whole days, in the shop's time (Manila time). An ad is live from 12:00 AM on its start date until 11:59 PM on its end date. So an ad ending on the 25th is still showing at 11:30 PM on the 25th, and gone at midnight.</p>
+<p>The advertisements list has a search box for the title, a placement filter and a status filter. The statuses are Live, Inactive, Expired and Scheduled. An ad you have switched off is always Inactive, whatever its dates say. A switched-on ad past its end date is Expired, one whose start date is still ahead is Scheduled, and the rest are Live. The <em class="ui">Active</em> column has an ON/OFF switch that takes effect straight away. The <em class="ui">&#8942;</em> menu has <em class="ui">Edit</em>, which opens a form where you can change anything and optionally replace the image, and <em class="ui">Delete</em>, which asks you to confirm. If an ad could not be saved, the reasons are shown in a box at the top of the page.</p>
+
+<h3 id="o-account">Account Settings</h3>
+<p>Open <em class="ui">Account</em> near the bottom of the sidebar. Only the owner can open this page. It has two columns.</p>
+<p>The first card, <em class="ui">Signed-in Account</em>, shows your name, email address and access level ("Administrator"). These fields are read-only. They are shown so you can check which account you are using, and they cannot be edited here. Under them is a link, <em class="ui">Go to Staff Accounts</em>, for when you need to add users or change their access.</p>
+<p>The <em class="ui">Change Password</em> card changes the password of the account you are signed in with. To use it:</p>
+<ol class="steps">
+  <li>Type your current password.</li>
+  <li>Type your new password, and type it again in the confirm box. The eye button beside each box shows or hides what you typed.</li>
+  <li>Press <em class="ui">Update Password</em>.</li>
+</ol>
+<p>The new password must be 8 to 20 characters and include an uppercase letter, a lowercase letter, a number and a special character. It must also be different from your current password. You stay signed in on the device you are using, and any other device where you were signed in is signed out. <em class="ui">Clear</em> empties the boxes.</p>
+<p>The <em class="ui">GCash Payment Settings</em> card controls what customers see when they pay by GCash. It shows the current QR code with a "Saved" label, or "No GCash QR uploaded" if there is none. To change it, pick a new image (JPG, JPEG, PNG or WEBP, up to 5 MB). A preview appears right away, and a file that is the wrong type or too large is rejected with a message. The GCash phone number you type is shown under the QR code at checkout. Press <em class="ui">Save GCash Settings</em> to save. The button saves the phone number every time, and saves the QR only if you picked a new file. If you empty the phone box and save, the number is removed.</p>
+
+<h3 id="o-options">Menu Options</h3>
+<p>Menu Options is where you create add-ons and assign them to menu items. The Viewing bar now works on this page. With <em class="ui">All Branches</em> selected, nothing changes from before. When you choose one branch, the page reloads and narrows what it shows to that branch:</p>
+<p>The Menu Items list you assign options from shows only that branch's items plus the company-wide items, and the company-wide ones are labelled "(company-wide)". Under each option, the "Used in" list and the inventory-status badge cover just those items. The category drop-down and the Categories count at the top show only categories that have an item in the list. The add-ons themselves are shared by every branch, so the Options count does not change, and every option stays listed, even one that is used nowhere in the branch you chose, so you can still assign it.</p>
+
+<h3 id="o-staff">Staff Accounts</h3>
+<p>Staff Accounts has been redesigned as two cards. On the left is <em class="ui">Create Portal Account</em>. On the right is <em class="ui">All Portal Accounts</em>. You can create Staff and Supervisor accounts. You cannot create another Admin account.</p>
+<p>To create an account:</p>
+<ol class="steps">
+  <li>Type the person's full name and email address.</li>
+  <li>Choose the role, Staff or Supervisor.</li>
+  <li>Choose the assigned branch. It starts on the branch shown in the Viewing bar, but you can change it. Staff and Supervisors are locked to the branch you give them.</li>
+  <li>Type a password and type it again in the confirm box. The password must be 8 to 20 characters with an uppercase letter, a lowercase letter, a number and a special character.</li>
+  <li>Press <em class="ui">Create Account</em>. Errors are shown under the box that needs fixing.</li>
+</ol>
+<p>The table on the right lists Name, Email, Role, Branch and Status (Active or Disabled), with the number of accounts in a badge next to the title. Type in the search box to find an account by name, email, role or branch name. The list follows the Viewing bar, so choosing a branch shows only that branch's accounts. It shows 10 accounts per page, with a "Showing 1&ndash;10 of N matching accounts" line and numbered page links underneath. On a phone, each account is shown as a card.</p>
+<p>Each row ends with a <em class="ui">&#8942;</em> menu with four items. <em class="ui">Edit</em> opens a row under the account where you can change the name, email, contact number, role and assigned branch, then press <em class="ui">Save changes</em>. <em class="ui">Set Password</em> opens a row where you type a new password twice and press <em class="ui">Update Password</em>. You cannot see the old password, because nobody can. Tell the person the new password yourself. <em class="ui">Deactivate</em> blocks the account without removing it, and the same item then reads <em class="ui">Reactivate</em>. <em class="ui">Delete</em> removes the account for good after you confirm. If the account is already tied to orders or stock records, Peachy will refuse to delete it and tells you to deactivate it instead.</p>
+
+
+<!-- ============================ SUPERVISOR ============================ -->
+<h2 class="role" id="supervisor">Supervisor</h2>
+<p class="role-note">A Supervisor works inside one branch, the one the account was assigned to. Most of what the owner can do is available to you, but only for your own branch.</p>
+
+<h3 id="s-viewing">The Viewing bar</h3>
+<p>You see the Viewing bar on Vouchers, Ads Management, Menu Options and Staff Accounts, but it only shows the name of your branch. There is no drop-down, because you cannot look at other branches. Everything on those pages is already limited to your branch, and the bar is just a reminder of that.</p>
+
+<h3 id="s-vouchers">Vouchers</h3>
+<p>Under <em class="ui">Promotions &amp; Rewards</em> you have three tabs: Vouchers, Streak Rewards and Ads Management. The Vouchers tab shows the four count cards, the search and the filters, covering your branch's vouchers plus the company-wide ones. You do not see the Spin Wheel card, because the game's master switch belongs to the owner.</p>
+<p>You can create vouchers, and each one is automatically scoped to your branch, so the form has no branch choice. On a voucher of your own branch, you can turn the Wheel switch ON or OFF, use <em class="ui">Activate Voucher</em> or <em class="ui">Deactivate Voucher</em>, and use <em class="ui">Edit Voucher</em> from the <em class="ui">&#8942;</em> menu. The wheel rules are the same as the owner's: a 0-point voucher cannot be put on the wheel, and an expired or inactive voucher can be switched on but is not offered.</p>
+<p>Company-wide vouchers are read-only for you. Their Wheel switch is greyed out, and their menu shows <em class="ui">Read-only</em> instead of the changing actions. You can still use <em class="ui">Issue Voucher</em> on them, which makes a single-use code for a customer, and the same is true on your own vouchers. There is no <em class="ui">Delete Voucher</em> for you on any voucher. Only the owner can delete.</p>
+
+<h3 id="s-ads">Ads Management</h3>
+<p>You can open the Ads Management tab, and you see your branch's ads plus the company-wide ones, with the same four count cards, search and filters as the owner. The create form works the same way, except that the Branch Scope box is fixed on your own branch and cannot be changed. Dates, placement, the image and the live-from-12:00-AM, until-11:59-PM rule are all the same as described in the Owner part.</p>
+<p>For ads of your own branch, you can use the Active switch, <em class="ui">Edit</em> and <em class="ui">Delete</em>. For a company-wide ad, the Active switch is greyed out and the menu shows <em class="ui">Read-only</em>. Only the owner can change those.</p>
+
+<h3 id="s-options">Menu Options</h3>
+<p>Menu Options shows the add-ons and your own branch's menu items, with your branch name in the Viewing bar. The new narrowing by branch is already in effect for you all the time, since your page is always limited to your branch. There is nothing to choose.</p>
+
+<h3 id="s-staff">Staff Accounts</h3>
+<p>The Staff Accounts page shows only the Staff accounts of your own branch. You do not see Supervisors, the owner, or other branches. The table, search box and pages work as described in the Owner part, with 10 accounts per page.</p>
+<p>In the Create Portal Account card, the role list contains only Staff, and the new account is always assigned to your own branch. The <em class="ui">&#8942;</em> menu on each of your staff accounts has the same four items as the owner's: <em class="ui">Edit</em>, <em class="ui">Set Password</em>, <em class="ui">Deactivate</em> or <em class="ui">Reactivate</em>, and <em class="ui">Delete</em>. Deleting is refused when the account is still tied to orders or stock records, so deactivate it instead.</p>
+
+<h3 id="s-account">Account Settings</h3>
+<p>The Account Settings page is not available to Supervisors. It is for the owner only, so you will not see an Account link in your sidebar.</p>
+
+
+<!-- ============================ STAFF ============================ -->
+<h2 class="role" id="staff">Staff</h2>
+<p class="role-note">Staff work at the counter of one branch. Of everything changed on October 21, only the Vouchers screen is open to you.</p>
+
+<h3 id="t-vouchers">Vouchers</h3>
+<p>Open <em class="ui">Promotions &amp; Rewards</em> in the sidebar. You go straight to the Vouchers screen, with no tab bar above it, because Vouchers is the only tab you can use. The Viewing bar shows your branch name. You see the four count cards and the voucher list, with the search box and the status and scope filters, covering your branch's vouchers plus the company-wide ones. The list is for reading: you can read an active code off it to a customer.</p>
+<p>The Wheel switch on each row is greyed out and reads "View only" when you hover over it, so you cannot change it. There is no Create form and no Spin Wheel card. The only thing you can do to a voucher is issue a code for a customer who has no account. To do that:</p>
+<ol class="steps">
+  <li>Find the voucher in the list.</li>
+  <li>Press the <em class="ui">&#8942;</em> button at the end of its row.</li>
+  <li>Choose <em class="ui">Issue Voucher</em> and confirm the question. Each code counts against the voucher's usage limit.</li>
+  <li>A pop-up shows the new code in large letters. Press <em class="ui">Copy Code</em>, or read it out or write it on the receipt. The code is shown only once, so make sure the customer has it before you close the pop-up.</li>
+</ol>
+<p>If the voucher is inactive, expired, used up, or not open yet, <em class="ui">Issue Voucher</em> is greyed out, and hovering over it tells you why.</p>
+
+<h3 id="t-none">What Staff cannot open</h3>
+<p>Ads Management, Menu Options, Staff Accounts and Account Settings are not available to Staff. Those links are not in your sidebar, and the pages refuse you if you try to open them by address. Staff Accounts is for the owner and Supervisors, and Account Settings is for the owner only. Ask your Supervisor or the owner if you need something changed there.</p>
+
+<footer>Peachy &middot; User manual for the changes of October 21, 2026.</footer>
+
+</div>
+</body>
+</html>

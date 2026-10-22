@@ -90,7 +90,7 @@ svg{width:18px;height:18px;flex-shrink:0;stroke:currentColor;fill:none;stroke-wi
 @keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
 .grid{display:grid;gap:20px;grid-template-columns:repeat(12,minmax(0,1fr))}
 .c12{grid-column:span 12}.c7{grid-column:span 7}.c5{grid-column:span 5}.c6{grid-column:span 6}
-@media(max-width:1100px){.c7,.c5{grid-column:span 12}}
+@media(max-width:760px){.c7,.c5{grid-column:span 12}}
 @media(max-width:640px){.c6{grid-column:span 12}}
 .card{background:var(--white);border-radius:var(--radius);box-shadow:var(--shadow);padding:22px}
 .card-h{display:flex;gap:12px;align-items:flex-start;margin-bottom:16px}
@@ -104,6 +104,17 @@ svg{width:18px;height:18px;flex-shrink:0;stroke:currentColor;fill:none;stroke-wi
 .hero{background:linear-gradient(130deg,var(--coral-600),var(--coral) 55%,var(--peach-300));color:#fff;position:relative;overflow:hidden}
 .hero::after{content:"";position:absolute;right:-60px;top:-60px;width:240px;height:240px;border-radius:50%;background:rgba(255,255,255,.12)}
 .hero .big{font-family:var(--display);font-size:56px;line-height:1}
+.points-card{padding:20px 22px;min-height:160px;display:flex;align-items:center}
+.points-card .row{width:100%;align-items:center}
+.points-card .big{font-size:52px}
+.points-card p{font-size:12px;margin-top:5px}
+.points-card .btn{font-size:12px;padding:9px 12px;white-space:nowrap}
+.stamp-card{flex:1}
+.stamp-description{font-size:13px;color:var(--ink-soft);line-height:1.5;margin:-7px 0 14px 52px}
+.stamp-count{margin-bottom:8px}
+.stamps{padding:16px;gap:12px}
+@media(max-width:760px){.overview-side{grid-column:span 12}.points-card{min-height:0}}
+@media(max-width:640px){.points-card .row{align-items:flex-start}.points-card .btn{margin-top:8px}.stamp-description{margin-left:0}}
 .hero .row{display:flex;justify-content:space-between;align-items:end;gap:16px;flex-wrap:wrap;position:relative;z-index:1}
 .hero p{opacity:.9;max-width:460px;font-size:14px}
 .btn{display:inline-flex;align-items:center;gap:8px;border:0;cursor:pointer;border-radius:999px;padding:11px 20px;font-weight:600;font-size:14px;text-decoration:none;transition:.2s}
@@ -237,17 +248,6 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
     <!-- OVERVIEW -->
     <section class="panel active" id="p-overview" role="tabpanel" aria-labelledby="t-overview">
       <div class="grid">
-        <div class="card hero c12">
-          <div class="row">
-            <div>
-              <span style="font-size:13px;opacity:.85;font-weight:500">Bonus points</span>
-              <div class="big">8 <span style="font-size:22px">pts</span></div>
-              <p>Bonus points stay on your account and count toward Spin &amp; Win vouchers together with the points you spin.</p>
-            </div>
-            <a href="#" class="btn btn-light"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>Go to Spin &amp; Win</a>
-          </div>
-        </div>
-
         <div class="card c7">
           <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg></div>
             <div><h3>Streak Calendar</h3><p>Days you completed an order at <span class="chip">Branch 1</span></p></div></div>
@@ -266,20 +266,24 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
           <p style="font-size:12px;color:var(--ink-soft);margin-top:6px">Only completed orders count. Pending or cancelled orders don't mark a day.</p>
         </div>
 
-        <div class="c5" style="display:flex;flex-direction:column;gap:20px">
-          <div class="card">
-            <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><path d="M12 2 15 8.5l7 1-5 5 1.2 7L12 18l-6.2 3.5L7 14.5l-5-5 7-1z"/></svg></div>
-              <div><span class="chip">Branch 1</span><h3 style="margin-top:4px">Reward Challenge</h3></div></div>
-            <div class="ch-top"><span style="font-size:14px;color:var(--ink-soft)">Progress</span><b>Day 1 of 8</b></div>
-            <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="8" aria-valuenow="1" aria-label="Reward challenge progress"><span style="width:12.5%"></span></div>
-            <p style="font-size:13px;color:var(--ink-soft)">1 stamp per day you completed an order at Branch 1, any days. <b style="color:var(--coral-700)">7 more days</b> to a reward.</p>
+        <div class="c5 overview-side" style="display:flex;flex-direction:column;gap:14px">
+          <div class="card hero points-card">
+            <div class="row">
+              <div>
+                <span style="font-size:13px;opacity:.85;font-weight:500">Bonus points</span>
+                <div class="big">8 <span style="font-size:22px">pts</span></div>
+                <p>Count toward Spin &amp; Win vouchers.</p>
+              </div>
+              <a href="#" class="btn btn-light"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18M3 12h18"/></svg>Go to Spin &amp; Win</a>
+            </div>
           </div>
-          <div class="card">
+          <div class="card stamp-card">
             <div class="card-h"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18"/></svg></div>
-              <div><h3>Reward Stamp Card</h3><p>1 stamp per day you completed an order at Branch 1.</p></div></div>
-            <div class="ch-top"><span style="font-size:14px;color:var(--ink-soft)">Next reward</span><b>1 / 8 stamps</b></div>
+              <div><h3>Reward Stamp Card</h3><p><span class="chip">Branch 1</span></p></div></div>
+            <p class="stamp-description">Earn 1 stamp per day when you complete at least one order at Branch 1. Collect 8 stamps to receive a Free Chocolate Ganache Cake ala-Mode. The days do not need to be consecutive.</p>
+            <div class="ch-top stamp-count"><span style="font-size:14px;color:var(--ink-soft)">Next reward</span><b>1 / 8 stamps</b></div>
             <div class="stamps" id="stamps" aria-label="1 of 8 stamps collected"></div>
-            <div class="reward"><div class="ic">🍰</div><div><b>Free Chocolate Ganache Cake ala-Mode</b><br><small style="color:var(--ink-soft)">7 more stamps to your next reward.</small></div></div>
+            <div class="reward"><div class="ic">🎁</div><div><small style="color:var(--coral-700)">7 more stamps to your next reward.</small></div></div>
           </div>
         </div>
       </div>
@@ -294,7 +298,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
           <div class="benefits">
             <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M2 9a3 3 0 0 1 0 6v3a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-3a3 3 0 0 1 0-6V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2z"/></svg></div><div><h4>Vouchers &amp; Rewards</h4><p>Vouchers you win and rewards you earn are saved to your account.</p></div></div>
             <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.4-.5-2-1-3-1.1-2.1-.2-4 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.2.4-2.3 1-3.2.2 1.4 1.3 2.7 2.5 2.7z"/></svg></div><div><h4>Streak bonuses</h4><p>+10 points at 3 days in a row. Once per streak.</p></div></div>
-            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18"/></svg></div><div><h4>Stamp card reward</h4><p>A reward (Free Chocolate Ganache Cake ala-Mode) for every 8 stamps at Branch 1. 1 stamp per day you completed an order there.</p></div></div>
+            <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="8" width="18" height="13" rx="2"/><path d="M12 8v13M3 12h18"/></svg></div><div><h4>Stamp card reward</h4><p>Earn 1 stamp per day when you complete at least one order at Branch 1. Collect 8 stamps to receive a Free Chocolate Ganache Cake ala-Mode. The days do not need to be consecutive.</p></div></div>
             <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="m12 3-1.9 5.8L4 10l5 3.6L7.2 20 12 16.4 16.8 20 15 13.6l5-3.6-6.1-1.2z"/></svg></div><div><h4>Welcome bonus</h4><p>+10 points for new accounts when they verify their email.</p></div></div>
             <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4zM3 6h18M16 10a4 4 0 0 1-8 0"/></svg></div><div><h4>Order bonus</h4><p>+3 points for every completed order.</p></div></div>
             <div class="benefit"><div class="ic"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="3"/><circle cx="8.5" cy="8.5" r="1"/><circle cx="15.5" cy="15.5" r="1"/><circle cx="12" cy="12" r="1"/></svg></div><div><h4>Spin &amp; Win</h4><p>7 spins with every order, up to 15 a day.</p></div></div>
@@ -361,6 +365,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
           <button type="submit" class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>Save Changes</button>
         </div>
       </div>
+
     </form>
   </div>
 </main>
@@ -381,7 +386,7 @@ dialog .row{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
 const tabs=[...document.querySelectorAll('.tab')],panels=[...document.querySelectorAll('.panel')],bar=document.getElementById('actionbar');
 function show(id){tabs.forEach(t=>t.setAttribute('aria-selected',t.getAttribute('aria-controls')===id));
   panels.forEach(p=>p.classList.toggle('active',p.id===id));
-  bar.hidden=!(id==='p-profile'||id==='p-security');history.replaceState(null,'','#'+id.slice(2));}
+  bar.hidden=!(id==='p-security'||id==='p-profile');history.replaceState(null,'','#'+id.slice(2));}
 tabs.forEach((t,i)=>{t.onclick=()=>show(t.getAttribute('aria-controls'));
   t.onkeydown=e=>{if(e.key==='ArrowDown'||e.key==='ArrowRight'){tabs[(i+1)%tabs.length].focus()}if(e.key==='ArrowUp'||e.key==='ArrowLeft'){tabs[(i-1+tabs.length)%tabs.length].focus()}}});
 const h=location.hash.slice(1);if(h&&document.getElementById('p-'+h))show('p-'+h);

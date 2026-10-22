@@ -1,0 +1,106 @@
+%% POMIDA ERD - POMIDA — Module 2: Menu - generated 2026-10-22 from pomida_db
+%% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
+%% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
+erDiagram
+    categories {
+        bigint id PK
+        varchar(255) name
+        text description
+        varchar(255) image
+        int display_order
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    subcategories {
+        bigint id PK
+        bigint category_id FK
+        varchar(255) name
+        text description
+        varchar(255) image
+        int display_order
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    menu_items {
+        bigint id PK
+        bigint category_id FK
+        bigint subcategory_id FK
+        bigint inventory_item_id FK
+        decimal(10_3) inventory_amount_used
+        bigint branch_id FK
+        varchar(255) name
+        text description
+        text ingredients
+        decimal(10_2) price
+        decimal(10_2) cost
+        varchar(255) image
+        int display_order
+        tinyint(1) is_available
+        tinyint(1) is_featured
+        tinyint(1) free_dessert_eligible
+        tinyint(1) track_stock
+        int stock_quantity
+        int low_stock_alert
+        int prep_time_minutes
+        int total_sold
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    menu_item_sizes {
+        bigint id PK
+        bigint menu_item_id FK "UK with name"
+        varchar(20) name "UK with menu_item_id"
+        decimal(10_2) price
+        int display_order
+        tinyint(1) is_active
+        timestamp archived_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    menu_options {
+        bigint id PK
+        varchar(255) name
+        text description
+        decimal(10_2) additional_price
+        int display_order
+        tinyint(1) is_active
+        timestamp created_at
+        timestamp updated_at
+        timestamp archived_at
+    }
+    menu_item_options {
+        bigint id PK
+        bigint menu_item_id FK "UK with menu_option_id"
+        bigint menu_option_id FK "UK with menu_item_id"
+        timestamp created_at
+        timestamp updated_at
+    }
+    branches {
+        bigint id PK "table of module: Users and Branches"
+    }
+    inventory {
+        bigint id PK "table of module: Inventory"
+    }
+
+    branches |o--o{ menu_items : "offers"
+    categories ||--o{ menu_items : "groups"
+    categories ||--o{ subcategories : "contains"
+    inventory |o--o{ menu_items : "is stock source of"
+    menu_items ||--o{ menu_item_options : "offers option"
+    menu_items ||--o{ menu_item_sizes : "comes in"
+    menu_options ||--o{ menu_item_options : "is offered on"
+    subcategories |o--o{ menu_items : "groups"
+
+    classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef mod_orders fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
+    classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
+    class categories,subcategories,menu_items,menu_item_sizes,menu_options,menu_item_options mod_menu
+    class branches,inventory ext

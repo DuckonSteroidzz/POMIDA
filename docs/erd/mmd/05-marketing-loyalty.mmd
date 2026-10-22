@@ -1,0 +1,188 @@
+%% POMIDA ERD - POMIDA — Module 5: Marketing & Loyalty - generated 2026-10-22 from pomida_db
+%% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
+%% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
+erDiagram
+    vouchers {
+        bigint id PK
+        bigint branch_id FK
+        varchar(255) code UK
+        varchar(255) description
+        enum discount_type
+        decimal(8_2) discount_value
+        int max_uses
+        int used_count
+        decimal(8_2) minimum_order
+        timestamp expires_at
+        date valid_from
+        tinyint(1) is_active
+        tinyint(1) on_wheel
+        int points_required
+        timestamp created_at
+        timestamp updated_at
+    }
+    user_vouchers {
+        bigint id PK
+        bigint user_id FK "UK with voucher_id"
+        bigint issued_by FK
+        bigint voucher_id FK "UK with user_id"
+        varchar(32) claim_code UK
+        date acquired_date
+        date valid_from
+        tinyint(1) is_used
+        timestamp used_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    ads {
+        bigint id PK
+        bigint branch_id FK
+        varchar(255) title
+        varchar(255) description
+        varchar(255) image
+        varchar(255) link
+        enum placement
+        tinyint(1) is_active
+        int display_order
+        timestamp starts_at
+        timestamp ends_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    games_played {
+        bigint id PK
+        bigint user_id FK
+        bigint order_id FK
+        tinyint spin_number
+        smallint points_awarded
+        timestamp created_at
+        timestamp updated_at
+    }
+    loyalty_awards {
+        bigint id PK
+        bigint user_id FK "UK with type, award_key"
+        varchar(32) type "UK with user_id, award_key"
+        varchar(64) award_key "UK with user_id, type"
+        int points
+        bigint order_id FK
+        timestamp created_at
+        timestamp updated_at
+    }
+    free_dessert_rewards {
+        bigint id PK
+        bigint user_id FK
+        bigint loyalty_award_id FK, UK
+        varchar(16) code UK
+        varchar(16) reward_type
+        bigint menu_item_id FK
+        varchar(255) item_name
+        bigint voucher_id FK
+        varchar(50) voucher_code
+        varchar(10) discount_type
+        decimal(10_2) discount_value
+        decimal(10_2) minimum_order
+        bigint branch_id FK
+        varchar(16) status
+        bigint order_id FK
+        bigint order_item_id FK
+        timestamp expires_at
+        timestamp used_at
+        bigint used_branch_id
+        timestamp notified_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    free_dessert_ratings {
+        bigint id PK
+        bigint order_id FK, UK
+        bigint order_item_id FK
+        bigint user_id FK
+        tinyint rating
+        text comment
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_ratings {
+        bigint id PK
+        bigint order_id FK, UK
+        bigint user_id FK
+        varchar(20) rating_type
+        tinyint rating
+        timestamp created_at
+        timestamp updated_at
+    }
+    notifications {
+        bigint id PK
+        bigint user_id FK
+        bigint order_id FK
+        bigint branch_id FK
+        varchar(20) audience
+        varchar(50) type
+        varchar(120) title
+        varchar(500) message
+        timestamp read_at
+        timestamp dismissed_at
+        timestamp created_at
+        timestamp updated_at
+    }
+    settings {
+        bigint id PK
+        bigint branch_id FK "UK with key"
+        varchar(100) key "UK with branch_id"
+        text value
+        varchar(50) group
+        varchar(255) label
+        text description
+        enum type
+        timestamp created_at
+        timestamp updated_at
+    }
+    branches {
+        bigint id PK "table of module: Users and Branches"
+    }
+    menu_items {
+        bigint id PK "table of module: Menu"
+    }
+    order_items {
+        bigint id PK "table of module: Orders and Payments"
+    }
+    orders {
+        bigint id PK "table of module: Orders and Payments"
+    }
+    users {
+        bigint id PK "table of module: Users and Branches"
+    }
+
+    branches |o--o{ ads : "runs"
+    branches |o--o{ free_dessert_rewards : "issues"
+    branches |o--o{ notifications : "is audience of"
+    branches |o--o{ settings : "configures"
+    branches |o--o{ vouchers : "scopes"
+    loyalty_awards ||--o| free_dessert_rewards : "unlocks"
+    menu_items |o--o{ free_dessert_rewards : "is given as"
+    order_items |o--o{ free_dessert_ratings : "has dessert rated in"
+    order_items |o--o{ free_dessert_rewards : "is redeemed as"
+    orders ||--o| free_dessert_ratings : "receives"
+    orders |o--o{ free_dessert_rewards : "is redeemed on"
+    orders ||--o{ games_played : "unlocks spin"
+    orders |o--o{ loyalty_awards : "triggers"
+    orders |o--o{ notifications : "triggers"
+    orders ||--o| order_ratings : "receives"
+    users |o--o{ free_dessert_ratings : "writes"
+    users ||--o{ free_dessert_rewards : "earns"
+    users |o--o{ games_played : "spins"
+    users ||--o{ loyalty_awards : "receives"
+    users |o--o{ notifications : "receives"
+    users |o--o{ order_ratings : "writes"
+    users |o--o{ user_vouchers : "issues"
+    users |o--o{ user_vouchers : "claims"
+    vouchers |o--o{ free_dessert_rewards : "defines"
+    vouchers ||--o{ user_vouchers : "is claimed as"
+
+    classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
+    classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
+    classDef mod_orders fill:#dcfce7,stroke:#16a34a,stroke-width:2px,color:#111827
+    classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
+    classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
+    classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
+    class vouchers,user_vouchers,ads,games_played,loyalty_awards,free_dessert_rewards,free_dessert_ratings,order_ratings,notifications,settings mod_marketing
+    class branches,menu_items,order_items,orders,users ext

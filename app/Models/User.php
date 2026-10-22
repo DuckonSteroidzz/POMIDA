@@ -195,11 +195,8 @@ class User extends Authenticatable implements MustVerifyEmail
         return $this->hasMany(DiscountCard::class);
     }
 
-    // User has many vouchers
-    public function vouchers(): HasMany
-    {
-        return $this->hasMany(Voucher::class);
-    }
+    // No vouchers(): vouchers have no user_id. A customer's vouchers are
+    // their user_vouchers claims (UserVoucher::where('user_id', ...)).
 
     /**
      * HELPER METHODS — para easy check ng role
