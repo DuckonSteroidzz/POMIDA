@@ -1771,65 +1771,86 @@
         var SWAP_IDS = ['pc-live-region', 'pc-help-toasts-slot'];
         var inFlight = false;
 
+        // One refresh, answering the chain (partials/poll-chain, already on the
+        // page via the notification bell): `changed` when a region was swapped,
+        // so a quiet board relaxes from 10s to 15s then 20s, and a new order
+        // snaps it back to 10s. The chain also pauses while the tab is hidden and
+        // asks once at once when it comes back; a 401/403/419 stops it.
         function refreshBoard() {
             if (inFlight) {
-                return;
+                return Promise.resolve({ changed: false });
             }
 
             // Never yank the board out from under an open Manual Order modal.
             var modal = document.getElementById('manualOrderModal');
             if (modal && modal.style.display === 'block') {
-                return;
+                return Promise.resolve({ changed: true });
             }
 
             // A hidden tab does not need updating; resume on the next tick.
             if (document.hidden) {
-                return;
+                return Promise.resolve({ changed: false });
             }
 
             inFlight = true;
 
-            fetch(window.location.href, {
+            return fetch(window.location.href, {
                 headers: { 'X-Requested-With': 'XMLHttpRequest' },
                 credentials: 'same-origin',
                 cache: 'no-store'
             })
                 .then(function (response) {
+                    if ([401, 403, 419].indexOf(response.status) !== -1) {
+                        return { stop: true };
+                    }
                     if (!response.ok) {
-                        throw new Error('board refresh HTTP ' + response.status);
-                    }
-                    return response.text();
-                })
-                .then(function (html) {
-                    var doc = new DOMParser().parseFromString(html, 'text/html');
-
-                    // A login/redirect page has no board — leave the last known
-                    // state on screen rather than blanking it.
-                    if (!doc.getElementById('pc-live-region')) {
-                        return;
+                        return { changed: false, delay: 15000 };
                     }
 
-                    SWAP_IDS.forEach(function (id) {
-                        var fresh = doc.getElementById(id);
-                        var current = document.getElementById(id);
+                    return response.text().then(function (html) {
+                        var doc = new DOMParser().parseFromString(html, 'text/html');
 
-                        if (fresh && current && fresh.innerHTML !== current.innerHTML) {
-                            current.innerHTML = fresh.innerHTML;
+                        // A login/redirect page has no board — leave the last known
+                        // state on screen rather than blanking it.
+                        if (!doc.getElementById('pc-live-region')) {
+                            return { changed: false };
                         }
-                    });
 
-                    pageLoadedAt = Date.now();
-                    updateLastUpdated();
+                        var swapped = false;
+
+                        SWAP_IDS.forEach(function (id) {
+                            var fresh = doc.getElementById(id);
+                            var current = document.getElementById(id);
+
+                            if (fresh && current && fresh.innerHTML !== current.innerHTML) {
+                                current.innerHTML = fresh.innerHTML;
+                                swapped = true;
+                            }
+                        });
+
+                        pageLoadedAt = Date.now();
+                        updateLastUpdated();
+
+                        return { changed: swapped };
+                    });
                 })
                 .catch(function () {
                     // Keep the last known board visible on any failure.
+                    return { changed: false, delay: 15000 };
                 })
-                .then(function () {
+                .then(function (result) {
                     inFlight = false;
+                    return result;
                 });
         }
 
-        setInterval(refreshBoard, BOARD_REFRESH_MS);
+        // The first board refresh is one BOARD_REFRESH_MS after load (the page
+        // was just rendered), so the chain starts waiting, not asking.
+        PomidaPollChain({
+            schedule: [BOARD_REFRESH_MS, BOARD_REFRESH_MS, 15000, 20000],
+            run: refreshBoard,
+            startDelay: BOARD_REFRESH_MS
+        }).start();
     })();
 </script>
 
@@ -1849,6 +1870,7 @@ function openManualOrder()
     document.getElementById('manualBranchChangedNotice').style.display = 'none';
 
     filterManualItems();
+    syncManualGcashOption();
 
     // Belt and braces: whatever state the modal was left in, the discount
     // controls must be disabled unless the box is actually ticked.
@@ -1908,6 +1930,26 @@ function onManualBranchChange()
 
     manualCurrentBranch = branch;
     filterManualItems();
+    syncManualGcashOption();
+}
+
+// GCash per branch (Oct 2026): GCash is offered only for a branch that has it
+// switched on with a QR and a number (data-gcash on the branch option, from
+// App\Support\BranchGcash::available()). storeManualOrder() enforces the same.
+function syncManualGcashOption()
+{
+    const branchSelect = document.getElementById('manualBranch');
+    const paymentSelect = document.getElementById('manualPaymentMethod');
+    const note = document.getElementById('manualGcashOffNote');
+    if (!branchSelect || !paymentSelect) return;
+
+    const chosen = branchSelect.options[branchSelect.selectedIndex];
+    const offers = !!(chosen && chosen.value && chosen.dataset.gcash === '1');
+    const gcashOption = paymentSelect.querySelector('option[value="gcash"]');
+
+    if (gcashOption) gcashOption.disabled = !offers;
+    if (!offers && paymentSelect.value === 'gcash') paymentSelect.value = 'cash';
+    if (note) note.style.display = (chosen && chosen.value && !offers) ? 'block' : 'none';
 }
 
 function filterManualItems()
@@ -3412,6 +3454,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             @foreach($branches as $branch)
                                 <option
                                     value="{{ $branch->id }}"
+                                    data-gcash="{{ \App\Support\BranchGcash::available($branch) ? '1' : '0' }}"
                                     {{ $selectedBranch !== 'all' && (int)$selectedBranch === (int)$branch->id ? 'selected' : '' }}
                                 >
                                     {{ $branch->name }}
@@ -3932,6 +3975,10 @@ document.addEventListener('DOMContentLoaded', function() {
                                 GCash
                             </option>
                         </select>
+                        {{-- GCash per branch (Oct 2026): shown when the chosen branch does not offer GCash. --}}
+                        <small id="manualGcashOffNote" style="display:none;color:#8B7A72;font-size:.75rem;margin-top:.25rem;">
+                            GCash is off for this branch.
+                        </small>
                     </div>
 
                     <div>

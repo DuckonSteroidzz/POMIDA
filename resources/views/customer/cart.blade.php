@@ -895,7 +895,9 @@
         Payment Method
     </div>
 
-    <div class="grid grid-cols-2 gap-2.5">
+    {{-- GCash per branch (Oct 2026): shown only when this branch offers it
+         (App\Support\BranchGcash::available(); placeOrder() refuses it otherwise). --}}
+    <div class="grid {{ ($gcashAvailable ?? false) ? 'grid-cols-2' : 'grid-cols-1' }} gap-2.5">
 
         <button
             type="button"
@@ -941,6 +943,7 @@
             </div>
         </button>
 
+        @if($gcashAvailable ?? false)
         <button
             type="button"
             id="gcashPaymentBtn"
@@ -962,6 +965,7 @@
                 </span>
             </div>
         </button>
+        @endif
 
     </div>
 
@@ -2548,8 +2552,18 @@ function cancelOrderConfirmation() {
     }
 }
 
-var discountStatusTimer = null;
+// The "checking your discount" wait is a guarded setTimeout chain (partials/poll-chain),
+// not a setInterval: one request in flight at a time, paused while the tab is
+// hidden, slower the longer staff take, stopped on 401/403/419 and on a verdict.
+// Created once and restarted, so re-opening the modal never adds listeners.
+var discountChain = null;
 var pendingDiscountOrderId = null;
+
+function stopDiscountStatusPolling() {
+    if (discountChain) {
+        discountChain.stop();
+    }
+}
 
 function showDiscountCheckingModal(orderId) {
     pendingDiscountOrderId = orderId;
@@ -2570,62 +2584,51 @@ function showDiscountCheckingModal(orderId) {
 function startDiscountStatusPolling() {
     if (!pendingDiscountOrderId) return;
 
-    if (discountStatusTimer) {
-        clearInterval(discountStatusTimer);
-    }
-
-    checkDiscountStatus();
-
-    discountStatusTimer = setInterval(function () {
-        checkDiscountStatus();
-    }, 3000);
-}
-
-async function checkDiscountStatus() {
-    if (!pendingDiscountOrderId) return;
-
-    try {
-        var url =
-            '{{ route("customer.order-status") }}' +
-            '?order_id=' +
-            encodeURIComponent(pendingDiscountOrderId);
-
-        var response = await fetch(url, {
-            headers: {
-                'Accept': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            cache: 'no-store'
+    if (!discountChain) {
+        discountChain = PomidaPollChain({
+            schedule: [3000, 5000, 10000, 15000],
+            run: checkDiscountStatus
         });
-
-        if (!response.ok) return;
-
-        var data = await response.json();
-
-        var status =
-            data.discount_status ||
-            (data.order && data.order.discount_status);
-
-        if (status === 'approved') {
-            clearInterval(discountStatusTimer);
-
-            document.getElementById('discountCheckingContent').classList.add('hidden');
-            document.getElementById('discountApprovedContent').classList.remove('hidden');
-            return;
-        }
-
-        if (status === 'rejected') {
-            clearInterval(discountStatusTimer);
-
-            document.getElementById('discountCheckingContent').classList.add('hidden');
-            document.getElementById('discountRejectedContent').classList.remove('hidden');
-        }
-
-    } catch (error) {
-        console.error('Unable to check discount status:', error);
     }
+
+    // start() is a no-op while it is already running, and asks at once otherwise.
+    discountChain.start();
 }
 
+// One check, answering the chain: a verdict stops it; "still pending" is an
+// unchanged answer (the next check comes a little later).
+async function checkDiscountStatus() {
+    if (!pendingDiscountOrderId) return { stop: true };
+
+    var res = await PomidaPollChain.getJson(
+        '{{ route("customer.order-status") }}' +
+        '?order_id=' +
+        encodeURIComponent(pendingDiscountOrderId)
+    );
+
+    var failed = PomidaPollChain.failure(res);
+    if (failed) return failed;
+
+    var data = res.data || {};
+
+    var status =
+        data.discount_status ||
+        (data.order && data.order.discount_status);
+
+    if (status === 'approved') {
+        document.getElementById('discountCheckingContent').classList.add('hidden');
+        document.getElementById('discountApprovedContent').classList.remove('hidden');
+        return { stop: true };
+    }
+
+    if (status === 'rejected') {
+        document.getElementById('discountCheckingContent').classList.add('hidden');
+        document.getElementById('discountRejectedContent').classList.remove('hidden');
+        return { stop: true };
+    }
+
+    return { changed: false };
+}
 async function continueToOrdersAfterDiscount() {
     if (!pendingDiscountOrderId) {
         window.location.href = '{{ route("customer.orders") }}';
@@ -2640,7 +2643,7 @@ async function continueToOrdersAfterDiscount() {
         'approved'
     );
 
-    clearInterval(discountStatusTimer);
+    stopDiscountStatusPolling();
     pendingDiscountOrderId = null;
 
     try {
@@ -2698,7 +2701,7 @@ async function continueWithoutDiscount() {
         overlay.classList.remove('flex');
     }
 
-    clearInterval(discountStatusTimer);
+    stopDiscountStatusPolling();
 
     try {
         var response = await fetch(
@@ -2770,7 +2773,7 @@ async function cancelRejectedDiscountOrder() {
         button.style.pointerEvents = 'none';
     });
 
-    clearInterval(discountStatusTimer);
+    stopDiscountStatusPolling();
 
     try {
         var response = await fetch(
@@ -2876,7 +2879,8 @@ function selectPaymentMethod(method) {
     const gcashButton = document.getElementById('gcashPaymentBtn');
     const message = document.getElementById('paymentMethodMsg');
 
-    if (!paymentInput || !cashButton || !gcashButton) {
+    // The GCash button is absent when the branch does not offer GCash.
+    if (!paymentInput || !cashButton || (method === 'gcash' && !gcashButton)) {
         return;
     }
 
@@ -2889,7 +2893,7 @@ function selectPaymentMethod(method) {
         'ring-peach-red/20'
     );
 
-    gcashButton.classList.remove(
+    if (gcashButton) gcashButton.classList.remove(
         'border-peach-red',
         'bg-peach-soft',
         'ring-2',

@@ -1216,12 +1216,7 @@
 
         const actions = document.getElementById('discountVerificationActions');
 
-        // Stop the 3-second poll while changing the server state.
-        if (statusPollTimer) {
-            clearInterval(statusPollTimer);
-            statusPollTimer = null;
-        }
-
+        // Ignore poll answers about this order while changing server state.
         requestInProgress = true;
 
         if (actions) {
@@ -1288,15 +1283,10 @@
             requestInProgress = false;
             continueRequestInProgress = false;
 
-            // Resume polling. The server/session now reports approved,
+            // Resume listening. The server/session now reports approved,
             // and the local acknowledgement prevents any stale rejected
             // response from reopening the popup.
-            if (!statusPollTimer) {
-                statusPollTimer = setInterval(
-                    pollCustomerOrderStatus,
-                    3000
-                );
-            }
+            if (window.PomidaLive) window.PomidaLive.refresh();
 
         } catch (error) {
             discountDecisionCompleted = false;
@@ -1307,13 +1297,6 @@
             if (actions) {
                 actions.style.pointerEvents = '';
                 actions.style.opacity = '';
-            }
-
-            if (!statusPollTimer) {
-                statusPollTimer = setInterval(
-                    pollCustomerOrderStatus,
-                    3000
-                );
             }
 
             alert(error.message || 'Unable to continue the order.');
@@ -1327,14 +1310,9 @@
 
         cancelRequestInProgress = true;
 
-        // Stop polling BEFORE the cancellation request. This prevents a
+        // Ignore poll answers BEFORE the cancellation request. This prevents a
         // rejected response from immediately reopening the popup while the
         // cancellation request is being processed.
-        if (statusPollTimer) {
-            clearInterval(statusPollTimer);
-            statusPollTimer = null;
-        }
-
         requestInProgress = true;
 
         const orderIdBeingCancelled = trackedOrderId;
@@ -1405,10 +1383,6 @@
             if (actions) {
                 actions.style.pointerEvents = '';
                 actions.style.opacity = '';
-            }
-
-            if (!statusPollTimer) {
-                statusPollTimer = setInterval(pollCustomerOrderStatus, 3000);
             }
 
             alert(error.message || 'Unable to cancel the order.');
@@ -1587,17 +1561,12 @@
 <script>
 (function () {
     let trackedOrderId = @json(session('customer_order_id') ?: session('guest_order_id'));
-    let statusPollTimer = null;
+    // While true, answers for the single tracked order are ignored. Set around
+    // the "Continue Transaction" / "Cancel" requests so a stale "rejected"
+    // answer cannot reopen the discount popup mid-request. (There is no
+    // per-page timer to stop any more: this page subscribes to the one shared
+    // poll, partials/live-poller.)
     let requestInProgress = false;
-
-    // Second, independent poller — see pollAllOrderStatuses() below for why
-    // this exists alongside the single-order one above rather than replacing
-    // it: the discount-verification flow above is wired tightly to ONE
-    // tracked order and is left completely alone; this one's only job is
-    // keeping every card's own tracker live and firing the completion popup
-    // for whichever order it belongs to.
-    let allOrdersPollTimer = null;
-    let allOrdersRequestInProgress = false;
 
     // The exact set of orders this page rendered tracker cards for. Kept as a
     // fixed list for the life of this page view — see customerOrdersStatus()
@@ -1944,17 +1913,9 @@
 
         if (anyCardsLeft) return;
 
-        // Nothing left in flight: stop both pollers and show the empty state,
-        // exactly as the cancelled path already did.
-        if (statusPollTimer) {
-            clearInterval(statusPollTimer);
-            statusPollTimer = null;
-        }
-
-        if (allOrdersPollTimer) {
-            clearInterval(allOrdersPollTimer);
-            allOrdersPollTimer = null;
-        }
+        // Nothing left in flight: the shared poll is no longer given any order
+        // id (see the subscription at the bottom), so it only listens for the
+        // bell. Show the empty state, exactly as the cancelled path already did.
 
         if (statusTab) {
             statusTab.innerHTML = `
@@ -2161,35 +2122,32 @@
         updateOrderHelper(orderId, status, type);
     }
 
-    async function pollCustomerOrderStatus() {
+    /*
+     * ONE shared poll, two views of its answer (Oct 2026).
+     *
+     * This page used to run two setInterval(…, 3000) loops of its own —
+     * pollCustomerOrderStatus() on /customer/order-status for the one tracked
+     * order, and pollAllOrderStatuses() on /customer/orders-status for every
+     * card — on top of the bell's own timer, none of which ever stopped (not
+     * when every order was finished, not when the tab was hidden, not when the
+     * server said 403). All three are now ONE request answered by
+     * partials/live-poller, which pauses with the tab, backs off when nothing
+     * changes, stops on 401/403/419 and is only given an order id while that
+     * order is still open. The two handlers below are the two former poll
+     * bodies, unchanged apart from where the data comes from.
+     */
+
+    // handleTrackedOrder: the former pollCustomerOrderStatus() body. Wired
+    // tightly to the PWD/Senior discount-verification flow for ONE order.
+    function handleTrackedOrder(data) {
         if (requestInProgress || cancelRequestInProgress) return;
-        requestInProgress = true;
 
-        try {
-            let url = '{{ route("customer.order-status") }}';
-            if (trackedOrderId) {
-                url += '?order_id=' + encodeURIComponent(trackedOrderId);
-            }
-
-            const response = await fetch(url, {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                cache: 'no-store'
-            });
-
-            if (!response.ok) return;
-
-            const data = await response.json();
-            if (!data.has_order) return;
-
-            trackedOrderId = data.order_id;
+        trackedOrderId = data.order_id;
 
             // Update the visible Pending -> Preparing -> Ready/Served tracker
             // and its helper text immediately when staff changes the order
             // status. Only ever the one order this single-order poll is
-            // tracking — pollAllOrderStatuses() below keeps every OTHER card live.
+            // tracking — handleAllOrders() below keeps every OTHER card live.
             updateOrderProgress(data.order_id, data.status, data.type);
 
             // Restore the PWD/Senior discount verification prompt.
@@ -2284,99 +2242,69 @@
                 !alreadyNotified(data.order_id, data.status)) {
                 showOrderStatusNotice(data.status, data.order_number, data.order_id);
             }
-        } catch (error) {
-            // Retry on the next interval.
-        } finally {
-            requestInProgress = false;
+
+        // Finished: nothing more will change for this order.
+        if (data.status === 'completed' || data.status === 'cancelled') {
+            trackedOrderId = null;
         }
     }
 
-    /**
-     * Every order the visitor currently has open, kept in sync.
-     *
-     * THE BUG THIS FIXES
-     * -------------------
-     * pollCustomerOrderStatus() above answers for exactly ONE order — whichever
-     * id session('customer_order_id') holds, which is silently overwritten to
-     * the JUST-PLACED order every time the customer checks out again. Reported
-     * live: a customer's SECOND order sat frozen on "Pending" on this page
-     * while the admin board correctly showed it moving through Preparing and
-     * Serving — the first order (now the "tracked" one) updated fine; the
-     * second was never even asked about, because nothing on this page knew it
-     * existed once the session pointer moved on.
-     *
-     * This calls the new bulk endpoint (customer.orders-status), which answers
-     * for the visitor's WHOLE set — every in-flight order for a logged-in
-     * customer, or every order this guest session has ever placed — and
-     * repaints EVERY card whose id it recognises via updateOrderProgress(),
-     * then fires the existing one-time completion popup
-     * (showOrderStatusNotice + alreadyNotified/markNotified, unchanged, still
-     * keyed per order id + status) for any order that just finished.
-     *
-     * Deliberately a SEPARATE poller from pollCustomerOrderStatus() above,
-     * not a replacement for it: that one is wired tightly into the PWD/Senior
-     * discount-verification flow for one specific order, and this task is not
-     * touching that logic. The two run independently; showOrderStatusNotice's
-     * own per-order dedupe means it is harmless if both happen to notice the
-     * same order finishing on the same tick.
-     */
-    async function pollAllOrderStatuses() {
-        if (allOrdersRequestInProgress) return;
-        if (!trackedOrderIds.length) return;
-        allOrdersRequestInProgress = true;
+    // handleAllOrders: the former pollAllOrderStatuses() body — keeps every
+    // card's own tracker live and fires the completion popup for whichever
+    // order it belongs to. See customerOrdersStatus() for why the ids come
+    // from the page and not from a status filter.
+    function handleAllOrders(orders) {
+        orders.forEach(function (order) {
+            updateOrderProgress(order.order_id, order.status, order.type);
 
-        try {
-            // Ask about these EXACT ids, not "whatever is in flight right
-            // now" — see the note on customerOrdersStatus() for why a status
-            // filter would miss the one poll that needed to see the
-            // transition to completed/cancelled.
-            const params = trackedOrderIds
-                .map(id => 'order_ids[]=' + encodeURIComponent(id))
-                .join('&');
+            if ((order.status === 'completed' || order.status === 'cancelled') &&
+                !alreadyNotified(order.order_id, order.status)) {
+                showOrderStatusNotice(order.status, order.order_number, order.order_id);
+            }
 
-            const response = await fetch(
-                '{{ route("customer.orders-status") }}?' + params,
-                {
-                    headers: {
-                        'Accept': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    cache: 'no-store'
-                }
-            );
-
-            if (!response.ok) return;
-
-            const data = await response.json();
-            const orders = Array.isArray(data.orders) ? data.orders : [];
-
-            orders.forEach(function (order) {
-                updateOrderProgress(order.order_id, order.status, order.type);
-
-                if ((order.status === 'completed' || order.status === 'cancelled') &&
-                    !alreadyNotified(order.order_id, order.status)) {
-                    showOrderStatusNotice(order.status, order.order_number, order.order_id);
-                }
-            });
-        } catch (error) {
-            // Retry on the next interval.
-        } finally {
-            allOrdersRequestInProgress = false;
-        }
+            // Finished (and its one-time popup is out): stop asking about it.
+            if (order.status === 'completed' || order.status === 'cancelled') {
+                trackedOrderIds = trackedOrderIds.filter(
+                    id => Number(id) !== Number(order.order_id)
+                );
+            }
+        });
     }
 
-    // Check immediately, then every 3 seconds. This works even if the
-    // order was completed/cancelled before this page was opened.
-    pollCustomerOrderStatus();
-    statusPollTimer = setInterval(pollCustomerOrderStatus, 3000);
+    function handleLiveStatus(live) {
+        const orders = Array.isArray(live.orders) ? live.orders : [];
 
-    pollAllOrderStatuses();
-    allOrdersPollTimer = setInterval(pollAllOrderStatuses, 3000);
+        // An order placed from another tab becomes the tracked one, as the old
+        // session-driven poll did.
+        if (!trackedOrderId && live.session_order_id) {
+            trackedOrderId = live.session_order_id;
+        }
 
-    window.addEventListener('beforeunload', function () {
-        if (statusPollTimer) clearInterval(statusPollTimer);
-        if (allOrdersPollTimer) clearInterval(allOrdersPollTimer);
-    });
+        if (trackedOrderId) {
+            const tracked = orders.find(o => Number(o.order_id) === Number(trackedOrderId));
+            if (tracked) {
+                handleTrackedOrder(tracked);
+            } else {
+                // Not ours / gone: stop asking about it.
+                trackedOrderId = null;
+            }
+        }
+
+        handleAllOrders(orders);
+    }
+
+    if (window.PomidaLive) {
+        window.PomidaLive.subscribe({
+            orderIds: function () {
+                const ids = trackedOrderIds.slice();
+                if (trackedOrderId && !ids.some(id => Number(id) === Number(trackedOrderId))) {
+                    ids.push(trackedOrderId);
+                }
+                return ids;
+            },
+            onData: handleLiveStatus
+        });
+    }
 
     // Restore scrolling after the popup is acknowledged.
     const originalClose = window.closeOrderStatusNotice;

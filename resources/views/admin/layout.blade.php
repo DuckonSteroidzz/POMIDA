@@ -935,17 +935,12 @@
                 </a>
             @endif
 
-            {{-- Account — ADMIN ONLY as of 2026-09-01.
-
-                 This used to sit outside the admin-only block so a staff member
-                 could reach it to change their own password. Staff no longer
-                 have any self-service password path: only the admin sets a
-                 staff password, from the Staff Accounts page.
-
-                 Hiding the link is a convenience, not the control. The route
-                 itself is behind `role:admin`, so typing the URL or crafting a
-                 PUT is refused server-side. --}}
-            @if($adminUser && $adminUser->role === 'admin')
+            {{-- Account — EVERY portal role again (Defect Report 5, item 3 —
+                 Oct 2026). Admin, supervisor and staff each have their own
+                 Account Settings page; the route is role:admin,staff,supervisor
+                 and every card on it is about the signed-in account only.
+                 Saving GCash there is still owner-only server-side. --}}
+            @if($adminUser && in_array($adminUser->role, \App\Models\User::PORTAL_ROLES, true))
                 <a href="{{ route('admin.account') }}"
                     class="nav-link-item {{ request()->routeIs('admin.account') ? 'active' : '' }}">
                     <i class="bi bi-gear"></i>
@@ -999,7 +994,15 @@
                 'admin.analytics',
                 // Batch 2 (2026-09-29): the branch only changes the Items
                 // counts there — categories themselves are global.
-                'admin.add-category'
+                'admin.add-category',
+                // Branch Management (Oct 2026): a chosen branch narrows the
+                // list to it and opens its details.
+                'admin.branches',
+                // Account Settings (Defect Report 5, item 3): every role. The
+                // owner's choice here is the branch the GCash card edits (the
+                // page takes the select over via pcBranchSelectHandler);
+                // supervisor and staff see their own branch, locked.
+                'admin.account'
             );
 
             // This is the internal admin picker, not a customer-facing one —

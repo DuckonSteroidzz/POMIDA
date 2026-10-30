@@ -1,0 +1,785 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Branches - Peachy Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css" rel="stylesheet">
+<style>
+:root{
+  --peach:#F4845F; --peach-deep:#E06A44; --peach-soft:#FDF1E6; --peach-tint:#FBE7E4;
+  --cream:#FFFBF7; --sand:#FDF6EF; --line:#F0E2D5;
+  --brown:#3B2A24; --brown-soft:#8B7A72; --brown-mute:#C4B6AE;
+  --ok:#2E7D5B; --ok-bg:#E6F4EC; --danger:#C0392B; --danger-bg:#FBE7E4;
+  --radius:16px; --shadow:0 1px 2px rgba(59,42,36,.04),0 8px 24px -12px rgba(59,42,36,.18);
+  --shadow-lg:0 24px 60px -20px rgba(59,42,36,.35);
+  --font:"Plus Jakarta Sans",system-ui,sans-serif; --display:"Fraunces",Georgia,serif;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+body{margin:0;font-family:var(--font);color:var(--brown);background:radial-gradient(1200px 500px at 100% -10%,var(--peach-tint),transparent 60%),var(--sand);min-height:100vh;font-size:14px}
+button{font-family:inherit;cursor:pointer}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+.offscreen{position:absolute;top:-9999px;left:-9999px}
+.page{max-width:1240px;margin:0 auto;padding:2rem 1.25rem 4rem}
+
+/* hero */
+.hero{display:flex;align-items:flex-end;justify-content:space-between;gap:1rem;flex-wrap:wrap;margin-bottom:1.5rem}
+.eyebrow{margin:0 0 .25rem;font-size:.7rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--peach-deep)}
+.page-title{font-family:var(--display);font-size:clamp(1.8rem,4vw,2.6rem);margin:0;line-height:1.05;letter-spacing:-.01em}
+.hero-sub{margin:.4rem 0 0;color:var(--brown-soft)}
+
+.alert{display:flex;gap:.5rem;align-items:center;background:var(--danger-bg);color:var(--danger);border:1px solid #F3C9C2;padding:.8rem 1rem;border-radius:12px;margin-bottom:1rem;font-weight:500}
+
+/* stats */
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.25rem}
+.stat{display:flex;gap:.9rem;align-items:center;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:1rem 1.1rem;box-shadow:var(--shadow)}
+.stat-ico{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--peach-soft);color:var(--peach-deep);font-size:1.2rem;flex-shrink:0}
+.stat-ico.ok{background:var(--ok-bg);color:var(--ok)} .stat-ico.off{background:#F3EEEA;color:var(--brown-soft)}
+.stat-num{font-family:var(--display);font-size:1.6rem;margin:0;line-height:1}
+.stat-lbl{margin:.2rem 0 0;font-size:.75rem;color:var(--brown-soft)}
+
+/* card */
+.card{background:#fff;border:1px solid var(--line);border-radius:20px;box-shadow:var(--shadow);overflow:hidden}
+.list-head{display:flex;justify-content:space-between;gap:1rem;flex-wrap:wrap;align-items:center;padding:1.1rem 1.25rem;border-bottom:1px solid var(--line);background:linear-gradient(180deg,var(--cream),#fff)}
+.list-head>div:first-child{display:flex;align-items:center;gap:.6rem}
+.card-title{font-family:var(--display);font-size:1.25rem;margin:0}
+.chip{background:var(--peach-soft);color:var(--peach-deep);font-weight:700;font-size:.72rem;padding:.25rem .65rem;border-radius:999px}
+.filters{display:flex;gap:.6rem;flex-wrap:wrap;align-items:center}
+.search{position:relative;min-width:260px;flex:1}
+.search i{position:absolute;left:.85rem;top:50%;transform:translateY(-50%);color:var(--brown-mute)}
+.search input{width:100%;padding:.6rem .9rem .6rem 2.3rem;border:1px solid var(--line);border-radius:12px;background:#fff;font:inherit;color:var(--brown);outline:none;transition:.15s}
+.search input:focus,.input:focus{border-color:var(--peach);box-shadow:0 0 0 3px rgba(244,132,95,.18)}
+.seg{display:inline-flex;background:var(--sand);border:1px solid var(--line);border-radius:12px;padding:3px}
+.seg-btn{border:0;background:transparent;padding:.45rem .8rem;border-radius:9px;font-weight:600;font-size:.8rem;color:var(--brown-soft)}
+.seg-btn.active{background:#fff;color:var(--brown);box-shadow:0 1px 3px rgba(59,42,36,.12)}
+
+/* buttons */
+.btn{display:inline-flex;align-items:center;gap:.45rem;justify-content:center;border:1px solid transparent;border-radius:12px;padding:.6rem 1rem;font-weight:600;font-size:.85rem;transition:.15s;white-space:nowrap}
+.btn-primary{background:linear-gradient(135deg,var(--peach),var(--peach-deep));color:#fff;box-shadow:0 6px 16px -6px rgba(224,106,68,.6)}
+.btn-primary:hover{transform:translateY(-1px);box-shadow:0 10px 20px -8px rgba(224,106,68,.7)}
+.btn-ghost{background:#fff;border-color:var(--line);color:var(--brown)}
+.btn-ghost:hover{background:var(--sand)}
+.btn-open{background:var(--ok-bg);color:var(--ok);border-color:#C8E6D5}
+.btn-danger{background:var(--brown);color:#fff}
+.btn-danger:hover{background:#2a1d18}
+.icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--brown-soft);display:grid;place-items:center;font-size:1rem;transition:.15s}
+.icon-btn:hover,.icon-btn[aria-expanded=true]{background:var(--peach-soft);color:var(--peach-deep)}
+
+/* table */
+.table-wrap{overflow-x:auto}
+.bl-table{width:100%;border-collapse:collapse}
+.bl-table th{text-align:left;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brown-soft);padding:.8rem 1.25rem;background:var(--cream);border-bottom:1px solid var(--line)}
+.bl-table td{padding:.9rem 1.25rem;border-bottom:1px solid #F7EDE4;vertical-align:middle}
+.bl-table .c{text-align:center}
+.bl-row{cursor:pointer;transition:background .12s}
+.bl-row:hover{background:var(--cream)}
+.bl-row:focus-visible{outline:2px solid var(--peach);outline-offset:-2px}
+.b-name{display:flex;align-items:center;gap:.7rem;font-weight:700}
+.b-av{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--peach-soft),var(--peach-tint));color:var(--peach-deep);display:grid;place-items:center;font-weight:700;font-size:.75rem;flex-shrink:0}
+.b-code{font-family:ui-monospace,monospace;font-size:.78rem;background:var(--sand);border:1px solid var(--line);padding:.15rem .45rem;border-radius:6px;color:var(--brown)}
+.b-addr{color:var(--brown-soft);max-width:280px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.soft{color:var(--brown-soft)} .nowrap{white-space:nowrap}
+.badge{display:inline-flex;align-items:center;gap:.35rem;padding:.22rem .6rem;border-radius:999px;font-size:.7rem;font-weight:700}
+.badge::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.badge-ok{background:var(--ok-bg);color:var(--ok)} .badge-off{background:#F3EEEA;color:var(--brown-soft)}
+.badge-main{background:var(--peach);color:#fff} .badge-main::before{display:none}
+
+.empty{text-align:center;padding:3rem 1rem;color:var(--brown-soft)}
+.empty i{font-size:2rem;color:var(--peach)} .empty p{font-weight:700;color:var(--brown);margin:.5rem 0 .2rem}
+
+/* pager */
+.pager{display:flex;justify-content:space-between;align-items:center;gap:1rem;flex-wrap:wrap;padding:.9rem 1.25rem;background:var(--cream)}
+.pager-info{display:flex;gap:1rem;align-items:center;color:var(--brown-soft);font-size:.8rem}
+.pager-size{display:flex;gap:.4rem;align-items:center}
+.pager-nav{display:flex;gap:.35rem;align-items:center}
+.page-list{display:flex;gap:.25rem}
+.page-btn{border:1px solid var(--line);background:#fff;border-radius:9px;min-width:34px;height:34px;padding:0 .6rem;font-weight:600;font-size:.8rem;color:var(--brown);display:inline-flex;align-items:center;justify-content:center;gap:.2rem}
+.page-btn:hover:not(:disabled){border-color:var(--peach);color:var(--peach-deep)}
+.page-btn.active{background:var(--peach);border-color:var(--peach);color:#fff}
+.page-btn:disabled{opacity:.4;cursor:not-allowed}
+.page-dots{padding:0 .3rem;color:var(--brown-mute)}
+
+/* forms */
+.grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.9rem}
+.span-2{grid-column:span 2}
+.field{display:flex;flex-direction:column;gap:.35rem}
+.label{font-size:.75rem;font-weight:600;color:var(--brown)}
+.input{width:100%;padding:.62rem .8rem;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;color:var(--brown);outline:none;transition:.15s}
+.input-sm{width:auto;padding:.3rem .5rem;font-size:.8rem}
+.upper{text-transform:uppercase}
+.hint{font-size:.72rem;color:var(--brown-mute);margin:0}
+.input-ico{position:relative}
+.input-ico i{position:absolute;left:.8rem;top:50%;transform:translateY(-50%);color:var(--peach)}
+.input-ico .input{padding-left:2.2rem}
+.divider{height:1px;background:var(--line);margin:1.25rem 0}
+.section-title{font-weight:700;margin:0 0 .25rem;display:flex;gap:.45rem;align-items:center}
+.section-title i{color:var(--peach)}
+.switch-row{display:flex;align-items:center;gap:.7rem;cursor:pointer;font-weight:500}
+.switch{appearance:none;width:42px;height:24px;border-radius:999px;background:var(--brown-mute);position:relative;cursor:pointer;transition:.2s;margin:0;flex-shrink:0}
+.switch::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch:checked{background:var(--ok)} .switch:checked::after{left:21px}
+
+/* menu */
+.menu{position:fixed;z-index:120;min-width:200px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-lg);padding:.35rem;animation:pop .14s ease-out}
+.menu button{display:flex;gap:.6rem;align-items:center;width:100%;border:0;background:transparent;padding:.6rem .7rem;border-radius:8px;font-size:.85rem;color:var(--brown);text-align:left}
+.menu button:hover{background:var(--peach-soft)}
+.menu button.danger{color:var(--danger)} .menu button.danger:hover{background:var(--danger-bg)}
+.menu button.okc{color:var(--ok)} .menu button.okc:hover{background:var(--ok-bg)}
+.menu-sep{height:1px;background:var(--line);margin:.3rem 0}
+
+/* modal */
+.modal{position:fixed;inset:0;z-index:100;display:none;align-items:center;justify-content:center;padding:1rem}
+.modal.open{display:flex}
+.modal-backdrop{position:absolute;inset:0;background:rgba(59,42,36,.45);backdrop-filter:blur(3px);animation:fade .2s}
+.modal-panel{position:relative;background:#fff;border-radius:22px;width:100%;max-width:560px;max-height:calc(100vh - 2rem);display:flex;flex-direction:column;box-shadow:var(--shadow-lg);animation:rise .22s cubic-bezier(.2,.8,.2,1);overflow:hidden}
+.modal-panel>form,.modal-panel>div#dView{display:flex;flex-direction:column;min-height:0;flex:1}
+.modal-lg{max-width:720px} .modal-sm{max-width:420px}
+.modal-head{display:flex;justify-content:space-between;align-items:flex-start;gap:1rem;padding:1.25rem 1.4rem;border-bottom:1px solid var(--line)}
+.modal-head h3{font-family:var(--display);font-size:1.35rem;margin:0}
+.detail-head{background:linear-gradient(135deg,var(--peach-soft),var(--cream))}
+.d-ident{display:flex;gap:.9rem;align-items:center;min-width:0}
+.d-avatar{width:54px;height:54px;border-radius:16px;background:linear-gradient(135deg,var(--peach),var(--peach-deep));color:#fff;display:grid;place-items:center;font-weight:700;font-size:1.05rem;flex-shrink:0;box-shadow:0 8px 18px -8px rgba(224,106,68,.7)}
+.d-badges{display:flex;gap:.35rem;margin-top:.35rem}
+.d-head-actions{display:flex;gap:.2rem;flex-shrink:0}
+.modal-body{padding:1.25rem 1.4rem;overflow-y:auto;flex:1}
+.modal-foot{display:flex;justify-content:flex-end;gap:.6rem;padding:1rem 1.4rem;border-top:1px solid var(--line);background:var(--cream);flex-wrap:wrap}
+#dView .modal-foot{justify-content:space-between}
+.info-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:.75rem;margin:1rem 0 1.4rem}
+.info-grid div{background:var(--sand);border:1px solid var(--line);border-radius:12px;padding:.75rem .9rem}
+.info-grid dt{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brown-soft)}
+.info-grid dd{margin:.25rem 0 0;font-weight:600;word-break:break-word}
+.socials{display:flex;flex-wrap:wrap;gap:.5rem;margin-top:.75rem}
+.social{display:inline-flex;gap:.45rem;align-items:center;padding:.5rem .8rem;border-radius:10px;border:1px solid var(--line);color:var(--brown);text-decoration:none;font-weight:600;font-size:.8rem}
+.social i{color:var(--peach)} .social:hover{border-color:var(--peach)}
+.social.none{color:var(--brown-mute);font-weight:500}
+.confirm-body{text-align:center;padding-top:1.75rem}
+.confirm-body h3{font-family:var(--display);margin:.9rem 0 .4rem;font-size:1.3rem}
+.confirm-body p{color:var(--brown-soft);margin:0;line-height:1.5}
+.confirm-ico{width:56px;height:56px;border-radius:50%;display:inline-grid;place-items:center;font-size:1.4rem;background:var(--danger-bg);color:var(--danger)}
+.confirm-ico.ok{background:var(--ok-bg);color:var(--ok)}
+
+.toast{position:fixed;bottom:1.25rem;left:50%;transform:translateX(-50%);background:var(--brown);color:#fff;padding:.75rem 1.1rem;border-radius:12px;box-shadow:var(--shadow-lg);z-index:200;font-weight:500;display:flex;gap:.5rem;align-items:center;animation:rise .2s}
+
+@keyframes fade{from{opacity:0}} @keyframes rise{from{opacity:0;transform:translateY(12px) scale(.98)}}
+@keyframes pop{from{opacity:0;transform:scale(.96)}}
+
+/* gcash */
+.gc-title{margin-top:1.4rem}
+.gc-title .badge,.gc-head .badge{margin-left:.35rem}
+.badge-gc{background:#E3EEFF;color:#1D5FD1}
+.gc-view{display:flex;gap:1rem;align-items:center;margin-top:.75rem;background:var(--sand);border:1px solid var(--line);border-radius:12px;padding:.8rem}
+.gc-view img{width:72px;height:72px;border-radius:8px;object-fit:contain;background:#fff;border:1px solid var(--line)}
+.gc-view dd{margin:0;font-weight:700} .gc-view dt{font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--brown-soft)}
+.gc-view.off{opacity:.65}
+.gc-head{display:flex;gap:.85rem;align-items:flex-start;margin-bottom:1rem}
+.gc-head-text{flex:1;min-width:0}
+.gc-ico{width:42px;height:42px;border-radius:12px;background:var(--peach-soft);color:var(--peach-deep);display:grid;place-items:center;font-size:1.2rem;flex-shrink:0}
+.gc-toggle{font-size:.8rem;font-weight:700;flex-shrink:0;padding-top:.3rem}
+.gc-body{display:grid;grid-template-columns:180px 1fr;gap:1rem;transition:opacity .2s}
+.gc-body.disabled{opacity:.45;pointer-events:none;filter:grayscale(.4)}
+.gc-qr{background:var(--cream);border:1px solid var(--line);border-radius:14px;padding:.85rem;text-align:center}
+.gc-qr-lbl{margin:0 0 .6rem;font-size:.66rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;color:var(--brown-soft)}
+.gc-qr-box{aspect-ratio:1;border:1.5px dashed var(--line);border-radius:10px;background:#fff;display:grid;place-items:center;overflow:hidden;color:var(--brown-mute);font-size:.75rem;padding:.4rem}
+.gc-qr-box img{width:100%;height:100%;object-fit:contain}
+.gc-qr-box i{font-size:1.8rem;display:block;margin-bottom:.25rem}
+.gc-qr-state{margin:.55rem 0 0;font-size:.75rem;font-weight:700;display:flex;gap:.3rem;justify-content:center;align-items:center}
+.gc-qr-state.ok{color:var(--ok)} .gc-qr-state.new{color:var(--peach-deep)} .gc-qr-state.none{color:var(--brown-mute)}
+.gc-fields{display:flex;flex-direction:column;gap:1rem}
+.drop{display:flex;flex-direction:column;align-items:center;gap:.25rem;text-align:center;border:1.5px dashed #F1CDB8;background:var(--cream);border-radius:12px;padding:1rem;cursor:pointer;transition:.15s;font-size:.82rem}
+.drop i{font-size:1.4rem;color:var(--peach)}
+.drop:hover,.drop.over{border-color:var(--peach);background:var(--peach-soft)}
+.drop.err{border-color:var(--danger)} .drop.err small{color:var(--danger)}
+.link-btn{align-self:flex-start;border:0;background:none;color:var(--peach-deep);font-weight:600;font-size:.78rem;padding:0;display:inline-flex;gap:.3rem}
+.gc-off-note{display:flex;gap:.5rem;align-items:center;background:#F3EEEA;color:var(--brown-soft);border-radius:10px;padding:.6rem .8rem;font-size:.8rem;margin:.9rem 0 0}
+
+/* responsive */
+@media (max-width:860px){
+  .search{min-width:0;flex-basis:100%}
+  .filters{width:100%}
+}
+@media (max-width:720px){
+  .page{padding:1.25rem .85rem 3rem}
+  .hero .btn{width:100%}
+  .stats{gap:.5rem}
+  .stat{flex-direction:column;align-items:flex-start;gap:.5rem;padding:.8rem}
+  .stat-ico{width:36px;height:36px;font-size:1rem}
+  .bl-table thead{display:none}
+  .bl-table,.bl-table tbody{display:block}
+  .bl-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.35rem .75rem;padding:.9rem 1rem;border-bottom:1px solid #F7EDE4}
+  .bl-table td{display:block;padding:0;border:0;text-align:left!important}
+  .bl-row td[data-label=Branch]{grid-column:1}
+  .bl-row td[data-label=Actions]{grid-column:2;grid-row:1}
+  .bl-row td[data-label=Code],.bl-row td[data-label=Status]{display:inline-block}
+  .bl-row td[data-label=Code]{grid-column:1}
+  .bl-row td[data-label=Status]{grid-column:2;grid-row:2;justify-self:end}
+  .bl-row td[data-label=Address],.bl-row td[data-label=Contact],.bl-row td[data-label=Hours]{grid-column:1/-1;font-size:.8rem}
+  .bl-row td[data-label=Contact]::before{content:"\F5C1  ";font-family:bootstrap-icons;color:var(--peach)}
+  .bl-row td[data-label=Hours]::before{content:"\F293  ";font-family:bootstrap-icons;color:var(--peach)}
+  .b-addr{max-width:none;white-space:normal}
+  .pager{flex-direction:column;align-items:stretch}
+  .pager-nav{justify-content:space-between}
+  .page-btn span{display:none}
+  .grid,.info-grid{grid-template-columns:1fr}
+  .gc-body{grid-template-columns:1fr}
+  .gc-qr{max-width:220px;width:100%;margin:0 auto}
+  .gc-head{flex-wrap:wrap}
+  .span-2{grid-column:auto}
+  .modal{padding:0;align-items:flex-end}
+  .modal-panel{max-height:92vh;border-radius:22px 22px 0 0;max-width:none}
+  .modal-foot .btn{flex:1}
+  #dView .modal-foot form{flex:1;display:flex} #dView .modal-foot form .btn{flex:1}
+}
+
+</style>
+</head>
+<body>
+<!--
+  INTEGRATION NOTES (Laravel)
+  Only the routes already used by branches.blade.php are referenced:
+    • route('admin.branches.store')          POST  – Add New Branch form
+    • route('admin.branches.update', $id)    PUT   – Edit / Store Information form
+    • route('admin.branches.toggle', $id)    PUT   – Open / Inactive toggle
+  In Blade: render rows with @foreach($branches as $branch) and put each branch's data
+  (incl. $branchSettings[$branch->id] social URLs) into the data-* attributes shown on <tr>.
+  Replace the form `action` values (marked data-route) and add @csrf / @method('PUT').
+-->
+<main class="page">
+
+  <header class="hero">
+    <div>
+      <p class="eyebrow"><i class="bi bi-shop-window"></i> Peachy Cafe</p>
+      <h1 class="page-title">Branch Management</h1>
+      <p class="hero-sub">Search, filter and manage all branches</p>
+    </div>
+    <button type="button" class="btn btn-primary" data-open="addModal"><i class="bi bi-plus-lg"></i> Add New Branch</button>
+  </header>
+
+  <!-- @if($errors->any()) -->
+  <div class="alert" id="errorAlert" hidden><i class="bi bi-exclamation-circle"></i> <span>{{ $errors->first() }}</span></div>
+  <!-- @endif -->
+
+  <section class="stats">
+    <div class="stat"><span class="stat-ico"><i class="bi bi-shop"></i></span><div><p class="stat-num" id="statTotal">0</p><p class="stat-lbl">Total branches</p></div></div>
+    <div class="stat"><span class="stat-ico ok"><i class="bi bi-door-open"></i></span><div><p class="stat-num" id="statOpen">0</p><p class="stat-lbl">Open</p></div></div>
+    <div class="stat"><span class="stat-ico off"><i class="bi bi-door-closed"></i></span><div><p class="stat-num" id="statOff">0</p><p class="stat-lbl">Inactive</p></div></div>
+  </section>
+
+  <section class="card">
+    <div class="list-head">
+      <div>
+        <h2 class="card-title">Branch List</h2>
+        <span class="chip" id="blCount">0 branches</span>
+      </div>
+      <div class="filters">
+        <div class="search">
+          <i class="bi bi-search"></i>
+          <input id="blSearch" type="search" placeholder="Search name, code, address, contact…" aria-label="Search branches" autocomplete="off">
+        </div>
+        <div class="seg" role="group" aria-label="Status filter">
+          <button type="button" class="seg-btn active" data-status="">All</button>
+          <button type="button" class="seg-btn" data-status="open">Open</button>
+          <button type="button" class="seg-btn" data-status="closed">Inactive</button>
+        </div>
+        <button type="button" class="btn btn-ghost" id="blReset"><i class="bi bi-arrow-counterclockwise"></i> Reset</button>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table class="bl-table">
+        <thead>
+          <tr>
+            <th>Branch</th><th>Code</th><th>Address</th>
+            <th class="c">Contact</th><th class="c">Hours</th><th class="c">Status</th><th class="c"><span class="sr">Actions</span></th>
+          </tr>
+        </thead>
+        <tbody id="blBody">
+          <!-- Rows are rendered from sample data by app.js. In Blade, output them server-side
+               using the same markup (see buildRow() in app.js). -->
+        </tbody>
+      </table>
+      <div class="empty" id="blEmpty" hidden>
+        <i class="bi bi-shop"></i><p>No branches yet</p><span>Add your first branch with “Add New Branch”.</span>
+      </div>
+      <div class="empty" id="blNoResults" hidden>
+        <i class="bi bi-search"></i><p>No branches match your search</p><span>Try a different keyword or clear the filters.</span>
+      </div>
+    </div>
+
+    <div class="pager" id="blPager" hidden>
+      <div class="pager-info">
+        <span id="blPagerRange"></span>
+        <label class="pager-size">Rows
+          <select id="blPageSize" class="input input-sm">
+            <option value="15" selected>15</option><option value="25">25</option><option value="50">50</option>
+          </select>
+        </label>
+      </div>
+      <div class="pager-nav">
+        <button type="button" class="page-btn" id="blPrev"><i class="bi bi-chevron-left"></i><span> Prev</span></button>
+        <span class="page-list" id="blPageList"></span>
+        <button type="button" class="page-btn" id="blNext"><span>Next </span><i class="bi bi-chevron-right"></i></button>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ============ ACTION MENU (shared) ============ -->
+<div class="menu" id="actionMenu" role="menu" hidden>
+  <button type="button" role="menuitem" data-act="view"><i class="bi bi-eye"></i> View details</button>
+  <button type="button" role="menuitem" data-act="edit"><i class="bi bi-pencil-square"></i> Edit branch</button>
+  <div class="menu-sep"></div>
+  <button type="button" role="menuitem" data-act="toggle" id="menuToggle"><i class="bi bi-door-closed"></i> Set as Inactive</button>
+</div>
+
+<!-- ============ ADD MODAL ============ -->
+<div class="modal" id="addModal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="addTitle">
+    <div class="modal-head">
+      <div><p class="eyebrow">New</p><h3 id="addTitle">Add New Branch</h3></div>
+      <button type="button" class="icon-btn" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button>
+    </div>
+    <!-- action="{{ route('admin.branches.store') }}" -->
+    <form id="addForm" action="#" data-route="admin.branches.store" method="POST" autocomplete="off">
+      <input type="text" name="prevent_autofill_username" value="" class="offscreen" tabindex="-1" aria-hidden="true" autocomplete="off">
+      <input type="password" name="prevent_autofill_password" value="" class="offscreen" tabindex="-1" aria-hidden="true" autocomplete="off">
+      <!-- @csrf -->
+      <div class="modal-body">
+        <div class="grid">
+          <div class="field span-2"><label class="label">Branch Name *</label><input type="text" name="name" class="input" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field"><label class="label">Branch Code *</label><input type="text" name="code" class="input upper" required maxlength="10" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"><small class="hint">Unique short code</small></div>
+          <div class="field"><label class="label">Contact Number</label><input type="text" name="contact_number" class="input" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field span-2"><label class="label">Address *</label><input type="text" name="address" class="input" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field span-2"><label class="label">Email</label><input type="email" name="email" class="input" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field"><label class="label">Opening Time</label><input type="time" name="opening_time" class="input"></div>
+          <div class="field"><label class="label">Closing Time</label><input type="time" name="closing_time" class="input"></div>
+        </div>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-plus-circle"></i> Add Branch</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ DETAILS / EDIT MODAL ============ -->
+<div class="modal" id="detailModal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel modal-lg" role="dialog" aria-modal="true" aria-labelledby="dTitle">
+    <div class="modal-head detail-head">
+      <div class="d-ident">
+        <span class="d-avatar" id="dAvatar">PC</span>
+        <div>
+          <p class="eyebrow" id="dCode">CODE</p>
+          <h3 id="dTitle">Branch</h3>
+          <div class="d-badges"><span class="badge" id="dStatus">Open</span><span class="badge badge-main" id="dMain" hidden>Main</span></div>
+        </div>
+      </div>
+      <div class="d-head-actions">
+        <button type="button" class="icon-btn" id="dMenuBtn" aria-label="Branch actions"><i class="bi bi-three-dots-vertical"></i></button>
+        <button type="button" class="icon-btn" data-close aria-label="Close"><i class="bi bi-x-lg"></i></button>
+      </div>
+    </div>
+
+    <!-- VIEW MODE -->
+    <div id="dView">
+      <div class="modal-body">
+        <p class="section-title"><i class="bi bi-shop"></i> Store Information</p>
+        <p class="hint">Customers will see this information in More.</p>
+        <dl class="info-grid">
+          <div><dt>Address</dt><dd id="vAddress"></dd></div>
+          <div><dt>Contact Number</dt><dd id="vContact"></dd></div>
+          <div><dt>Email</dt><dd id="vEmail"></dd></div>
+          <div><dt>Hours</dt><dd id="vHours"></dd></div>
+        </dl>
+        <p class="section-title"><i class="bi bi-share"></i> Social Media</p>
+        <div class="socials" id="vSocials"></div>
+        <p class="section-title gc-title"><i class="bi bi-qr-code"></i> GCash Payment <span class="badge" id="vGcBadge">Enabled</span></p>
+        <div class="gc-view" id="vGcash"></div>
+      </div>
+      <div class="modal-foot">
+        <!-- action="{{ route('admin.branches.toggle', $branch->id) }}"  @csrf @method('PUT') -->
+        <form id="dToggleForm" action="#" data-route="admin.branches.toggle" method="POST">
+          <button type="submit" class="btn" id="dToggleBtn"></button>
+        </form>
+        <button type="button" class="btn btn-primary" id="dEditBtn"><i class="bi bi-pencil-square"></i> Edit Branch</button>
+      </div>
+    </div>
+
+    <!-- EDIT MODE -->
+    <!-- action="{{ route('admin.branches.update', $branch->id) }}"  @csrf @method('PUT') -->
+    <!-- enctype added so the QR image can be uploaded with the same update form -->
+    <form id="dEdit" action="#" data-route="admin.branches.update" method="POST" enctype="multipart/form-data" autocomplete="off" hidden>
+      <input type="text" name="prevent_autofill_username" value="" class="offscreen" tabindex="-1" aria-hidden="true" autocomplete="off">
+      <input type="password" name="prevent_autofill_password" value="" class="offscreen" tabindex="-1" aria-hidden="true" autocomplete="off">
+      <input type="hidden" name="_method" value="PUT">
+      <div class="modal-body">
+        <p class="section-title"><i class="bi bi-shop"></i> Store Information</p>
+        <p class="hint">Customers will see this information in More.</p>
+        <div class="grid">
+          <div class="field span-2"><label class="label">Business / Branch Name *</label><input type="text" name="name" class="input" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field span-2"><label class="label">Address *</label><input type="text" name="address" class="input" required readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field"><label class="label">Contact Number</label><input type="text" name="contact_number" class="input" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field"><label class="label">Email</label><input type="email" name="email" class="input" readonly onfocus="this.removeAttribute('readonly');" autocomplete="one-time-code" data-lpignore="true" data-1p-ignore="true" data-bwignore="true" data-form-type="other"></div>
+          <div class="field"><label class="label">Opening Time</label><input type="time" name="opening_time" class="input"></div>
+          <div class="field"><label class="label">Closing Time</label><input type="time" name="closing_time" class="input"></div>
+        </div>
+        <div class="divider"></div>
+        <p class="section-title"><i class="bi bi-share"></i> Social Media</p>
+        <div class="grid">
+          <div class="field"><label class="label">Facebook</label><div class="input-ico"><i class="bi bi-facebook"></i><input type="url" name="facebook_url" class="input" autocomplete="off" placeholder="https://facebook.com/…"></div></div>
+          <div class="field"><label class="label">Instagram</label><div class="input-ico"><i class="bi bi-instagram"></i><input type="url" name="instagram_url" class="input" autocomplete="off" placeholder="https://instagram.com/…"></div></div>
+          <div class="field"><label class="label">TikTok</label><div class="input-ico"><i class="bi bi-tiktok"></i><input type="url" name="tiktok_url" class="input" autocomplete="off" placeholder="https://tiktok.com/@…"></div></div>
+          <div class="field"><label class="label">Other Social Media</label><div class="input-ico"><i class="bi bi-link-45deg"></i><input type="url" name="other_social_url" class="input" autocomplete="off" placeholder="https://…"></div></div>
+        </div>
+        <div class="divider"></div>
+        <!-- GCash Payment Settings. NOTE: these field names are new – your update() controller
+             must accept/validate them (no new route needed; they post with admin.branches.update). -->
+        <div class="gc-head">
+          <span class="gc-ico"><i class="bi bi-qr-code"></i></span>
+          <div class="gc-head-text">
+            <p class="section-title">GCash Payment Settings <span class="badge" id="eGcBadge">Enabled</span></p>
+            <p class="hint">Manage the QR code and number shown to customers paying through GCash.</p>
+          </div>
+          <label class="switch-row gc-toggle" title="Enable or disable GCash for this branch">
+            <input type="hidden" name="gcash_enabled" value="0">
+            <input type="checkbox" name="gcash_enabled" value="1" class="switch" id="eGcToggle">
+            <span id="eGcToggleLbl">On</span>
+          </label>
+        </div>
+        <div class="gc-body" id="eGcBody">
+          <div class="gc-qr">
+            <p class="gc-qr-lbl">Current QR Code</p>
+            <div class="gc-qr-box" id="eQrBox"></div>
+            <p class="gc-qr-state" id="eQrState"></p>
+          </div>
+          <div class="gc-fields">
+            <div class="field">
+              <label class="label" for="eQrFile">Change GCash QR</label>
+              <label class="drop" for="eQrFile" id="eDrop">
+                <i class="bi bi-cloud-arrow-up"></i>
+                <span><strong>Upload QR image</strong> or drag it here</span>
+                <small class="hint" id="eQrName">JPG, JPEG, PNG, or WEBP · Maximum 5 MB</small>
+              </label>
+              <input type="file" id="eQrFile" name="gcash_qr" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="offscreen">
+              <button type="button" class="link-btn" id="eQrUndo" hidden><i class="bi bi-arrow-counterclockwise"></i> Keep current QR</button>
+            </div>
+            <div class="field">
+              <label class="label">GCash Phone Number</label>
+              <div class="input-ico"><i class="bi bi-phone"></i><input type="tel" name="gcash_number" class="input" inputmode="numeric" maxlength="11" pattern="09[0-9]{9}" placeholder="09XXXXXXXXX" autocomplete="off"></div>
+              <small class="hint">Displayed below the GCash QR code during checkout.</small>
+            </div>
+          </div>
+        </div>
+        <p class="gc-off-note" id="eGcOff" hidden><i class="bi bi-info-circle"></i> GCash is disabled — customers won't see it as a payment option for this branch.</p>
+        <div class="divider"></div>
+        <label class="switch-row">
+          <input type="checkbox" name="is_active" value="1" class="switch">
+          <span>Accept orders from this branch</span>
+        </label>
+      </div>
+      <div class="modal-foot">
+        <button type="button" class="btn btn-ghost" id="dCancelEdit">Cancel</button>
+        <button type="submit" class="btn btn-primary"><i class="bi bi-check2"></i> Save Store Information</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ============ CONFIRM MODAL (replaces native confirm()) ============ -->
+<div class="modal" id="confirmModal" aria-hidden="true">
+  <div class="modal-backdrop" data-close></div>
+  <div class="modal-panel modal-sm" role="alertdialog" aria-modal="true" aria-labelledby="cTitle">
+    <div class="modal-body confirm-body">
+      <span class="confirm-ico" id="cIco"><i class="bi bi-door-closed"></i></span>
+      <h3 id="cTitle">Set as inactive?</h3>
+      <p id="cMsg"></p>
+    </div>
+    <div class="modal-foot">
+      <button type="button" class="btn btn-ghost" data-close>Cancel</button>
+      <button type="button" class="btn btn-primary" id="cOk">Confirm</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast" role="status" hidden></div>
+
+<script>
+/* Peachy Cafe – Branch Management prototype (vanilla JS)
+ * Sample data stands in for $branches and $branchSettings from the controller.
+ * Laravel routes referenced (unchanged from the original Blade):
+ *   admin.branches.store, admin.branches.update, admin.branches.toggle
+ */
+(function () {
+  "use strict";
+
+  // Sample QR (stands in for the stored image URL, e.g. asset('storage/'.$path))
+  const SAMPLE_QR = "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 29 29" shape-rendering="crispEdges"><rect width="29" height="29" fill="#fff"/><g fill="#3B2A24"><path d="M1 1h7v7H1zM21 1h7v7h-7zM1 21h7v7H1z"/></g><g fill="#fff"><path d="M2 2h5v5H2zM22 2h5v5h-5zM2 22h5v5H2z"/></g><g fill="#3B2A24"><path d="M3 3h3v3H3zM23 3h3v3h-3zM3 23h3v3H3zM10 1h2v2h-2zM13 3h3v2h-3zM10 6h2v3h-2zM15 7h3v2h-3zM1 10h3v2H1zM6 11h4v2H6zM12 10h3v3h-3zM17 11h2v2h-2zM21 10h3v2h-3zM25 12h3v2h-3zM10 15h2v3h-2zM14 15h4v2h-4zM20 15h2v4h-2zM24 16h4v2h-4zM2 15h3v2H2zM10 21h3v2h-3zM15 20h2v4h-2zM19 22h3v2h-3zM24 21h3v3h-3zM11 25h3v3h-3zM18 26h4v2h-4zM25 25h3v3h-3z"/></g></svg>');
+
+  // ---------- Sample data (replace with Blade-rendered rows) ----------
+  const branches = [
+    { id: 1, name: "Peachy Cafe Makati", code: "MKT", address: "123 Ayala Ave, Makati City", contact_number: "0917 123 4567", email: "makati@peachycafe.ph", opening_time: "07:00", closing_time: "22:00", is_active: true, is_main_branch: true, gcash_enabled: true, gcash_number: "09159139900", gcash_qr_url: SAMPLE_QR, facebook_url: "https://facebook.com/peachycafe", instagram_url: "https://instagram.com/peachycafe", tiktok_url: "", other_social_url: "" },
+    { id: 2, name: "Peachy Cafe BGC", code: "BGC", address: "5th Ave cor. 26th St, Taguig", contact_number: "0918 555 2020", email: "bgc@peachycafe.ph", opening_time: "08:00", closing_time: "23:00", is_active: true, is_main_branch: false, gcash_enabled: false, gcash_number: "09181234567", gcash_qr_url: "", facebook_url: "", instagram_url: "https://instagram.com/peachybgc", tiktok_url: "https://tiktok.com/@peachybgc", other_social_url: "" },
+    { id: 3, name: "Peachy Cafe Quezon City", code: "QC", address: "Tomas Morato Ave, Quezon City", contact_number: "", email: "", opening_time: "09:00", closing_time: "21:00", is_active: false, is_main_branch: false, gcash_enabled: false, gcash_number: "", gcash_qr_url: "", facebook_url: "", instagram_url: "", tiktok_url: "", other_social_url: "" },
+  ];
+  ["Pasig", "Alabang", "Cebu IT Park", "Davao", "Baguio", "Iloilo", "Pampanga", "Cavite", "Laguna", "Batangas", "Ortigas", "Manila Bay", "Marikina", "Antipolo", "Bacolod"].forEach((c, i) => {
+    branches.push({ id: 4 + i, name: "Peachy Cafe " + c, code: c.replace(/[^A-Z]/gi, "").slice(0, 3).toUpperCase() + (i + 4), address: c + " Main Road", contact_number: "0919 000 " + String(1000 + i), email: "", opening_time: i % 3 ? "08:00" : "", closing_time: i % 3 ? "20:00" : "", is_active: i % 4 !== 0, is_main_branch: false, gcash_enabled: i % 2 === 0, gcash_number: "", gcash_qr_url: "", facebook_url: "", instagram_url: "", tiktok_url: "", other_social_url: "" });
+  });
+
+  // ---------- Helpers ----------
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const fmtTime = (t) => { if (!t) return ""; const [h, m] = t.split(":").map(Number); const ap = h >= 12 ? "PM" : "AM"; return ((h % 12) || 12) + ":" + String(m).padStart(2, "0") + " " + ap; };
+  const hours = (b) => (b.opening_time && b.closing_time ? fmtTime(b.opening_time) + " – " + fmtTime(b.closing_time) : "—");
+  const initials = (n) => n.replace(/peachy cafe/i, "").trim().split(/\s+/).map((w) => w[0]).join("").slice(0, 2).toUpperCase() || "PC";
+  const byId = (id) => branches.find((b) => b.id === Number(id));
+  const toast = (msg) => { const t = $("#toast"); t.innerHTML = '<i class="bi bi-check-circle"></i> ' + esc(msg); t.hidden = false; clearTimeout(toast._t); toast._t = setTimeout(() => (t.hidden = true), 2600); };
+
+  // ---------- List state ----------
+  let blPage = 1, blStatus = "", blQuery = "";
+  const body = $("#blBody");
+
+  function buildRow(b) {
+    return `<tr class="bl-row" tabindex="0" data-branch-id="${b.id}" data-status="${b.is_active ? "open" : "closed"}"
+      data-search="${esc([b.name, b.code, b.address, b.contact_number, b.email].join(" ").toLowerCase())}">
+      <td data-label="Branch"><div class="b-name"><span class="b-av">${esc(initials(b.name))}</span><span>${esc(b.name)}</span>${b.is_main_branch ? '<span class="badge badge-main">Main</span>' : ""}</div></td>
+      <td data-label="Code"><span class="b-code">${esc(b.code)}</span></td>
+      <td data-label="Address"><div class="b-addr">${esc(b.address || "—")}</div></td>
+      <td data-label="Contact" class="c soft">${esc(b.contact_number || "—")}</td>
+      <td data-label="Hours" class="c soft nowrap">${hours(b)}</td>
+      <td data-label="Status" class="c"><span class="badge ${b.is_active ? "badge-ok" : "badge-off"}">${b.is_active ? "Open" : "Inactive"}</span></td>
+      <td data-label="Actions" class="c"><button type="button" class="icon-btn row-menu" aria-label="Actions for ${esc(b.name)}" aria-haspopup="menu"><i class="bi bi-three-dots-vertical"></i></button></td>
+    </tr>`;
+  }
+
+  function render() {
+    body.innerHTML = branches.map(buildRow).join("");
+    const open = branches.filter((b) => b.is_active).length;
+    $("#statTotal").textContent = branches.length;
+    $("#statOpen").textContent = open;
+    $("#statOff").textContent = branches.length - open;
+    apply();
+  }
+
+  function apply() {
+    const rows = $$(".bl-row", body);
+    const matched = rows.filter((r) => (!blStatus || r.dataset.status === blStatus) && (!blQuery || r.dataset.search.includes(blQuery)));
+    const size = Number($("#blPageSize").value);
+    const pages = Math.max(1, Math.ceil(matched.length / size));
+    blPage = Math.min(Math.max(1, blPage), pages);
+    const start = (blPage - 1) * size;
+    rows.forEach((r) => (r.hidden = true));
+    matched.slice(start, start + size).forEach((r) => (r.hidden = false));
+
+    const filtered = blStatus || blQuery;
+    $("#blCount").textContent = filtered ? `${matched.length} of ${rows.length} branches` : `${rows.length} ${rows.length === 1 ? "branch" : "branches"}`;
+    $("#blEmpty").hidden = rows.length > 0;
+    $("#blNoResults").hidden = !(rows.length && !matched.length);
+    $("#blPager").hidden = matched.length === 0;
+    $("#blPagerRange").textContent = matched.length ? `Showing ${start + 1}–${Math.min(start + size, matched.length)} of ${matched.length}` : "";
+    $("#blPrev").disabled = blPage <= 1;
+    $("#blNext").disabled = blPage >= pages;
+
+    const list = $("#blPageList"); list.innerHTML = "";
+    const nums = [];
+    for (let i = 1; i <= pages; i++) if (i === 1 || i === pages || Math.abs(i - blPage) <= 1) nums.push(i);
+    nums.forEach((n, i) => {
+      if (i && n - nums[i - 1] > 1) list.insertAdjacentHTML("beforeend", '<span class="page-dots">…</span>');
+      const btn = document.createElement("button");
+      btn.type = "button"; btn.className = "page-btn" + (n === blPage ? " active" : ""); btn.textContent = n;
+      btn.onclick = () => blGo(n);
+      list.appendChild(btn);
+    });
+  }
+  function blGo(p) { blPage = p; apply(); }
+
+  $("#blSearch").addEventListener("input", (e) => { blQuery = e.target.value.trim().toLowerCase(); blPage = 1; apply(); });
+  $$(".seg-btn").forEach((b) => b.addEventListener("click", () => { $$(".seg-btn").forEach((x) => x.classList.toggle("active", x === b)); blStatus = b.dataset.status; blPage = 1; apply(); }));
+  $("#blReset").addEventListener("click", () => { $("#blSearch").value = ""; blQuery = ""; blStatus = ""; $$(".seg-btn").forEach((x) => x.classList.toggle("active", x.dataset.status === "")); blPage = 1; apply(); });
+  $("#blPageSize").addEventListener("change", () => { blPage = 1; apply(); });
+  $("#blPrev").addEventListener("click", () => blGo(blPage - 1));
+  $("#blNext").addEventListener("click", () => blGo(blPage + 1));
+
+  // ---------- Modals ----------
+  let lastFocus = null;
+  function openModal(id) { lastFocus = document.activeElement; const m = document.getElementById(id); m.classList.add("open"); m.setAttribute("aria-hidden", "false"); document.body.style.overflow = "hidden"; setTimeout(() => { const f = m.querySelector("input:not(.offscreen):not([type=hidden]),button.btn-primary"); f && f.focus(); }, 30); }
+  function closeModal(id) { const m = document.getElementById(id); m.classList.remove("open"); m.setAttribute("aria-hidden", "true"); if (!$(".modal.open")) document.body.style.overflow = ""; lastFocus && lastFocus.focus && lastFocus.focus(); }
+  $$("[data-open]").forEach((b) => b.addEventListener("click", () => openModal(b.dataset.open)));
+  $$(".modal").forEach((m) => m.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(m.id); }));
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+    if (!$("#actionMenu").hidden) return closeMenu();
+    const open = $$(".modal.open"); if (open.length) closeModal(open[open.length - 1].id);
+  });
+
+  // ---------- Add branch ----------
+  $("#addForm").addEventListener("submit", (e) => {
+    e.preventDefault(); // In Laravel: remove this – the form posts to route('admin.branches.store')
+    const f = new FormData(e.target);
+    const code = String(f.get("code")).toUpperCase();
+    if (branches.some((b) => b.code === code)) { alert("Branch code must be unique."); return; }
+    branches.push({ id: Date.now(), name: f.get("name"), code, address: f.get("address"), contact_number: f.get("contact_number"), email: f.get("email"), opening_time: f.get("opening_time"), closing_time: f.get("closing_time"), is_active: true, is_main_branch: false, gcash_enabled: false, gcash_number: "", gcash_qr_url: "", facebook_url: "", instagram_url: "", tiktok_url: "", other_social_url: "" });
+    e.target.reset(); $$("input[required], input[name=contact_number], input[name=email]", e.target).forEach((i) => i.setAttribute("readonly", ""));
+    closeModal("addModal"); render(); toast("Branch added");
+  });
+
+  // ---------- Details / Edit ----------
+  let current = null;
+  function openDetails(id, edit = false) {
+    current = byId(id); if (!current) return;
+    fillDetails(); setEdit(edit);
+    if (!$("#detailModal").classList.contains("open")) openModal("detailModal");
+  }
+  function fillDetails() {
+    const b = current;
+    $("#dAvatar").textContent = initials(b.name);
+    $("#dCode").textContent = b.code;
+    $("#dTitle").textContent = b.name;
+    const st = $("#dStatus"); st.textContent = b.is_active ? "Open" : "Inactive"; st.className = "badge " + (b.is_active ? "badge-ok" : "badge-off");
+    $("#dMain").hidden = !b.is_main_branch;
+    $("#vAddress").textContent = b.address || "—";
+    $("#vContact").textContent = b.contact_number || "—";
+    $("#vEmail").textContent = b.email || "—";
+    $("#vHours").textContent = hours(b);
+    const soc = [["facebook_url", "facebook", "Facebook"], ["instagram_url", "instagram", "Instagram"], ["tiktok_url", "tiktok", "TikTok"], ["other_social_url", "link-45deg", "Other"]].filter(([k]) => b[k]);
+    $("#vSocials").innerHTML = soc.length ? soc.map(([k, ic, l]) => `<a class="social" href="${esc(b[k])}" target="_blank" rel="noopener"><i class="bi bi-${ic}"></i>${l}</a>`).join("") : '<span class="social none"><i class="bi bi-dash-circle"></i> No social links yet</span>';
+    const vb = $("#vGcBadge"); vb.textContent = b.gcash_enabled ? "Enabled" : "Disabled"; vb.className = "badge " + (b.gcash_enabled ? "badge-ok" : "badge-off");
+    $("#vGcash").className = "gc-view" + (b.gcash_enabled ? "" : " off");
+    $("#vGcash").innerHTML = (b.gcash_qr_url ? `<img src="${esc(b.gcash_qr_url)}" alt="GCash QR code">` : '<span class="gc-qr-box" style="width:72px;height:72px"><i class="bi bi-qr-code"></i></span>')
+      + `<dl style="margin:0"><dt>GCash Number</dt><dd>${esc(b.gcash_number || "—")}</dd><dt style="margin-top:.4rem">QR Code</dt><dd>${b.gcash_qr_url ? "Uploaded" : "Not uploaded"}</dd></dl>`;
+    const tb = $("#dToggleBtn");
+    tb.className = "btn " + (b.is_active ? "btn-ghost" : "btn-open");
+    tb.innerHTML = b.is_active ? '<i class="bi bi-door-closed"></i> Set as Inactive' : '<i class="bi bi-door-open"></i> Set as Open';
+    tb.title = b.is_active ? "Stop accepting orders" : "Start accepting orders";
+    const f = $("#dEdit");
+    ["name", "address", "contact_number", "email", "opening_time", "closing_time", "facebook_url", "instagram_url", "tiktok_url", "other_social_url"].forEach((k) => (f.elements[k].value = b[k] || ""));
+    f.elements.is_active.checked = !!b.is_active;
+    f.elements.gcash_number.value = b.gcash_number || "";
+    $("#eGcToggle").checked = !!b.gcash_enabled;
+    resetQr(); syncGcash();
+  }
+
+  // ---------- GCash (edit) ----------
+  let pendingQr = null; // object URL of a newly chosen file
+  const QR_TYPES = ["image/jpeg", "image/png", "image/webp"], QR_MAX = 5 * 1024 * 1024;
+  function syncGcash() {
+    const on = $("#eGcToggle").checked;
+    $("#eGcToggleLbl").textContent = on ? "On" : "Off";
+    const bd = $("#eGcBadge"); bd.textContent = on ? "Enabled" : "Disabled"; bd.className = "badge " + (on ? "badge-ok" : "badge-off");
+    $("#eGcBody").classList.toggle("disabled", !on);
+    $("#eGcOff").hidden = on;
+  }
+  function showQr() {
+    const src = pendingQr || current.gcash_qr_url, st = $("#eQrState");
+    $("#eQrBox").innerHTML = src ? `<img src="${esc(src)}" alt="GCash QR code">` : '<div><i class="bi bi-qr-code"></i>No QR uploaded</div>';
+    if (pendingQr) { st.className = "gc-qr-state new"; st.innerHTML = '<i class="bi bi-arrow-repeat"></i> New – not saved yet'; }
+    else if (src) { st.className = "gc-qr-state ok"; st.innerHTML = '<i class="bi bi-check-circle-fill"></i> Saved'; }
+    else { st.className = "gc-qr-state none"; st.innerHTML = '<i class="bi bi-dash-circle"></i> None'; }
+    $("#eQrUndo").hidden = !pendingQr;
+  }
+  function resetQr() {
+    if (pendingQr) URL.revokeObjectURL(pendingQr);
+    pendingQr = null; $("#eQrFile").value = "";
+    $("#eQrName").textContent = "JPG, JPEG, PNG, or WEBP · Maximum 5 MB"; $("#eDrop").classList.remove("err");
+    showQr();
+  }
+  function pickQr(file) {
+    const drop = $("#eDrop"), name = $("#eQrName");
+    if (!file) return resetQr();
+    if (!QR_TYPES.includes(file.type) || file.size > QR_MAX) {
+      $("#eQrFile").value = ""; drop.classList.add("err");
+      name.textContent = !QR_TYPES.includes(file.type) ? "Please choose a JPG, JPEG, PNG, or WEBP image." : "That image is over 5 MB.";
+      return;
+    }
+    drop.classList.remove("err");
+    if (pendingQr) URL.revokeObjectURL(pendingQr);
+    pendingQr = URL.createObjectURL(file); name.textContent = file.name; showQr();
+  }
+  $("#eGcToggle").addEventListener("change", syncGcash);
+  $("#eQrFile").addEventListener("change", (e) => pickQr(e.target.files[0]));
+  $("#eQrUndo").addEventListener("click", resetQr);
+  const drop = $("#eDrop");
+  ["dragenter", "dragover"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach((ev) => drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove("over"); }));
+  drop.addEventListener("drop", (e) => { const f = e.dataTransfer.files[0]; if (!f) return; const dt = new DataTransfer(); dt.items.add(f); $("#eQrFile").files = dt.files; pickQr(f); });
+  function setEdit(on) { $("#dView").hidden = on; $("#dEdit").hidden = !on; if (on) setTimeout(() => $("#dEdit").elements.name.focus(), 30); }
+  $("#dEditBtn").addEventListener("click", () => setEdit(true));
+  $("#dCancelEdit").addEventListener("click", () => { fillDetails(); setEdit(false); });
+  $("#dEdit").addEventListener("submit", (e) => {
+    e.preventDefault(); // In Laravel: remove – posts PUT to route('admin.branches.update', $branch->id)
+    const f = e.target.elements;
+    ["name", "address", "contact_number", "email", "opening_time", "closing_time", "facebook_url", "instagram_url", "tiktok_url", "other_social_url"].forEach((k) => (current[k] = f[k].value.trim()));
+    current.is_active = f.is_active.checked;
+    current.gcash_enabled = $("#eGcToggle").checked;
+    current.gcash_number = f.gcash_number.value.trim();
+    if (pendingQr) { current.gcash_qr_url = pendingQr; pendingQr = null; }
+    if (current.gcash_enabled && !current.gcash_qr_url) { /* allowed, but flag it */ }
+    render(); fillDetails(); setEdit(false); toast("Store information saved");
+  });
+  $("#dToggleForm").addEventListener("submit", (e) => { e.preventDefault(); askToggle(current.id); });
+  $("#dMenuBtn").addEventListener("click", (e) => openMenu(e.currentTarget, current.id));
+
+  // ---------- Toggle with confirmation ----------
+  function askToggle(id) {
+    const b = byId(id); const off = b.is_active;
+    $("#cTitle").textContent = off ? "Set as inactive?" : "Open for orders?";
+    // Same messages as the original confirm() prompts
+    $("#cMsg").textContent = off ? `Set ${b.name} as inactive? Customers will no longer be able to order from this branch.` : `Open ${b.name} for orders?`;
+    const ico = $("#cIco"); ico.className = "confirm-ico" + (off ? "" : " ok"); ico.innerHTML = `<i class="bi bi-door-${off ? "closed" : "open"}"></i>`;
+    const ok = $("#cOk"); ok.className = "btn " + (off ? "btn-danger" : "btn-primary"); ok.textContent = off ? "Set as Inactive" : "Set as Open";
+    ok.onclick = () => {
+      // In Laravel: submit a PUT form to route('admin.branches.toggle', id)
+      b.is_active = !b.is_active; closeModal("confirmModal"); render();
+      if (current && current.id === b.id) fillDetails();
+      toast(b.name + (b.is_active ? " is now open" : " set as inactive"));
+    };
+    openModal("confirmModal");
+  }
+
+  // ---------- Three-dot menu ----------
+  const menu = $("#actionMenu"); let menuId = null, menuBtn = null;
+  function openMenu(btn, id) {
+    if (menuBtn === btn && !menu.hidden) return closeMenu();
+    closeMenu(); menuId = id; menuBtn = btn; btn.setAttribute("aria-expanded", "true");
+    const b = byId(id); const t = $("#menuToggle");
+    t.className = b.is_active ? "danger" : "okc";
+    t.innerHTML = b.is_active ? '<i class="bi bi-door-closed"></i> Set as Inactive' : '<i class="bi bi-door-open"></i> Set as Open';
+    $('[data-act="view"]', menu).hidden = $('[data-act="edit"]', menu).hidden = false;
+    if ($("#detailModal").classList.contains("open")) $('[data-act="view"]', menu).hidden = true;
+    menu.hidden = false;
+    const r = btn.getBoundingClientRect(), mw = menu.offsetWidth, mh = menu.offsetHeight;
+    let top = r.bottom + 6; if (top + mh > innerHeight - 8) top = r.top - mh - 6;
+    menu.style.top = Math.max(8, top) + "px";
+    menu.style.left = Math.max(8, Math.min(r.right - mw, innerWidth - mw - 8)) + "px";
+    $("button:not([hidden])", menu).focus();
+  }
+  function closeMenu() { menu.hidden = true; if (menuBtn) menuBtn.setAttribute("aria-expanded", "false"); menuBtn = null; }
+  menu.addEventListener("click", (e) => {
+    const a = e.target.closest("[data-act]"); if (!a) return; const id = menuId; closeMenu();
+    if (a.dataset.act === "view") openDetails(id);
+    if (a.dataset.act === "edit") openDetails(id, true);
+    if (a.dataset.act === "toggle") askToggle(id);
+  });
+  document.addEventListener("click", (e) => { if (!menu.hidden && !menu.contains(e.target) && !e.target.closest(".row-menu,#dMenuBtn")) closeMenu(); });
+  addEventListener("resize", closeMenu); addEventListener("scroll", closeMenu, true);
+
+  // Row click → details; three-dot → menu
+  body.addEventListener("click", (e) => {
+    const row = e.target.closest(".bl-row"); if (!row) return;
+    const mb = e.target.closest(".row-menu");
+    if (mb) { e.stopPropagation(); openMenu(mb, row.dataset.branchId); return; }
+    openDetails(row.dataset.branchId);
+  });
+  body.addEventListener("keydown", (e) => { const row = e.target.closest(".bl-row"); if (row && e.target === row && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); openDetails(row.dataset.branchId); } });
+
+  render();
+})();
+
+</script>
+</body>
+</html>

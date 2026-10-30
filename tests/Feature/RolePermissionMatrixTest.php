@@ -255,7 +255,12 @@ class RolePermissionMatrixTest extends TestCase
             'reset staff password'   => ['PUT',    'admin.users.password.update', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'toggle staff'           => ['PUT',    'admin.users.toggle',        ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
             'delete staff account'   => ['DELETE', 'admin.users.destroy',       ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::DENY]],
-            'owner account page'     => ['GET',    'admin.account',             ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
+            // Account Settings is every role's own page since Defect Report 5,
+            // item 3 (Oct 2026), and so is changing your OWN password there.
+            // Saving branch GCash from it stays the owner's.
+            'own account page'       => ['GET',    'admin.account',             ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
+            'change own password'    => ['PUT',    'admin.account.password.update', ['admin' => self::ALLOW, 'supervisor' => self::ALLOW, 'staff' => self::ALLOW]],
+            'save branch gcash'      => ['POST',   'admin.account.gcash-qr.update', ['admin' => self::ALLOW, 'supervisor' => self::DENY, 'staff' => self::DENY]],
             'view branches'          => ['GET',    'admin.branches',            ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
             'create branch'          => ['POST',   'admin.branches.store',      ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
             'edit branch'            => ['PUT',    'admin.branches.update',     ['admin' => self::ALLOW, 'supervisor' => self::DENY,  'staff' => self::DENY]],
@@ -573,7 +578,9 @@ class RolePermissionMatrixTest extends TestCase
             'staff / no categories link'   => ['staff', 'admin.home', 'admin.add-category', []],
             'staff / no menu options link' => ['staff', 'admin.home', 'admin.menu-options', []],
             'staff / no branches link'     => ['staff', 'admin.home', 'admin.branches', []],
-            'staff / no account link'      => ['staff', 'admin.home', 'admin.account', []],
+            // Staff reach Account Settings (Oct 2026) but get no GCash card,
+            // so no GCash save control.
+            'staff / no gcash save'        => ['staff', 'admin.account', 'admin.account.gcash-qr.update', []],
             // Streak Rewards moved to its own sidebar link (Oct 2026); staff
             // must not see it, same as the other manager-tier links above.
             'staff / no streak rewards link' => ['staff', 'admin.home', 'admin.streak-rewards', []],
@@ -601,7 +608,8 @@ class RolePermissionMatrixTest extends TestCase
 
             // Manager — must not see the owner-only controls.
             'manager / no branches link'   => ['supervisor', 'admin.home', 'admin.branches', []],
-            'manager / no account link'    => ['supervisor', 'admin.home', 'admin.account', []],
+            // A supervisor's GCash card is view-only: no save control.
+            'manager / no gcash save'      => ['supervisor', 'admin.account', 'admin.account.gcash-qr.update', []],
             'manager / no spin wheel'      => ['supervisor', 'admin.vouchers', 'admin.game.toggle', []],
             // The master switch now lives on the Streak Rewards page itself
             // (Oct 2026), so that is the page that must hide it from a manager.

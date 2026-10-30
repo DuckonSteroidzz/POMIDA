@@ -267,12 +267,20 @@ class CustomerHelpStatusPollTest extends TestCase
     {
         $script = file_get_contents(resource_path('views/customer/partials/help-status-poll.blade.php'));
 
+        // The fast end of the ladder is still ~6s (staff's answer reaches the
+        // customer quickly); it relaxes to 30s only while nothing changes.
         $this->assertSame(1, preg_match('/INTERVAL_MS = (\d+);/', $script, $m));
         $this->assertGreaterThanOrEqual(5000, (int) $m[1]);
         $this->assertLessThanOrEqual(8000, (int) $m[1]);
+        $this->assertStringContainsString('schedule: [INTERVAL_MS, 10000, 20000, 30000]', $script);
 
-        $this->assertStringContainsString("addEventListener('visibilitychange'", $script);
-        $this->assertStringContainsString('document.hidden', $script);
+        // One guarded setTimeout chain — never a setInterval. The pause while
+        // the tab is hidden and the immediate ask on return live in the chain.
+        $this->assertStringContainsString('PomidaPollChain({', $script);
+        $this->assertStringNotContainsString('setInterval(', $script);
+        $chain = file_get_contents(resource_path('views/partials/poll-chain.blade.php'));
+        $this->assertStringContainsString("addEventListener('visibilitychange'", $chain);
+        $this->assertStringContainsString('document.hidden', $chain);
         // Stops for good once resolved, and only watches a block that starts open.
         $this->assertStringContainsString('finished = true;', $script);
         $this->assertStringContainsString("getAttribute('data-help-open') !== '1'", $script);

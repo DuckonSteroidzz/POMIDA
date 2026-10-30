@@ -10,15 +10,18 @@ use Illuminate\Support\Facades\Hash;
 use Tests\TestCase;
 
 /**
- * Staff have NO self-service password path. Only the admin sets a staff
- * password.
+ * Who may set a staff member's password.
  *
- * THE OWNER'S DECISION, 2026-09-01
- * ---------------------------------
- * A staff member must not be able to change their own password by any route:
- * not the admin account page, and not forgot-password. The admin sets it for
- * them from /admin/users. The admin's own password features are untouched —
- * an admin with no reset path locks the whole system out.
+ * THE OWNER'S DECISIONS
+ * ---------------------
+ * 2026-09-01: staff had no self-service password path at all.
+ * Oct 2026 (Defect Report 5, item 3): REVERSED for the account page. Every
+ * portal role, staff included, opens their own Account Settings and changes
+ * their OWN password there — current password required, the same policy,
+ * throttled, never anyone else's account. Forgot-password is NOT part of that
+ * change: it still issues no reset code for a staff email (door 3 below).
+ * Setting ANOTHER account's password stays with the manager tier, from
+ * /admin/users.
  *
  * PASSWORDS CANNOT BE DISPLAYED, AND THAT IS NOT A UI CHOICE
  * ----------------------------------------------------------
@@ -28,13 +31,13 @@ use Tests\TestCase;
  * password, never by viewing the old one. That property is asserted in
  * test_a_stored_password_is_a_hash_and_cannot_be_recovered().
  *
- * THREE DOORS, ALL CLOSED
- * -----------------------
- *   1. GET  /admin/account            — the page itself      (role:admin)
- *   2. PUT  /admin/account/password   — the change endpoint  (role:admin)
- *   3. POST /admin/forgot-password    — reset by email       (resettableRoles)
+ * THREE DOORS
+ * -----------
+ *   1. GET  /admin/account            — the page itself      OPEN (own account)
+ *   2. PUT  /admin/account/password   — the change endpoint  OPEN (own account)
+ *   3. POST /admin/forgot-password    — reset by email       CLOSED (resettableRoles)
  *
- * And one door opened: PUT /admin/users/{id}/password, admin-only.
+ * And the manager door: PUT /admin/users/{id}/password.
  *
  * FALSE-POSITIVE DISCIPLINE
  * -------------------------
@@ -129,50 +132,44 @@ class StaffPasswordControlTest extends TestCase
     // Door 1 + 2 — the account page and its update endpoint
     // ══════════════════════════════════════════════════════════════════
 
-    public function test_staff_cannot_open_the_account_page(): void
+    public function test_staff_can_open_their_own_account_page(): void
     {
         $staff = $this->makeStaff();
 
-        $response = $this->actingAs($staff, 'admin')->get('/admin/account');
-        $this->assertRefusedLikeEveryOtherAdminOnlyRoute($response, 'GET /admin/account');
+        $html = $this->actingAs($staff, 'admin')->get('/admin/account')->assertOk()->getContent();
 
-        // CONTROL: the page genuinely works for an admin.
-        $this->actingAs($this->makeAdmin(), 'admin')->get('/admin/account')->assertOk();
+        $this->assertStringContainsString($staff->email, $html);
+        $this->assertStringContainsString('action="' . route('admin.account.password.update') . '"', $html);
     }
 
-    public function test_staff_cannot_change_their_own_password_by_posting_directly(): void
+    public function test_staff_can_change_their_own_password_with_the_current_one(): void
     {
         $staff = $this->makeStaff();
 
-        $response = $this->actingAs($staff, 'admin')->put('/admin/account/password', [
+        $this->actingAs($staff, 'admin')->from('/admin/account')->put('/admin/account/password', [
             'current_password'      => self::STAFF_PW,
             'password'              => self::NEW_PW,
             'password_confirmation' => self::NEW_PW,
-        ]);
+        ])->assertSessionHasNoErrors()->assertRedirect('/admin/account');
 
-        $this->assertRefusedLikeEveryOtherAdminOnlyRoute($response, 'PUT /admin/account/password');
-
-        $this->assertTrue($this->passwordWorks($staff, self::STAFF_PW), 'the old password should be unchanged');
-        $this->assertFalse(
-            $this->passwordWorks($staff, self::NEW_PW),
-            'ESCALATION: a staff member changed their own password'
-        );
-
-        // CONTROL: the very same endpoint works for an admin.
-        $admin = $this->makeAdmin();
-        $this->actingAs($admin, 'admin')->put('/admin/account/password', [
-            'current_password'      => self::ADMIN_PW,
-            'password'              => self::NEW_PW,
-            'password_confirmation' => self::NEW_PW,
-        ])->assertSessionHasNoErrors();
-
-        $this->assertTrue(
-            $this->passwordWorks($admin, self::NEW_PW),
-            'CONTROL FAILED: the endpoint is broken for admins too, so the refusal above proves nothing'
-        );
+        $this->assertTrue($this->passwordWorks($staff, self::NEW_PW), 'the new password should work');
+        $this->assertFalse($this->passwordWorks($staff, self::STAFF_PW), 'the old password should be gone');
     }
 
-    public function test_the_account_link_is_hidden_from_staff_and_shown_to_admins(): void
+    public function test_staff_cannot_change_their_own_password_without_the_current_one(): void
+    {
+        $staff = $this->makeStaff();
+
+        $this->actingAs($staff, 'admin')->from('/admin/account')->put('/admin/account/password', [
+            'current_password'      => 'NotMine!Pass1',
+            'password'              => self::NEW_PW,
+            'password_confirmation' => self::NEW_PW,
+        ])->assertSessionHasErrors('current_password');
+
+        $this->assertTrue($this->passwordWorks($staff, self::STAFF_PW), 'the old password should be unchanged');
+    }
+
+    public function test_the_account_link_is_shown_to_staff_and_admins(): void
     {
         // A staff member lands on the dashboard, which renders the sidebar.
         $staffHtml = $this->actingAs($this->makeStaff(), 'admin')->get('/admin/home')->getContent();
@@ -180,19 +177,8 @@ class StaffPasswordControlTest extends TestCase
 
         $accountHref = route('admin.account');
 
-        $this->assertStringNotContainsString(
-            $accountHref,
-            $staffHtml,
-            'the Account link is still in the sidebar for staff'
-        );
-
-        // CONTROL: it IS there for an admin, so the assertion above is not
-        // just observing a broken sidebar.
-        $this->assertStringContainsString(
-            $accountHref,
-            $adminHtml,
-            'CONTROL FAILED: the Account link is missing for admins too'
-        );
+        $this->assertStringContainsString($accountHref, $staffHtml, 'the Account link is missing for staff');
+        $this->assertStringContainsString($accountHref, $adminHtml, 'the Account link is missing for admins');
     }
 
     // ══════════════════════════════════════════════════════════════════

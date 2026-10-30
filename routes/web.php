@@ -339,6 +339,16 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
     Route::get('/order-status', [OrderController::class, 'customerOrderStatus'])
         ->name('order-status');
 
+    // THE ONE background poll every customer page runs (Oct 2026): the bell's
+    // unread count + newest id AND the status of the orders the page is
+    // watching, in a single cheap answer. /notifications/unread-count,
+    // /order-status and /orders-status above/below are unchanged and still work;
+    // pages simply no longer poll all three on separate timers. Shares the
+    // bell's limiter because it IS the bell's poll now.
+    Route::get('/live-status', [OrderController::class, 'customerLiveStatus'])
+        ->middleware('throttle:customer-notifications')
+        ->name('live-status');
+
     // Every order the visitor should be polling for right now, not just one —
     // see OrderController::customerOrdersStatus() for why a single tracked id
     // was not enough once a visitor could hold more than one open order.
@@ -697,6 +707,40 @@ Route::prefix('admin')
 
             Route::get('/home', [AdminController::class, 'showHome'])
                 ->name('home');
+
+
+            // ══════════ ACCOUNT SETTINGS — every portal role ══════════
+            //
+            // Defect Report 5, item 3 (Oct 2026): the owner reversed the
+            // 2026-09-01 decision that only the admin has an account page.
+            // Admin, supervisor and staff each open their OWN Account
+            // Settings and change their OWN password here.
+            //
+            // Both endpoints act on the signed-in account only — neither
+            // takes a user id — so nobody can reach another account through
+            // them. What differs by role is decided in showAccount() and the
+            // view: staff get no GCash card, a supervisor gets their own
+            // branch's GCash read-only.
+            //
+            // Saving GCash stays OWNER ONLY: admin.account.gcash-qr.update is
+            // still in the role:admin group below, and BranchGcash::save()
+            // refuses anyone else with a 403 on its own.
+            //
+            // Unchanged: forgot-password still issues no reset code for a
+            // staff email (AdminAuthController::resettableRoles()).
+
+            Route::get('/account', [AdminController::class, 'showAccount'])
+                ->name('account');
+
+            // Auth endpoints stay keyed per IP, deliberately — see the note at
+            // the top of RateLimitServiceProvider. Six attempts a minute is far
+            // more than a person needs and far fewer than a script wants.
+            // Pass 7: named limiter `admin-account-password`. Still 6/min per
+            // IP; it simply no longer shares a counter with admin-login, the
+            // staff-password reset, or the notification poll.
+            Route::put('/account/password', [AdminController::class, 'updateOwnPassword'])
+                ->middleware('throttle:admin-account-password')
+                ->name('account.password.update');
 
 
             // ══════════ MANUAL (WALK-IN) ORDER ══════════
@@ -1562,8 +1606,8 @@ Route::prefix('admin')
         | OWNER ONLY (role:admin)
         |----------------------------------------------------------------------
         |
-        | What is left after the manager tier above: the owner's own account,
-        | the four DESTRUCTIVE actions a manager does not get (delete a
+        | What is left after the manager tier above: saving branch GCash from
+        | Account Settings, the four DESTRUCTIVE actions a manager does not get (delete a
         | voucher, delete an inventory record, restore an archived catalogue
         | row, permanently delete an archived menu item), the shape of the
         | business (branches, the "Viewing:" picker),
@@ -1584,42 +1628,14 @@ Route::prefix('admin')
 
         Route::middleware('role:admin')->group(function () {
 
-            // ══════════ ACCOUNT SETTINGS — admin only ══════════
+            // ══════════ ACCOUNT SETTINGS — GCash save, owner only ══════════
             //
-            // The WHOLE account page is admin-only as of 2026-09-01, including
-            // "change my password". It used to sit in the admin+staff group
-            // above so a staff member could change their own password.
-            //
-            // The owner's decision: staff have no self-service password path at
-            // all. Only the admin sets a staff member's password, through
-            // /admin/users (see users.password.update below). The matching half
-            // of that decision is in AdminAuthController::resettableRoles(),
-            // which no longer issues a reset code for a staff email — otherwise
-            // forgot-password would simply be the self-service route by another
-            // name.
-            //
-            // Enforced here by `role:admin` rather than by a check inside the
-            // controller, so a staff member who types the URL or crafts a PUT
-            // gets exactly the same refusal as every other admin-only page:
-            // RoleMiddleware redirects to admin.home with
-            // "You don't have permission to access that."
-            //
-            // The admin's own password features are deliberately untouched. An
-            // admin who loses their password with no reset path locks the whole
-            // system out.
-
-            Route::get('/account', [AdminController::class, 'showAccount'])
-                ->name('account');
-
-            // Auth endpoints stay keyed per IP, deliberately — see the note at
-            // the top of RateLimitServiceProvider. Six attempts a minute is far
-            // more than a person needs and far fewer than a script wants.
-            // Pass 7: named limiter `admin-account-password`. Still 6/min per
-            // IP; it simply no longer shares a counter with admin-login, the
-            // staff-password reset, or the notification poll.
-            Route::put('/account/password', [AdminController::class, 'updateOwnPassword'])
-                ->middleware('throttle:admin-account-password')
-                ->name('account.password.update');
+            // The page itself and "change my password" moved to the shared
+            // group above (Defect Report 5, item 3 — every portal role has
+            // an Account Settings page now). Changing the branch GCash the
+            // whole shop collects money through stays here: a supervisor sees
+            // their branch's GCash read-only on that page, staff not at all,
+            // and a crafted POST from either gets RoleMiddleware's refusal.
 
             Route::post('/account/gcash-qr', [SettingsController::class, 'updateGcashQr'])
                 ->name('account.gcash-qr.update');

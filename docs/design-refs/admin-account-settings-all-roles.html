@@ -1,0 +1,1248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Account Settings — Peachy Cafe Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+    :root {
+        --red: #9d1c1c;
+        --red-dark: #7f1616;
+        --red-soft: #b93b2b;
+        --coral: #f4845f;
+        --coral-soft: #ffdfd0;
+        --peach: #fff1e9;
+        --cream: #fffaf7;
+        --ink: #342b29;
+        --ink-soft: #5d4c47;
+        --muted: #9a8a84;
+        --line: #f3e3da;
+        --line-strong: #e9d5c9;
+        --green: #2f855a;
+        --green-soft: #e9f7ef;
+        --amber: #b7791f;
+        --amber-soft: #fdf3e0;
+        --white: #ffffff;
+        --shadow-sm: 0 2px 10px rgba(120, 45, 25, 0.05);
+        --shadow-md: 0 10px 32px -12px rgba(120, 45, 25, 0.14);
+        --radius-lg: 18px;
+        --radius-md: 13px;
+        --radius-sm: 9px;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    [hidden] { display: none !important; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+        font-family: 'Outfit', 'Segoe UI', sans-serif;
+        font-size: 14px;
+        color: var(--ink);
+        background:
+            radial-gradient(900px 420px at 85% -60px, rgba(244, 132, 95, 0.14), transparent 70%),
+            radial-gradient(700px 380px at -10% 30%, rgba(244, 132, 95, 0.09), transparent 65%),
+            linear-gradient(180deg, #fff6f0 0%, #fdf3ec 45%, var(--cream) 100%);
+        min-height: 100vh;
+        -webkit-font-smoothing: antialiased;
+    }
+
+    .serif { font-family: 'Fraunces', Georgia, serif; }
+
+    /* ───────── Top bar ───────── */
+    .topbar {
+        position: sticky;
+        top: 0;
+        z-index: 40;
+        background: rgba(255, 250, 247, 0.88);
+        backdrop-filter: blur(12px);
+        border-bottom: 1px solid var(--line);
+    }
+    .topbar-inner {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 12px 24px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--ink); }
+    .brand-mark {
+        width: 38px; height: 38px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, var(--red) 0%, var(--red-soft) 100%);
+        display: grid; place-items: center;
+        box-shadow: 0 4px 12px rgba(157, 28, 28, 0.28);
+        flex-shrink: 0;
+    }
+    .brand-text { line-height: 1.15; }
+    .brand-name { font-family: 'Fraunces', Georgia, serif; font-weight: 700; font-size: 16px; color: var(--red); }
+    .brand-sub { font-size: 10px; font-weight: 600; letter-spacing: 1.6px; text-transform: uppercase; color: var(--muted); }
+
+    .topbar-spacer { flex: 1; }
+
+    .topbar-user {
+        display: flex; align-items: center; gap: 10px;
+        background: var(--white);
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        padding: 5px 14px 5px 5px;
+        box-shadow: var(--shadow-sm);
+    }
+    .topbar-user .mini-avatar {
+        width: 30px; height: 30px;
+        border-radius: 50%;
+        background: var(--red);
+        color: #fff;
+        display: grid; place-items: center;
+        font-size: 11px; font-weight: 700;
+    }
+    .topbar-user b { font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+    .topbar-user span { display: block; font-size: 10px; color: var(--muted); }
+
+    /* ───────── Layout ───────── */
+    .page {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 34px 24px 60px;
+    }
+
+    .page-head {
+        display: flex;
+        align-items: flex-end;
+        justify-content: space-between;
+        gap: 20px;
+        margin-bottom: 24px;
+        flex-wrap: wrap;
+    }
+    .eyebrow {
+        font-size: 10.5px;
+        font-weight: 700;
+        letter-spacing: 2px;
+        text-transform: uppercase;
+        color: var(--coral);
+        margin-bottom: 6px;
+    }
+    .page-head h1 {
+        font-family: 'Fraunces', Georgia, serif;
+        font-size: 32px;
+        font-weight: 700;
+        color: var(--red);
+        line-height: 1.15;
+    }
+    .page-head .lede { color: var(--muted); font-size: 13.5px; margin-top: 8px; max-width: 520px; }
+    .head-actions { display: flex; gap: 10px; }
+
+    /* ───────── Profile banner ───────── */
+    .profile-banner {
+        position: relative;
+        overflow: hidden;
+        background: linear-gradient(120deg, var(--red) 0%, #b3352a 62%, var(--coral) 130%);
+        border-radius: var(--radius-lg);
+        padding: 24px 26px;
+        color: #fff;
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        flex-wrap: wrap;
+        box-shadow: 0 14px 34px -14px rgba(157, 28, 28, 0.45);
+        margin-bottom: 22px;
+    }
+    .profile-banner::before, .profile-banner::after {
+        content: '';
+        position: absolute;
+        border-radius: 50%;
+        background: rgba(255, 255, 255, 0.08);
+        pointer-events: none;
+    }
+    .profile-banner::before { width: 220px; height: 220px; top: -110px; right: 80px; }
+    .profile-banner::after { width: 150px; height: 150px; bottom: -70px; right: -30px; }
+
+    .banner-avatar {
+        width: 66px; height: 66px;
+        border-radius: 20px;
+        background: rgba(255, 255, 255, 0.16);
+        border: 1.5px solid rgba(255, 255, 255, 0.45);
+        display: grid; place-items: center;
+        font-family: 'Fraunces', Georgia, serif;
+        font-size: 22px; font-weight: 700;
+        flex-shrink: 0;
+        position: relative;
+    }
+    .banner-avatar .online-dot {
+        position: absolute;
+        right: -3px; bottom: -3px;
+        width: 16px; height: 16px;
+        border-radius: 50%;
+        background: #7ce3a8;
+        border: 3px solid #a93426;
+    }
+    .banner-text { position: relative; min-width: 0; }
+    .banner-text h2 { font-family: 'Fraunces', Georgia, serif; font-size: 20px; font-weight: 700; }
+    .banner-text p { font-size: 12.5px; opacity: 0.85; margin-top: 3px; overflow-wrap: anywhere; }
+    .banner-meta { margin-left: auto; display: flex; gap: 10px; flex-wrap: wrap; position: relative; }
+    .meta-chip {
+        background: rgba(255, 255, 255, 0.14);
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        backdrop-filter: blur(4px);
+        border-radius: 999px;
+        padding: 7px 14px;
+        font-size: 11px;
+        font-weight: 600;
+        display: inline-flex;
+        align-items: center;
+        gap: 7px;
+        white-space: nowrap;
+    }
+    .meta-chip svg { flex-shrink: 0; }
+
+    /* ───────── Grid & cards ───────── */
+    .layout {
+        display: grid;
+        grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+        gap: 20px;
+        align-items: start;
+    }
+    .stack { display: grid; gap: 20px; min-width: 0; }
+
+    .card {
+        background: var(--white);
+        border: 1px solid var(--line);
+        border-radius: var(--radius-lg);
+        padding: 24px;
+        box-shadow: var(--shadow-sm);
+        min-width: 0;
+    }
+    .card-head { display: flex; align-items: flex-start; gap: 13px; margin-bottom: 20px; }
+    .card-icon {
+        width: 40px; height: 40px;
+        border-radius: 12px;
+        background: var(--peach);
+        color: var(--red);
+        display: grid; place-items: center;
+        flex-shrink: 0;
+    }
+    .card-head h3 { font-family: 'Fraunces', Georgia, serif; font-size: 17px; font-weight: 700; color: var(--ink); }
+    .card-head p { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.55; }
+    .card-head .head-tag { margin-left: auto; flex-shrink: 0; }
+
+    .tag {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 9.5px;
+        font-weight: 700;
+        letter-spacing: 0.8px;
+        text-transform: uppercase;
+        border-radius: 999px;
+        padding: 5px 10px;
+    }
+    .tag--peach { background: #ffe9de; color: #bd5638; }
+    .tag--green { background: var(--green-soft); color: var(--green); }
+    .tag--amber { background: var(--amber-soft); color: var(--amber); }
+
+    /* ───────── Fields ───────── */
+    .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    .field--full { grid-column: 1 / -1; }
+    label { display: block; font-size: 11px; font-weight: 600; color: var(--ink-soft); margin-bottom: 6px; letter-spacing: 0.2px; }
+
+    .input-wrap { position: relative; }
+    input[type="text"], input[type="email"], input[type="tel"], input[type="password"] {
+        width: 100%;
+        height: 44px;
+        border: 1.5px solid var(--line-strong);
+        border-radius: var(--radius-sm);
+        padding: 0 14px;
+        font: inherit;
+        font-size: 13px;
+        color: var(--ink);
+        background: var(--white);
+        outline: none;
+        transition: border-color 0.2s, box-shadow 0.2s, background 0.2s;
+    }
+    input::placeholder { color: #c3b2ab; }
+    input:focus {
+        border-color: var(--coral);
+        box-shadow: 0 0 0 4px rgba(244, 132, 95, 0.15);
+    }
+    input[readonly] {
+        background: #faf5f1;
+        color: var(--ink-soft);
+        cursor: default;
+    }
+    input[readonly]:focus { border-color: var(--line-strong); box-shadow: none; }
+
+    .helper {
+        display: flex;
+        align-items: flex-start;
+        gap: 7px;
+        font-size: 11.5px;
+        color: var(--muted);
+        margin-top: 14px;
+        line-height: 1.6;
+    }
+    .helper svg { flex-shrink: 0; margin-top: 1px; }
+
+    /* ───────── Password ───────── */
+    .pw-stack { display: grid; gap: 14px; }
+    .pw-field input { padding-right: 46px; }
+    .pw-toggle {
+        position: absolute;
+        top: 50%;
+        right: 6px;
+        transform: translateY(-50%);
+        width: 34px; height: 34px;
+        border: 0;
+        border-radius: 8px;
+        background: transparent;
+        color: var(--muted);
+        cursor: pointer;
+        display: grid; place-items: center;
+        transition: color 0.2s, background 0.2s;
+    }
+    .pw-toggle:hover { color: var(--red); background: var(--peach); }
+    .pw-toggle:focus-visible { outline: 2px solid var(--coral); }
+
+    .strength { margin-top: 4px; }
+    .strength-bars { display: flex; gap: 5px; }
+    .strength-bars i {
+        flex: 1;
+        height: 4px;
+        border-radius: 99px;
+        background: var(--line);
+        transition: background 0.25s;
+    }
+    .strength-label { font-size: 10.5px; font-weight: 600; color: var(--muted); margin-top: 6px; display: flex; justify-content: space-between; }
+
+    .field-error { font-size: 11px; color: #b53a3a; margin-top: 5px; display: none; }
+    .field-error.show { display: block; }
+    .input-wrap input.invalid { border-color: #d97373; }
+    .input-wrap input.invalid:focus { box-shadow: 0 0 0 4px rgba(217, 115, 115, 0.14); }
+
+    /* ───────── Buttons ───────── */
+    .actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; flex-wrap: wrap; }
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        border: 0;
+        border-radius: var(--radius-sm);
+        padding: 11px 18px;
+        font: inherit;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform 0.15s, box-shadow 0.2s, background 0.2s;
+        text-decoration: none;
+    }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: 2px solid var(--red); outline-offset: 2px; }
+    .btn-primary {
+        background: var(--red);
+        color: #fff;
+        box-shadow: 0 6px 16px -6px rgba(157, 28, 28, 0.5);
+    }
+    .btn-primary:hover { background: var(--red-dark); box-shadow: 0 8px 20px -6px rgba(157, 28, 28, 0.55); }
+    .btn-light { background: #ffe9de; color: var(--red); }
+    .btn-light:hover { background: #ffdcc9; }
+    .btn-ghost { background: var(--white); color: var(--red); border: 1.5px solid var(--line-strong); }
+    .btn-ghost:hover { background: var(--peach); }
+
+    /* ───────── Notices ───────── */
+    .notice {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        margin-bottom: 16px;
+        padding: 11px 14px;
+        border-radius: var(--radius-sm);
+        font-size: 12.5px;
+        line-height: 1.5;
+        animation: slide-down 0.3s ease;
+    }
+    @keyframes slide-down { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+    .notice--ok { background: var(--green-soft); color: #276b46; }
+    .notice--error { background: #fdeceb; color: #8f2424; }
+    .notice svg { flex-shrink: 0; margin-top: 1px; }
+    .notice[hidden] { display: none; }
+
+    /* ───────── Cross links ───────── */
+    .cross-link {
+        margin-top: 18px;
+        padding: 13px 15px;
+        border: 1.5px dashed #eac4b1;
+        border-radius: var(--radius-md);
+        background: linear-gradient(135deg, var(--peach), #fff7f2);
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        transition: border-color 0.2s;
+    }
+    .cross-link:hover { border-color: var(--coral); }
+    .cross-link b { display: block; font-size: 12.5px; margin-bottom: 2px; }
+    .cross-link span { font-size: 11px; color: var(--muted); }
+    .cross-link a {
+        color: var(--red);
+        font-size: 11.5px;
+        font-weight: 700;
+        text-decoration: none;
+        white-space: nowrap;
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+    }
+    .cross-link a:hover { text-decoration: underline; }
+
+
+    /* ───────── GCash payment settings – redesigned ───────── */
+    .card-icon--gcash { background: var(--peach); color: var(--red); }
+
+    .gcash-grid {
+        display: grid;
+        grid-template-columns: 190px minmax(0, 1fr);
+        gap: 20px;
+        align-items: start;
+    }
+    .gcash-qr-panel {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+        padding: 15px 13px;
+        border: 1px solid var(--line);
+        border-radius: var(--radius-md);
+        background: linear-gradient(160deg, var(--cream), var(--peach) 70%, #fff7f2);
+        text-align: center;
+    }
+    .qr-kicker {
+        margin: 0;
+        color: var(--muted);
+        font-size: 10px;
+        font-weight: 700;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .gcash-qr-frame {
+        width: 100%;
+        aspect-ratio: 1 / 1;
+        padding: 9px;
+        border: 1px dashed var(--line-strong);
+        border-radius: 12px;
+        background: #fff;
+        display: grid;
+        place-items: center;
+        overflow: hidden;
+    }
+    .gcash-qr-frame img { display: block; width: 100%; height: 100%; object-fit: contain; }
+    .gcash-qr-frame .qr-empty {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 8px;
+        color: #c3b2ab;
+        font-size: 11px;
+        font-weight: 600;
+        line-height: 1.45;
+    }
+    .qr-status { font-size: 11px; font-weight: 700; color: var(--coral); }
+    .qr-status.ready { color: #16835b; }
+    .qr-hint { margin: 0; font-size: 10.5px; color: var(--muted); line-height: 1.5; }
+
+    .gcash-controls { min-width: 0; }
+    .num-field {
+        display: flex;
+        align-items: stretch;
+        border: 1.5px solid var(--line-strong);
+        border-radius: var(--radius-sm);
+        background: var(--white);
+        overflow: hidden;
+        transition: border-color 0.2s, box-shadow 0.2s;
+    }
+    .num-field:focus-within {
+        border-color: var(--coral);
+        box-shadow: 0 0 0 4px rgba(244, 132, 95, 0.15);
+    }
+    .num-field.invalid { border-color: #d97373; }
+    .num-prefix {
+        display: grid;
+        place-items: center;
+        padding: 0 12px;
+        background: #f6f1ec;
+        border-right: 1.5px solid var(--line-strong);
+        font-size: 13px;
+        font-weight: 600;
+        color: var(--ink-soft);
+    }
+    .num-field input {
+        flex: 1;
+        min-width: 0;
+        height: 44px;
+        border: 0;
+        padding: 0 14px;
+        font: inherit;
+        font-size: 14px;
+        letter-spacing: 0.8px;
+        color: var(--ink);
+        background: transparent;
+        outline: none;
+    }
+    .num-field input::placeholder { color: #c3b2ab; letter-spacing: 0.4px; }
+
+    .gcash-drop {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        padding: 20px 14px;
+        border: 1.5px dashed #edc8b9;
+        border-radius: var(--radius-md);
+        background: #fffaf8;
+        text-align: center;
+        cursor: pointer;
+        transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+    }
+    .gcash-drop svg { color: var(--coral); margin-bottom: 2px; }
+    .gcash-drop b { font-size: 12.5px; font-weight: 600; color: var(--ink); }
+    .gcash-drop span { font-size: 11px; color: var(--muted); }
+    .gcash-drop:hover, .gcash-drop:focus-visible { border-color: var(--coral); background: var(--peach); }
+    .gcash-drop:focus-visible { outline: 2px solid var(--coral); outline-offset: 2px; }
+    .gcash-drop.dragging {
+        border-color: var(--coral);
+        background: var(--peach);
+        box-shadow: 0 0 0 4px rgba(244, 132, 95, 0.12);
+    }
+    .gcash-drop.invalid { border-color: #d97373; }
+
+    .gcash-form-actions { margin-top: 18px; }
+    @media (max-width: 560px) {
+        .gcash-grid { grid-template-columns: 1fr; }
+        .gcash-qr-frame { max-width: 170px; margin: 0 auto; }
+    }
+
+
+    .session-card .session-row {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        padding: 11px 0;
+        border-bottom: 1px solid var(--line);
+        font-size: 12.5px;
+    }
+    .session-card .session-row:last-child { border-bottom: 0; padding-bottom: 2px; }
+    .session-card .session-row svg { color: var(--red); flex-shrink: 0; }
+    .session-card .session-row .grow { flex: 1; min-width: 0; }
+    .session-card .session-row small { display: block; color: var(--muted); font-size: 11px; }
+
+    /* ───────── Device list pagination ───────── */
+    .pager {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        flex-wrap: wrap;
+        margin-top: 12px;
+        padding-top: 13px;
+        border-top: 1px solid var(--line);
+    }
+    .pager-info { font-size: 11px; color: var(--muted); }
+    .pager-btns { display: flex; gap: 6px; }
+    .page-btn {
+        min-width: 30px;
+        height: 30px;
+        padding: 0 8px;
+        border: 1.5px solid var(--line-strong);
+        border-radius: 9px;
+        background: var(--white);
+        color: var(--ink-soft);
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s, color 0.2s, border-color 0.2s;
+    }
+    .page-btn:hover:not(:disabled):not(.active) { background: var(--peach); }
+    .page-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
+    .page-btn:disabled { opacity: 0.4; cursor: default; }
+    .page-nav { font-size: 15px; line-height: 1; }
+
+    /* ───────── Toast ───────── */
+    .toast {
+        position: fixed;
+        left: 50%;
+        bottom: 26px;
+        transform: translate(-50%, 20px);
+        background: var(--ink);
+        color: #fff;
+        border-radius: 999px;
+        padding: 12px 20px;
+        font-size: 13px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        box-shadow: 0 14px 34px -8px rgba(52, 43, 41, 0.5);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.25s, transform 0.25s;
+        z-index: 60;
+        max-width: calc(100vw - 32px);
+    }
+    .toast.show { opacity: 1; transform: translate(-50%, 0); }
+    .toast svg { color: #7ce3a8; flex-shrink: 0; }
+
+    /* ───────── Footer ───────── */
+    .foot {
+        max-width: 1180px;
+        margin: 0 auto;
+        padding: 0 24px 30px;
+        text-align: center;
+        font-size: 11px;
+        color: var(--muted);
+    }
+
+    /* ───────── Responsive ───────── */
+    @media (max-width: 980px) {
+        .layout { grid-template-columns: 1fr; }
+        .topbar-user b { display: none; }
+    }
+    @media (max-width: 640px) {
+        .page { padding: 24px 16px 46px; }
+        .topbar-inner { padding: 10px 16px; }
+        .brand-text { display: none; }
+        .page-head h1 { font-size: 26px; }
+        .card { padding: 19px; }
+        .fields { grid-template-columns: 1fr; }
+        .field--full { grid-column: auto; }
+        .banner-meta { margin-left: 0; }
+        .profile-banner { padding: 20px; }
+        .head-actions { width: 100%; }
+        .head-actions .btn { flex: 1; justify-content: center; }
+        .topbar-user span { display: none; }
+    }
+</style>
+</head>
+<body>
+
+<!-- ══════════════ TOP BAR ══════════════ -->
+<header class="topbar">
+    <div class="topbar-inner">
+        <a class="brand" href="#">
+            <span class="brand-mark" aria-hidden="true">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M12 8c-3.5 0-6 2.4-6 5.6C6 17.4 8.5 20 12 20s6-2.6 6-6.4C18 10.4 15.5 8 12 8z" fill="rgba(255,255,255,.25)"/>
+                    <path d="M12 8c0-2.5.8-4 2.5-5"/>
+                    <path d="M12.5 7.2c1.8-1.4 4-1 5 .3-.8 1.7-3 2.3-5 .3z" fill="rgba(255,255,255,.35)" stroke="none"/>
+                    <path d="M12 8C9.5 7.5 8 6 8.2 4.2"/>
+                </svg>
+            </span>
+            <span class="brand-text">
+                <span class="brand-name">Peachy Cafe</span>
+                <span class="brand-sub">Admin Panel</span>
+            </span>
+        </a>
+        <div class="topbar-spacer"></div>
+        <div class="topbar-user">
+            <span class="mini-avatar" aria-hidden="true">JA</span>
+            <span>
+                <b>Janelle Santos</b>
+                <span>Administrator</span>
+            </span>
+        </div>
+    </div>
+</header>
+
+<main class="page">
+
+    <!-- ══════════════ PAGE HEADER ══════════════ -->
+    <div class="page-head">
+        <div>
+            <p class="eyebrow">Administration</p>
+            <h1>Account Settings</h1>
+            <p class="lede">Manage your sign-in security and the store payment details customers see at checkout.</p>
+        </div>
+        <div class="head-actions">
+            <a class="btn btn-ghost" href="#">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12l9-9 9 9"/><path d="M5 10v10a1 1 0 0 0 1 1h4v-6h4v6h4a1 1 0 0 0 1-1V10"/></svg>
+                Dashboard
+            </a>
+            <a class="btn btn-light" href="#change-password">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+                Change Password
+            </a>
+        </div>
+    </div>
+
+    <!-- ══════════════ PROFILE BANNER ══════════════ -->
+    <section class="profile-banner" aria-label="Signed-in profile">
+        <div class="banner-avatar" aria-hidden="true">JA<span class="online-dot" title="Signed in"></span></div>
+        <div class="banner-text">
+            <h2>Janelle Angela Santos</h2>
+            <p>janelle.santos@peachycafe.ph</p>
+        </div>
+        <div class="banner-meta">
+            <span class="meta-chip">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6z"/></svg>
+                Administrator
+            </span>
+            <span class="meta-chip">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+                Signed in 2 min ago
+            </span>
+        </div>
+    </section>
+
+    <div class="layout">
+
+        <!-- ══════════════ LEFT COLUMN ══════════════ -->
+        <div class="stack">
+
+            <!-- ── Account details ── -->
+            <section class="card" aria-labelledby="account-details-title">
+                <div class="card-head">
+                    <span class="card-icon" aria-hidden="true">
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>
+                    </span>
+                    <div>
+                        <h3 id="account-details-title">Account Details</h3>
+                        <p>Your account information and assigned access level.</p>
+                    </div>
+                    <span class="head-tag tag tag--peach">Read-only</span>
+                </div>
+
+                <div class="fields">
+                    <div>
+                        <label for="accName">Name</label>
+                        <div class="input-wrap"><input id="accName" type="text" value="Janelle Angela Santos" readonly autocomplete="off"></div>
+                    </div>
+                    <div>
+                        <label for="accEmail">Email Address</label>
+                        <div class="input-wrap"><input id="accEmail" type="email" value="janelle.santos@peachycafe.ph" readonly autocomplete="off"></div>
+                    </div>
+                    <div class="field--full">
+                        <label for="accRole">Access Level</label>
+                        <div class="input-wrap"><input id="accRole" type="text" value="Administrator" readonly autocomplete="off"></div>
+                    </div>
+                </div>
+
+                <p class="helper">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+                    These details are managed by an administrator and cannot be edited here.
+                </p>
+
+                <div class="cross-link">
+                    <div>
+                        <b>Managing staff accounts?</b>
+                        <span>Add users, update access levels, or activate and deactivate accounts.</span>
+                    </div>
+                    <a href="#">Go to Staff Accounts
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7"/><path d="M9 7h8v8"/></svg>
+                    </a>
+                </div>
+            </section>
+
+            <!-- ── Change password ── -->
+            <section class="card" id="change-password" aria-labelledby="pw-title">
+                <div class="card-head">
+                    <span class="card-icon" aria-hidden="true">
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/><circle cx="12" cy="16" r="1.4" fill="currentColor" stroke="none"/></svg>
+                    </span>
+                    <div>
+                        <h3 id="pw-title">Change Password</h3>
+                        <p>Update the password for your signed-in account. You will stay signed in on this device.</p>
+                    </div>
+                </div>
+
+                <div class="notice notice--ok" id="pwSuccess" role="status" hidden>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+                    <span>Password updated successfully. Your account is now secured with the new password.</span>
+                </div>
+                <div class="notice notice--error" id="pwError" role="alert" hidden>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v5"/><path d="M12 16h.01"/></svg>
+                    <span id="pwErrorText"></span>
+                </div>
+
+                <form id="pwForm" autocomplete="off" novalidate>
+                    <div class="pw-stack">
+                        <div>
+                            <label for="currentPassword">Current Password</label>
+                            <div class="input-wrap pw-field">
+                                <input id="currentPassword" type="password" placeholder="Enter current password" autocomplete="one-time-code" required>
+                                <button type="button" class="pw-toggle" data-target="currentPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                                </button>
+                            </div>
+                            <p class="field-error" id="errCurrent">Enter your current password.</p>
+                        </div>
+                        <div>
+                            <label for="newPassword">New Password</label>
+                            <div class="input-wrap pw-field">
+                                <input id="newPassword" type="password" placeholder="Enter new password" minlength="8" maxlength="20" autocomplete="one-time-code" required>
+                                <button type="button" class="pw-toggle" data-target="newPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                                </button>
+                            </div>
+                            <p class="field-error" id="errNew">Password must be 8–20 characters and different from your current one.</p>
+                            <div class="strength" id="strength" hidden>
+                                <div class="strength-bars" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+                                <div class="strength-label"><span id="strengthText">Password strength</span><span id="strengthPct"></span></div>
+                            </div>
+                        </div>
+                        <div>
+                            <label for="confirmPassword">Confirm New Password</label>
+                            <div class="input-wrap pw-field">
+                                <input id="confirmPassword" type="password" placeholder="Re-enter new password" minlength="8" maxlength="20" autocomplete="one-time-code" required>
+                                <button type="button" class="pw-toggle" data-target="confirmPassword" aria-label="Show password" aria-pressed="false" title="Show password">
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/></svg>
+                                </button>
+                            </div>
+                            <p class="field-error" id="errConfirm">Passwords do not match.</p>
+                        </div>
+                    </div>
+
+                    <p class="helper">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+                        Use 8–20 characters with a mix of letters, numbers, and symbols. Your new password must be different from your current password.
+                    </p>
+
+                    <div class="actions">
+                        <button type="button" class="btn btn-light" id="pwClear">Clear</button>
+                        <button type="submit" class="btn btn-primary">
+                            Update Password
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M13 6l6 6-6 6"/></svg>
+                        </button>
+                    </div>
+                </form>
+            </section>
+        </div>
+
+        <!-- ══════════════ RIGHT COLUMN ══════════════ -->
+        <div class="stack">
+
+            <!-- ── GCash payment settings ── -->
+            <section class="card" id="gcash-settings" aria-labelledby="gcash-title">
+                <div class="card-head">
+                    <span class="card-icon card-icon--gcash" aria-hidden="true">
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="5" width="19" height="14" rx="3"/><path d="M2.5 10h19"/><path d="M6 15h4"/></svg>
+                    </span>
+                    <div>
+                        <h3 id="gcash-title">GCash Payment</h3>
+                        <p>The GCash number and QR code customers use to pay for their orders.</p>
+                    </div>
+                    <span class="head-tag tag tag--green">Payment</span>
+                </div>
+
+                <div class="notice notice--ok" id="gcashSuccess" role="status" hidden>
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+                    <span>GCash payment details saved.</span>
+                </div>
+
+                <form id="gcashForm" autocomplete="off" novalidate>
+                    <div class="gcash-grid">
+                        <div class="gcash-qr-panel">
+                            <p class="qr-kicker">QR at checkout</p>
+                            <div class="gcash-qr-frame">
+                                <div class="qr-empty" id="qrEmptyState">
+                                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3z"/><path d="M20 14v3M14 20h3M20 20h.01"/></svg>
+                                    <span>No QR code<br>uploaded yet</span>
+                                </div>
+                                <img id="gcashQrPreview" alt="Current GCash QR code" hidden>
+                            </div>
+                            <span class="qr-status" id="qrStatus">● Not uploaded</span>
+                            <p class="qr-hint">Customers scan this QR to send their payment.</p>
+                        </div>
+
+                        <div class="gcash-controls">
+                            <label for="gcashNumber">GCash mobile number</label>
+                            <div class="num-field" id="numField">
+                                <span class="num-prefix">+63</span>
+                                <input id="gcashNumber" type="tel" inputmode="numeric" placeholder="912 345 6789" maxlength="12" autocomplete="off">
+                            </div>
+                            <p class="field-error" id="errGcashNumber">Enter a valid PH mobile number starting with 9 (e.g. 912 345 6789).</p>
+
+                            <label style="margin-top:16px" for="gcashQrUpload">GCash QR image</label>
+                            <div class="gcash-drop" id="gcashDrop" role="button" tabindex="0" aria-label="Upload GCash QR image">
+                                <input id="gcashQrUpload" type="file" accept="image/png,image/jpeg,image/webp" hidden>
+                                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4"/><path d="M7 9l5-5 5 5"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+                                <b id="dropTitle">Click to upload QR image</b>
+                                <span>or drag &amp; drop · PNG, JPG, WEBP · up to 5 MB</span>
+                            </div>
+                            <p class="field-error" id="errGcashQr">Upload your GCash QR image.</p>
+                        </div>
+                    </div>
+
+                    <div class="actions gcash-form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+                            Save GCash Details
+                        </button>
+                    </div>
+                </form>
+            </section>
+
+            <!-- ── Recent sessions ── -->
+            <section class="card session-card" aria-labelledby="session-title">
+                <div class="card-head">
+                    <span class="card-icon" aria-hidden="true">
+                        <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>
+                    </span>
+                    <div>
+                        <h3 id="session-title">Recent Sign-ins</h3>
+                        <p>The last devices that accessed this account.</p>
+                    </div>
+                </div>
+                <div id="deviceList" aria-live="polite"></div>
+                <div class="pager">
+                    <span class="pager-info" id="pagerInfo"></span>
+                    <div class="pager-btns" id="pagerBtns"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+
+<footer class="foot">Peachy Cafe Admin · Account Settings</footer>
+
+<div class="toast" id="toast" role="status" aria-live="polite">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8.5 12.5l2.5 2.5 4.5-5"/></svg>
+    <span id="toastText"></span>
+</div>
+
+<script>
+(function () {
+    'use strict';
+
+    var toast = document.getElementById('toast');
+    var toastText = document.getElementById('toastText');
+    var toastTimer = null;
+    function showToast(message) {
+        toastText.textContent = message;
+        toast.classList.add('show');
+        clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toast.classList.remove('show'); }, 3200);
+    }
+
+    function setError(input, errEl, bad) {
+        input.classList.toggle('invalid', bad);
+        errEl.classList.toggle('show', bad);
+        return !bad;
+    }
+
+    /* ── Show / hide password toggles ── */
+    var eyeOpen = '<path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12z"/><circle cx="12" cy="12" r="2.8"/>';
+    var eyeClosed = '<path d="M3 3l18 18"/><path d="M10.6 10.7a2.8 2.8 0 0 0 3.9 3.9"/><path d="M9.4 5.9A10.6 10.6 0 0 1 12 5.5c6.5 0 10 6.5 10 6.5a17.5 17.5 0 0 1-3 3.6"/><path d="M6.6 6.7C3.9 8.4 2 12 2 12s3.5 6.5 10 6.5c1.2 0 2.3-.2 3.3-.6"/>';
+
+    document.querySelectorAll('.pw-toggle').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var input = document.getElementById(btn.getAttribute('data-target'));
+            var showing = input.type === 'text';
+            input.type = showing ? 'password' : 'text';
+            btn.setAttribute('aria-pressed', String(!showing));
+            btn.setAttribute('aria-label', showing ? 'Show password' : 'Hide password');
+            btn.title = showing ? 'Show password' : 'Hide password';
+            btn.innerHTML = '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">' +
+                (showing ? eyeOpen : eyeClosed) + '</svg>';
+        });
+    });
+
+    /* ── Password strength meter ── */
+    var newPw = document.getElementById('newPassword');
+    var strengthBox = document.getElementById('strength');
+    var strengthText = document.getElementById('strengthText');
+    var strengthPct = document.getElementById('strengthPct');
+    var bars = strengthBox.querySelectorAll('i');
+    var LEVELS = [
+        { label: 'Too weak', color: '#e07070' },
+        { label: 'Weak', color: '#e0a070' },
+        { label: 'Good', color: '#e5b95c' },
+        { label: 'Strong', color: '#4caf7d' },
+        { label: 'Excellent', color: '#2f855a' }
+    ];
+
+    newPw.addEventListener('input', function () {
+        var v = newPw.value;
+        strengthBox.hidden = v.length === 0;
+        if (!v.length) { return; }
+
+        var score = 0;
+        if (v.length >= 8) { score++; }
+        if (v.length >= 12) { score++; }
+        if (/[a-z]/.test(v) && /[A-Z]/.test(v)) { score++; }
+        if (/\d/.test(v)) { score++; }
+        if (/[^A-Za-z0-9]/.test(v)) { score++; }
+        score = Math.min(score, 5);
+
+        var level = LEVELS[Math.max(0, Math.ceil(score / 5 * 4) - 1)];
+        bars.forEach(function (bar, i) {
+            bar.style.background = i < score ? level.color : 'var(--line)';
+        });
+        strengthText.textContent = level.label;
+        strengthPct.textContent = Math.round(score / 5 * 100) + '%';
+    });
+
+    /* ── Change password form ── */
+    var pwForm = document.getElementById('pwForm');
+    var currentPw = document.getElementById('currentPassword');
+    var confirmPw = document.getElementById('confirmPassword');
+    var pwSuccess = document.getElementById('pwSuccess');
+    var pwError = document.getElementById('pwError');
+    var pwErrorText = document.getElementById('pwErrorText');
+    var errCurrent = document.getElementById('errCurrent');
+    var errNew = document.getElementById('errNew');
+    var errConfirm = document.getElementById('errConfirm');
+
+    function pwFail(message) {
+        pwSuccess.hidden = true;
+        pwErrorText.textContent = message;
+        pwError.hidden = false;
+        pwError.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+
+    pwForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        pwError.hidden = true;
+
+        var ok = true;
+        ok = setError(currentPw, errCurrent, currentPw.value.length === 0) && ok;
+        var isNewValid = newPw.value.length >= 8 && newPw.value.length <= 20 && newPw.value !== currentPw.value;
+        ok = setError(newPw, errNew, !isNewValid) && ok;
+        ok = setError(confirmPw, errConfirm, confirmPw.value !== newPw.value || confirmPw.value.length === 0) && ok;
+
+        if (!ok) { return; }
+
+        if (currentPw.value === 'wrongpass') { /* demo hook: no-op */ }
+
+        pwError.hidden = true;
+        pwSuccess.hidden = false;
+        pwForm.reset();
+        strengthBox.hidden = true;
+        [currentPw, newPw, confirmPw].forEach(function (input) { input.classList.remove('invalid'); });
+        showToast('Password updated for janelle.santos@peachycafe.ph');
+        pwSuccess.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+
+    document.getElementById('pwClear').addEventListener('click', function () {
+        pwForm.reset();
+        strengthBox.hidden = true;
+        pwSuccess.hidden = true;
+        pwError.hidden = true;
+        [currentPw, newPw, confirmPw].forEach(function (input) {
+            input.classList.remove('invalid');
+        });
+        [errCurrent, errNew, errConfirm].forEach(function (el) { el.classList.remove('show'); });
+    });
+
+    [currentPw, newPw, confirmPw].forEach(function (input) {
+        input.addEventListener('input', function () {
+            input.classList.remove('invalid');
+            var err = input.parentElement.parentElement.querySelector('.field-error');
+            if (err) { err.classList.remove('show'); }
+        });
+    });
+
+    /* ── Logged devices pagination ── */
+    var DEVICE_ICONS = {
+        desktop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8"/><path d="M12 17v4"/></svg>',
+        mobile: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="2.5" width="12" height="19" rx="2.5"/><path d="M10 18.5h4"/></svg>',
+        laptop: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="11" rx="2"/><path d="M2 19h20"/></svg>',
+        tablet: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="18" rx="2.5"/><path d="M10.5 18.5h3"/></svg>'
+    };
+    var DEVICES = [
+        { icon: 'desktop', name: 'Chrome · Windows', meta: 'Quezon City, PH · 2 minutes ago', tag: 'This device' },
+        { icon: 'mobile', name: 'Safari · iPhone', meta: 'Quezon City, PH · Yesterday, 8:14 PM' },
+        { icon: 'desktop', name: 'Edge · Windows', meta: 'Quezon City, PH · Oct 24, 10:02 AM' },
+        { icon: 'desktop', name: 'Firefox · Windows', meta: 'Makati, PH · Oct 21, 4:47 PM' },
+        { icon: 'mobile', name: 'Chrome · Android', meta: 'Cebu City, PH · Oct 18, 9:30 AM' },
+        { icon: 'laptop', name: 'Safari · MacBook Air', meta: 'Quezon City, PH · Oct 12, 7:12 PM' },
+        { icon: 'desktop', name: 'Chrome · Windows', meta: 'Quezon City, PH · Oct 5, 11:05 AM' },
+        { icon: 'tablet', name: 'Samsung Internet · Galaxy Tab', meta: 'Pasig, PH · Sep 28, 3:22 PM' },
+        { icon: 'desktop', name: 'Edge · Windows', meta: 'Quezon City, PH · Sep 20, 6:40 PM' }
+    ];
+    var PER_PAGE = 3;
+    var deviceList = document.getElementById('deviceList');
+    var pagerInfo = document.getElementById('pagerInfo');
+    var pagerBtns = document.getElementById('pagerBtns');
+    var currentPage = 1;
+    var totalPages = Math.ceil(DEVICES.length / PER_PAGE);
+
+    function renderDevices() {
+        var start = (currentPage - 1) * PER_PAGE;
+        var items = DEVICES.slice(start, start + PER_PAGE);
+        var html = '';
+        items.forEach(function (d) {
+            html += '<div class="session-row">' + DEVICE_ICONS[d.icon] +
+                '<div class="grow"><b>' + d.name + '</b><small>' + d.meta + '</small></div>' +
+                (d.tag ? '<span class="tag tag--green">' + d.tag + '</span>' : '') +
+                '</div>';
+        });
+        deviceList.innerHTML = html;
+        pagerInfo.textContent = 'Showing ' + (start + 1) + '–' +
+            Math.min(start + PER_PAGE, DEVICES.length) + ' of ' + DEVICES.length + ' devices';
+        var btns = '<button type="button" class="page-btn page-nav" data-page="' + (currentPage - 1) + '"' +
+            (currentPage === 1 ? ' disabled' : '') + ' aria-label="Previous page">\u2039</button>';
+        for (var p = 1; p <= totalPages; p++) {
+            btns += '<button type="button" class="page-btn' + (p === currentPage ? ' active' : '') +
+                '" data-page="' + p + '" aria-label="Page ' + p + '"' +
+                (p === currentPage ? ' aria-current="page"' : '') + '>' + p + '</button>';
+        }
+        btns += '<button type="button" class="page-btn page-nav" data-page="' + (currentPage + 1) + '"' +
+            (currentPage === totalPages ? ' disabled' : '') + ' aria-label="Next page">\u203a</button>';
+        pagerBtns.innerHTML = btns;
+    }
+
+    pagerBtns.addEventListener('click', function (event) {
+        var btn = event.target.closest('.page-btn');
+        if (!btn || btn.disabled) { return; }
+        var page = parseInt(btn.getAttribute('data-page'), 10);
+        if (page >= 1 && page <= totalPages && page !== currentPage) {
+            currentPage = page;
+            renderDevices();
+        }
+    });
+
+    renderDevices();
+
+    /* ── GCash payment details ── */
+    var gcashForm = document.getElementById('gcashForm');
+    var gcashSuccess = document.getElementById('gcashSuccess');
+    var numField = document.getElementById('numField');
+    var gcashNumber = document.getElementById('gcashNumber');
+    var errGcashNumber = document.getElementById('errGcashNumber');
+    var gcashDrop = document.getElementById('gcashDrop');
+    var qrUpload = document.getElementById('gcashQrUpload');
+    var dropTitle = document.getElementById('dropTitle');
+    var qrPreview = document.getElementById('gcashQrPreview');
+    var qrEmptyState = document.getElementById('qrEmptyState');
+    var qrStatus = document.getElementById('qrStatus');
+    var errGcashQr = document.getElementById('errGcashQr');
+    var pendingQrData = localStorage.getItem('peachyGcashQr') || '';
+
+    function showQr(dataUrl) {
+        if (!dataUrl) {
+            qrPreview.hidden = true;
+            qrPreview.removeAttribute('src');
+            qrEmptyState.hidden = false;
+            qrStatus.textContent = '\u25cf Not uploaded';
+            qrStatus.classList.remove('ready');
+            return;
+        }
+        qrPreview.src = dataUrl;
+        qrPreview.hidden = false;
+        qrEmptyState.hidden = true;
+        qrStatus.textContent = '\u25cf QR ready';
+        qrStatus.classList.add('ready');
+    }
+
+    function normalizeNumber(value) {
+        var d = value.replace(/\D/g, '');
+        if (d.indexOf('63') === 0 && d.length >= 12) { d = d.slice(2); }
+        if (d.charAt(0) === '0') { d = d.slice(1); }
+        d = d.slice(0, 10);
+        var out = d.slice(0, 3);
+        if (d.length > 3) { out += ' ' + d.slice(3, 6); }
+        if (d.length > 6) { out += ' ' + d.slice(6, 10); }
+        return out;
+    }
+
+    gcashNumber.addEventListener('input', function () {
+        gcashNumber.value = normalizeNumber(gcashNumber.value);
+        numField.classList.remove('invalid');
+        errGcashNumber.classList.remove('show');
+        gcashSuccess.hidden = true;
+    });
+
+    function handleQrFile(file) {
+        if (!file) { return; }
+        if (!/^image\/(png|jpeg|webp)$/.test(file.type)) {
+            showToast('Please choose a PNG, JPG, or WebP image');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('QR image must be 5 MB or smaller');
+            return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+            pendingQrData = reader.result;
+            showQr(pendingQrData);
+            dropTitle.textContent = file.name;
+            gcashDrop.classList.remove('invalid');
+            errGcashQr.classList.remove('show');
+            gcashSuccess.hidden = true;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    gcashDrop.addEventListener('click', function () { qrUpload.click(); });
+    gcashDrop.addEventListener('keydown', function (event) {
+        if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            qrUpload.click();
+        }
+    });
+    qrUpload.addEventListener('change', function () {
+        handleQrFile(qrUpload.files && qrUpload.files[0]);
+    });
+    ['dragenter', 'dragover'].forEach(function (type) {
+        gcashDrop.addEventListener(type, function (event) {
+            event.preventDefault();
+            gcashDrop.classList.add('dragging');
+        });
+    });
+    ['dragleave', 'drop'].forEach(function (type) {
+        gcashDrop.addEventListener(type, function (event) {
+            event.preventDefault();
+            gcashDrop.classList.remove('dragging');
+        });
+    });
+    gcashDrop.addEventListener('drop', function (event) {
+        if (event.dataTransfer && event.dataTransfer.files) {
+            handleQrFile(event.dataTransfer.files[0]);
+        }
+    });
+
+    var savedNumber = localStorage.getItem('peachyGcashNumber') || '';
+    if (savedNumber) {
+        gcashNumber.value = normalizeNumber(savedNumber);
+        dropTitle.textContent = 'QR image saved \u2014 click to replace';
+    }
+    showQr(pendingQrData);
+
+    gcashForm.addEventListener('submit', function (event) {
+        event.preventDefault();
+        gcashSuccess.hidden = true;
+        var ok = true;
+        var digits = gcashNumber.value.replace(/\D/g, '');
+        var numBad = !(digits.length === 10 && digits.charAt(0) === '9');
+        numField.classList.toggle('invalid', numBad);
+        errGcashNumber.classList.toggle('show', numBad);
+        ok = !numBad;
+        if (!pendingQrData) {
+            gcashDrop.classList.add('invalid');
+            errGcashQr.classList.add('show');
+            ok = false;
+        }
+        if (!ok) {
+            showToast('Add a valid GCash number and QR image first');
+            return;
+        }
+        try {
+            localStorage.setItem('peachyGcashNumber', gcashNumber.value);
+            localStorage.setItem('peachyGcashQr', pendingQrData);
+        } catch (error) {
+            showToast('Unable to save image. Try a smaller QR image.');
+            return;
+        }
+        dropTitle.textContent = 'QR image saved \u2014 click to replace';
+        gcashSuccess.hidden = false;
+        showToast('GCash payment details saved');
+    });
+
+})();
+</script>
+</body>
+</html>

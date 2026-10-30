@@ -57,6 +57,9 @@ class JsAttributeEscapingTest extends TestCase
         ['resources/views/admin/qr-generator.blade.php', 'escapeHtml'],
         ['resources/views/admin/partials/notification-bell.blade.php', 'esc'],
         ['resources/views/customer/partials/notification-bell.blade.php', 'esc'],
+        // Branch Management redesign (Oct 2026): the details panel's QR <img src>
+        // and social-link hrefs (hrefs are also limited to http/https).
+        ['resources/views/admin/branches.blade.php', 'esc'],
     ];
 
     private function source(string $relative): string

@@ -248,6 +248,7 @@
     }
 </style>
 
+@include('partials.poll-chain')
 <script>
 (function () {
     var root = document.querySelector('[data-anotif-root]');
@@ -408,32 +409,47 @@
             .catch(function () {});
     }
 
+    // One poll, answering the chain (partials/poll-chain). Unchanged for the
+    // badge and the toasts; what is new (Oct 2026) is that it runs as a guarded
+    // setTimeout chain: it pauses while the tab is hidden (nobody is looking at a
+    // toast there, and the next visible moment asks at once and toasts whatever
+    // arrived), backs off a little while nothing arrives, snaps back on any
+    // arrival or a tap, and stops on a 401/403/419 instead of retrying forever.
+    var lastUnread = null;
+
     function poll() {
-        fetch(URL_COUNT, { headers: { 'Accept': 'application/json' } })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (d) {
-                if (!d) return;
-                setBadge(d.unread);
+        return PomidaPollChain.getJson(URL_COUNT).then(function (res) {
+            var failed = PomidaPollChain.failure(res);
+            if (failed) return failed;
 
-                var latest = d.latest_id || 0;
+            var d = res.data;
+            if (!d) return { changed: false };
 
-                if (lastSeenId === null) {
-                    // Adopt the high-water mark silently on first poll so a
-                    // page load never replays old notifications.
-                    lastSeenId = latest;
-                    saveSeen(latest);
-                    return;
-                }
+            setBadge(d.unread);
 
-                if (latest > lastSeenId) {
-                    toastNewSince(lastSeenId);
-                    lastSeenId = latest;
-                    saveSeen(latest);
-                }
-            })
-            .catch(function () {});
+            var changed = d.unread !== lastUnread;
+            lastUnread = d.unread;
+
+            var latest = d.latest_id || 0;
+
+            if (lastSeenId === null) {
+                // Adopt the high-water mark silently on first poll so a
+                // page load never replays old notifications.
+                lastSeenId = latest;
+                saveSeen(latest);
+                return { changed: true };
+            }
+
+            if (latest > lastSeenId) {
+                toastNewSince(lastSeenId);
+                lastSeenId = latest;
+                saveSeen(latest);
+                changed = true;
+            }
+
+            return { changed: changed };
+        });
     }
-
     function loadList() {
         fetch(URL_LIST, { headers: { 'Accept': 'application/json' } })
             .then(function (r) { return r.ok ? r.json() : null; })
@@ -507,7 +523,11 @@
         if (e.key === 'Escape' && !panel.hidden) { closePanel(); }
     });
 
-    poll();
-    setInterval(poll, 20000);
+    // 20s is the staff bell's long-standing pace; it stays the fast end of the
+    // ladder and only relaxes to 30s when nothing has changed for a while.
+    PomidaPollChain({
+        schedule: [20000, 20000, 30000],
+        run: poll
+    }).start();
 })();
 </script>

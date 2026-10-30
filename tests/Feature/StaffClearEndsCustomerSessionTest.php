@@ -497,7 +497,11 @@ class StaffClearEndsCustomerSessionTest extends TestCase
             $this->get($url)
                 ->assertOk()
                 ->assertSee($statusUrl)
-                ->assertSee('setInterval(check', false);
+                // A guarded setTimeout chain (partials/poll-chain), no longer a
+                // bare setInterval: the staff-cancellation check is still polled.
+                ->assertSee('PomidaPollChain({', false)
+                ->assertSee('run: check', false)
+                ->assertDontSee('setInterval(check', false);
         }
     }
 

@@ -456,21 +456,36 @@ class SupervisorRoleFoundationTest extends TestCase
         $this->assertSame($was, (bool) $home->fresh()->is_active);
     }
 
-    public function test_a_supervisor_cannot_reach_owner_account_management(): void
+    /**
+     * Since Defect Report 5, item 3 (Oct 2026) a supervisor has their own
+     * Account Settings page and changes their OWN password there — what they
+     * still cannot do from it is change the branch's GCash (the owner's), which
+     * test_a_supervisor_cannot_change_system_configuration() below pins.
+     */
+    public function test_a_supervisor_reaches_only_their_own_account_settings(): void
     {
         $supervisor = $this->supervisorAt(self::HOME_BRANCH);
+        $owner = $this->admin();
+        $ownerHash = $owner->fresh()->password;
 
-        $this->actingAs($supervisor, 'admin')
+        $html = $this->actingAs($supervisor, 'admin')
             ->get('/admin/account')
-            ->assertRedirect(route('admin.home'));
+            ->assertOk()
+            ->getContent();
 
+        $this->assertStringContainsString($supervisor->email, $html);
+        $this->assertStringNotContainsString($owner->email, $html);
+
+        // The endpoint takes no user id: it can only ever be the supervisor's own.
         $this->actingAs($supervisor, 'admin')
             ->put('/admin/account/password', [
+                'user_id'               => $owner->id,
                 'current_password'      => 'Aa1!aaaaaa',
                 'password'              => 'Bb2@bbbbbb',
                 'password_confirmation' => 'Bb2@bbbbbb',
-            ])
-            ->assertRedirect(route('admin.home'));
+            ]);
+
+        $this->assertSame($ownerHash, $owner->fresh()->password, 'the owner\'s password must be untouched');
     }
 
     /**

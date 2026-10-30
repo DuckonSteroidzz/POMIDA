@@ -90,9 +90,13 @@ class AdminHomeBoardLiveUpdateTest extends TestCase
 
         // Background fetch, not a navigation.
         $this->assertStringContainsString('fetch(window.location.href', $view);
-        // Unchanged 10s cadence.
+        // Unchanged 10s cadence at the fast end. It is now a guarded setTimeout
+        // chain (partials/poll-chain) that relaxes to 15s then 20s while the
+        // board is quiet, instead of a bare setInterval that never slows.
         $this->assertStringContainsString('BOARD_REFRESH_MS = 10000', $view);
-        $this->assertStringContainsString('setInterval(refreshBoard, BOARD_REFRESH_MS)', $view);
+        $this->assertStringContainsString('schedule: [BOARD_REFRESH_MS, BOARD_REFRESH_MS, 15000, 20000]', $view);
+        $this->assertStringContainsString('run: refreshBoard', $view);
+        $this->assertStringNotContainsString('setInterval(refreshBoard', $view);
         // It parses the response and pulls the fresh regions out by id.
         $this->assertStringContainsString('DOMParser', $view);
         $this->assertStringContainsString("SWAP_IDS = ['pc-live-region', 'pc-help-toasts-slot']", $view);
@@ -112,9 +116,10 @@ class AdminHomeBoardLiveUpdateTest extends TestCase
     {
         $view = $this->homeSource();
 
-        // A catch with no DOM writes in it — the board is left exactly as it is.
+        // A catch with no DOM writes in it — the board is left exactly as it is
+        // (it only tells the poll chain to try again a little later).
         $this->assertMatchesRegularExpression(
-            '/\.catch\(function \(\) \{\s*\/\/ Keep the last known board visible on any failure\.\s*\}\)/',
+            '/\.catch\(function \(\) \{\s*\/\/ Keep the last known board visible on any failure\.\s*return \{ changed: false, delay: 15000 \};\s*\}\)/',
             $view
         );
 

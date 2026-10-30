@@ -31,8 +31,9 @@
              with its own tests. This partial propagates cancellations; it does
              not retune that clock.
 
-      CHECK  read-only on the server. Fires on load, on a POLL_EVERY_MS
-             interval, and whenever the tab becomes visible or regains focus.
+      CHECK  read-only on the server. Fires on load, then on a guarded
+             setTimeout chain (partials/poll-chain) starting at POLL_EVERY_MS,
+             and whenever the tab becomes visible or regains focus.
 
     WHY THE INTERVAL EXISTS
     -----------------------
@@ -51,12 +52,20 @@
     customer-table-clock (120/min), which one page polling every 10s sits far
     beneath even with a whole room of phones sharing the café's one address.
 
+    BACK-OFF (Oct 2026): the chain asks every 10s, then 10s, 15s and finally
+    every 20s while the table stays valid; a tap or key press, or the tab
+    coming back to the front, snaps it back to 10s. The ceiling is deliberately
+    lower than the other pollers' 30s: a staff Clear / Move / cancellation
+    should still reach a guest's phone within about twenty seconds. It pauses
+    while the tab is hidden and stops on a 401/403/419.
+
     Nothing here draws anything. On any failure the server has already flashed
     the message, so the page simply goes to the code-entry page and the existing
     alert renders it — the same alert, in the same place, as every other dine-in
     refusal.
 --}}
 @if(session('order_type') === 'dine_in')
+@include('partials.poll-chain')
 <script>
 (function () {
     'use strict';
@@ -77,9 +86,8 @@
 
     var lastPingAt = 0;
     var pingInFlight = false;
-    var checkInFlight = false;
     var leaving = false;
-    var pollTimer = null;
+    var chain = null;
 
     // X-CSRF-TOKEN is put on by partials/session-guard's fetch wrapper, which
     // reads it live from the meta tag rather than from a literal baked in here.
@@ -106,53 +114,39 @@
         });
     }
 
-    function stopPolling() {
-        if (pollTimer) {
-            clearInterval(pollTimer);
-            pollTimer = null;
-        }
-    }
-
+    // One read-only check, answering the chain: valid → unchanged (slower next
+    // time); invalid → leave (latched, once); an HTTP refusal → the chain's own
+    // error handling (stop on 401/403/419, otherwise a slower retry).
     function check() {
-        if (checkInFlight || leaving) { return; }
+        if (leaving) { return Promise.resolve({ stop: true }); }
 
-        checkInFlight = true;
+        return PomidaPollChain.getJson(CHECK_URL).then(function (res) {
+            var failed = PomidaPollChain.failure(res);
+            if (failed) { return failed; }
 
-        fetch(CHECK_URL, {
-            headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-            cache: 'no-store'
-        })
-        .then(function (response) {
-            if (!response.ok) { return null; }
-            return response.json();
-        })
-        .then(function (data) {
+            var data = res.data;
             if (data && data.valid === false) {
-                // Latched: a burst of focus events, or the interval landing on
+                // Latched: a burst of focus events, or the chain landing on
                 // top of one, must not fire a burst of navigations.
                 leaving = true;
-                stopPolling();
                 window.location.href = data.redirect || ENTRY_URL;
+                return { stop: true };
             }
-        })
-        .catch(function () { /* Offline or mid-navigation. Ask again next time. */ })
-        .then(function () { checkInFlight = false; });
+
+            return { changed: false };
+        });
     }
 
-    check();
-
-    pollTimer = setInterval(check, POLL_EVERY_MS);
-
-    document.addEventListener('visibilitychange', function () {
-        if (!document.hidden) { check(); }
+    // Visibility (pause while hidden, one immediate check when the tab comes
+    // back) is the chain's. A window that regains focus without the tab ever
+    // having been hidden still asks at once.
+    chain = PomidaPollChain({
+        schedule: [POLL_EVERY_MS, POLL_EVERY_MS, 15000, 20000],
+        run: check
     });
+    chain.start();
 
-    window.addEventListener('focus', check);
-
-    // Stop the timer on the way out, the same way menu.blade's order-status
-    // poller already does — a navigation that is already under way has no use
-    // for one more in-flight request.
-    window.addEventListener('beforeunload', stopPolling);
+    window.addEventListener('focus', function () { chain.now(); });
 })();
 </script>
 @endif

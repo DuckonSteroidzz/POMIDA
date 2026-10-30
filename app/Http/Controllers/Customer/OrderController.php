@@ -12,6 +12,7 @@ use App\Models\OrderRating;
 use App\Models\Voucher;
 use App\Models\DiscountCard;
 use App\Services\InventoryDeductionService;
+use App\Support\CustomerLiveStatus;
 use App\Support\GuestOrders;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -164,6 +165,13 @@ class OrderController extends Controller
 
         if (!$branchId) {
             return back()->withErrors(['error' => 'No branch selected. Please select a branch first.']);
+        }
+
+        // GCash is per branch (Oct 2026). The cart hides the option for a
+        // branch that does not offer it; this is the server half, for a stale
+        // page or a hand-made request. Same rule as the cart, one definition.
+        if (($validated['payment_method'] ?? null) === 'gcash' && !\App\Support\BranchGcash::available((int) $branchId)) {
+            return back()->withErrors(['payment_method' => \App\Support\BranchGcash::UNAVAILABLE_MESSAGE]);
         }
 
         /*
@@ -1347,18 +1355,15 @@ public function showGcashPayment(int $id)
             ->route('customer.orders');
     }
 
-        $gcashQrSetting = \App\Models\Setting::where('key', 'gcash_qr')
-            ->whereNull('branch_id')
-            ->first();
-
-        $gcashPhoneSetting = \App\Models\Setting::where('key', 'gcash_phone')
-            ->whereNull('branch_id')
-            ->first();
+        // The ORDER'S branch QR and number (GCash per branch, Oct 2026) — even
+        // if that branch has since switched GCash off, so an order already
+        // placed stays payable. See BranchGcash::forPayment().
+        $gcash = \App\Support\BranchGcash::forPayment($order->branch_id);
 
         return view('customer.gcash-payment', [
             'order' => $order,
-            'gcashQrSetting' => $gcashQrSetting,
-            'gcashPhoneSetting' => $gcashPhoneSetting,
+            'gcashQrSetting' => $gcash['qr'] ? (object) ['value' => $gcash['qr']] : null,
+            'gcashPhoneSetting' => $gcash['number'] ? (object) ['value' => $gcash['number']] : null,
         ]);
 }
 
@@ -2085,41 +2090,31 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
     }
 
     /**
+     * The ONE background poll of every customer page: the bell's unread count
+     * and newest notification id, plus the status of the orders the page is
+     * watching (`order_ids[]`), in one cheap answer. See
+     * App\Support\CustomerLiveStatus for what is answered and why it is cheap.
+     *
+     * customerOrderStatus() / customerOrdersStatus() and the notifications
+     * unread-count endpoint are untouched; other pages may still call them.
+     *
+     * no-store: this is polled, and a cached answer would freeze the page.
+     */
+    public function customerLiveStatus(Request $request)
+    {
+        return response()
+            ->json(CustomerLiveStatus::snapshot($request))
+            ->header('Cache-Control', 'no-store, private');
+    }
+
+    /**
      * The fields both order-status endpoints answer with, for one order.
      * Pulled out so the single-order and multi-order responses can never
      * describe the same order differently.
      */
     private function orderStatusPayload(Order $order): array
     {
-        $discountStatus = $order->discount_status ?? 'approved';
-        $discountType = $order->discount_type;
-        $discountAmount = (float) ($order->discount_amount ?? 0);
-
-        // If the customer already chose Continue Transaction for this
-        // exact order, the customer-facing status must stay approved even
-        // if an old/stale rejected value is encountered.
-        if ((int) session('discount_continued_order_id') === (int) $order->id) {
-            $discountStatus = 'approved';
-            $discountType = null;
-            $discountAmount = 0;
-        }
-
-        return [
-            'order_id' => $order->id,
-            'order_number' => $order->order_number,
-            'status' => $order->status,
-            // Drives the customer tracker's step-3 label and helper text
-            // ("Ready for Pick-up" vs "Served"). Additive — existing consumers
-            // ignore it.
-            'type' => $order->type,
-            'payment_method' => $order->payment_method,
-            'payment_status' => $order->payment_status,
-            'discount_status' => $discountStatus,
-            'discount_type' => $discountType,
-            'discount_amount' => $discountAmount,
-            'total' => (float) ($order->total ?? 0),
-            'updated_at' => optional($order->updated_at)->toIso8601String(),
-        ];
+        return CustomerLiveStatus::payload($order);
     }
 
     public function showReceipt(int $id)

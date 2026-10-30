@@ -10,9 +10,12 @@
         [data-help-message]       the element holding that wording
 
     Only a region that starts OPEN is watched; a block showing the form has
-    nothing to wait for. The poll runs about every 6 seconds, only while the tab
-    is visible (it stops when hidden and asks once at once when the tab comes
-    back), and stops for good the moment the request is resolved.
+    nothing to wait for. The poll runs every 6 seconds at first and backs off to
+    10s, 20s, then 30s while the staff's answer has not changed (a change, or a
+    tap on the screen, brings it back to 6s). It runs only while the tab is
+    visible (it pauses when hidden and asks once at once when the tab comes
+    back), gives up on a 401/403/419, and stops for good the moment the request
+    is resolved. One guarded setTimeout chain: partials/poll-chain.
 
     When staff press Done the page does not decide anything itself: it asks the
     server for this same page again and takes the block's new body from it, so
@@ -21,6 +24,7 @@
     A refused or failed poll just skips that tick. The endpoint answers about
     this session's own table only (see AuthController::helpRequestStatus()).
 --}}
+@include('partials.poll-chain')
 <script>
     (function () {
         var region = document.querySelector('[data-help-region]');
@@ -30,18 +34,9 @@
         if (!url) return;
 
         var INTERVAL_MS = 6000;
-        var timer = null;
-        var inFlight = false;
         var finished = false;
-
-        function stop() {
-            if (timer) { clearInterval(timer); timer = null; }
-        }
-
-        function start() {
-            if (finished || timer || document.hidden) return;
-            timer = setInterval(tick, INTERVAL_MS);
-        }
+        var lastStatus = null;
+        var chain = null;
 
         function showMessage(status) {
             var message = region.querySelector('[data-help-message]');
@@ -62,7 +57,7 @@
         /* Resolved: swap in the server's current body for this block. */
         function resolved() {
             finished = true;
-            stop();
+            if (chain) chain.stop();
 
             fetch(window.location.pathname, {
                 credentials: 'same-origin',
@@ -87,40 +82,36 @@
                 .catch(function () { window.location.reload(); });
         }
 
+        // One poll. Answers the chain: changed (back to the fast delay),
+        // unchanged (next, slower delay), or stop.
         function tick() {
-            if (finished || inFlight || document.hidden) return;
-            inFlight = true;
+            if (finished) return Promise.resolve({ stop: true });
 
-            fetch(url, {
-                credentials: 'same-origin',
-                cache: 'no-store',
-                headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' }
-            })
-                .then(function (r) { return r.ok ? r.json() : null; })
-                .then(function (data) {
-                    inFlight = false;
-                    if (!data) return;
+            return PomidaPollChain.getJson(url).then(function (res) {
+                var failed = PomidaPollChain.failure(res);
+                if (failed) return failed;
 
-                    if (data.open) {
-                        showMessage(data.status);
-                    } else {
-                        resolved();
-                    }
-                })
-                .catch(function () { inFlight = false; });
+                var data = res.data;
+                if (!data) return { changed: false };
+
+                if (data.open) {
+                    showMessage(data.status);
+                    var changed = data.status !== lastStatus;
+                    lastStatus = data.status;
+                    return { changed: changed };
+                }
+
+                resolved();
+                return { stop: true };
+            });
         }
 
-        document.addEventListener('visibilitychange', function () {
-            if (document.hidden) {
-                stop();
-            } else if (!finished) {
-                tick();
-                start();
-            }
+        // Pausing while the tab is hidden, the immediate ask when it comes
+        // back, and the snap back to 6s on a tap all live in the chain.
+        chain = PomidaPollChain({
+            schedule: [INTERVAL_MS, 10000, 20000, 30000],
+            run: tick
         });
-
-        window.addEventListener('pagehide', stop);
-
-        start();
+        chain.start();
     })();
 </script>

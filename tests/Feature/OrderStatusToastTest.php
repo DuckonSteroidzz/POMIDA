@@ -94,18 +94,22 @@ class OrderStatusToastTest extends TestCase
 
     public function test_the_poll_is_fast_enough_to_feel_like_a_reaction(): void
     {
-        $partial = file_get_contents(
-            resource_path('views/customer/partials/notification-bell.blade.php')
+        // The cadence now lives in the shared poll (partials/live-poller), which
+        // the bell subscribes to. While a customer has an order open it must
+        // still react within ~10s: 20s was long enough that the customer had
+        // already gone looking for someone to ask.
+        $poller = file_get_contents(
+            resource_path('views/customer/partials/live-poller.blade.php')
         );
 
-        // 20s was long enough that the customer had already gone looking for
-        // someone to ask. Guarded so it cannot quietly drift back.
-        $this->assertMatchesRegularExpression('/var POLL_MS = (\d+);/', $partial);
-        preg_match('/var POLL_MS = (\d+);/', $partial, $m);
-
-        $this->assertLessThanOrEqual(6000, (int) $m[1], 'the notification poll got slower again');
-        // And not so fast that it eats the throttle:60,1 on the endpoint.
+        $this->assertSame(1, preg_match('/LADDER_ACTIVE = \[(\d+), (\d+), (\d+)\];/', $poller, $m));
         $this->assertGreaterThanOrEqual(5000, (int) $m[1], 'the poll would now outrun its own rate limit');
+        $this->assertLessThanOrEqual(6000, (int) $m[1], 'the notification poll got slower again');
+        $this->assertLessThanOrEqual(10000, max((int) $m[1], (int) $m[2], (int) $m[3]), 'with an open order the poll must not back off past 10s');
+
+        // Idle (nothing open) may relax, but never past 30s.
+        $this->assertSame(1, preg_match('/LADDER_IDLE = \[([\d, ]+)\];/', $poller, $idle));
+        $this->assertLessThanOrEqual(30000, max(array_map('intval', explode(',', $idle[1]))));
     }
 
     public function test_there_is_still_only_one_polling_loop_behind_the_bell(): void
@@ -114,9 +118,12 @@ class OrderStatusToastTest extends TestCase
             resource_path('views/customer/partials/notification-bell.blade.php')
         );
 
-        // The badge and the toast layer deliberately share one poll. A second
-        // setInterval here would double the request rate for no benefit.
-        $this->assertSame(1, substr_count($partial, 'setInterval('));
+        // The badge and the toast layer deliberately share one poll — and since
+        // Oct 2026 the bell does not even own it: it SUBSCRIBES to the page's
+        // single poll. No timer of any kind lives in the bell.
+        $this->assertSame(0, substr_count($partial, 'setInterval('));
+        $this->assertSame(0, substr_count($partial, 'setTimeout(function () { poll'));
+        $this->assertSame(1, substr_count($partial, 'PomidaLive.subscribe('));
     }
 
     // ══════════ what the toast layer is actually fed ══════════

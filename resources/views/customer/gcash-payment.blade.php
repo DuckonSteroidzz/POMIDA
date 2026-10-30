@@ -603,70 +603,60 @@
             const ordersUrl = @json(route('customer.orders'));
 
             let checking = true;
-            let statusInterval = null;
 
+            // One check, answering the chain (partials/poll-chain): a verdict
+            // stops it; "still waiting" is an unchanged answer, so the next
+            // check comes a little later (3s, 5s, 10s, then 15s). Pauses while
+            // the tab is hidden; stops on 401/403/419.
             async function checkPaymentStatus() {
 
                 if (!checking) {
-                    return;
+                    return { stop: true };
                 }
 
-                try {
-                    const response = await fetch(statusUrl, {
-                        method: 'GET',
-                        headers: {
-                            'Accept': 'application/json',
-                            'X-Requested-With': 'XMLHttpRequest'
-                        },
-                        cache: 'no-store'
-                    });
+                const res = await PomidaPollChain.getJson(statusUrl);
 
-                    if (!response.ok) {
-                        return;
-                    }
-
-                    const data = await response.json();
-
-                    if (!data.success) {
-                        return;
-                    }
-
-                    if (data.payment_status === 'paid') {
-
-                        checking = false;
-
-                        if (statusInterval) {
-                            clearInterval(statusInterval);
-                        }
-
-                        showPaymentResult(
-                            'approved',
-                            'Payment Approved',
-                            'Your GCash payment has been verified by our staff.'
-                        );
-
-                        startReturnCountdown();
-
-                    } else if (data.payment_status === 'rejected') {
-
-                        checking = false;
-
-                        if (statusInterval) {
-                            clearInterval(statusInterval);
-                        }
-
-                        showPaymentResult(
-                            'rejected',
-                            'Payment Rejected',
-                            'Your GCash payment could not be verified. Please contact our staff.'
-                        );
-
-                        startReturnCountdown();
-                    }
-
-                } catch (error) {
-                    console.error('GCash payment status check failed:', error);
+                const failed = PomidaPollChain.failure(res);
+                if (failed) {
+                    return failed;
                 }
+
+                const data = res.data || {};
+
+                if (!data.success) {
+                    return { changed: false };
+                }
+
+                if (data.payment_status === 'paid') {
+
+                    checking = false;
+
+                    showPaymentResult(
+                        'approved',
+                        'Payment Approved',
+                        'Your GCash payment has been verified by our staff.'
+                    );
+
+                    startReturnCountdown();
+
+                    return { stop: true };
+
+                } else if (data.payment_status === 'rejected') {
+
+                    checking = false;
+
+                    showPaymentResult(
+                        'rejected',
+                        'Payment Rejected',
+                        'Your GCash payment could not be verified. Please contact our staff.'
+                    );
+
+                    startReturnCountdown();
+
+                    return { stop: true };
+                }
+
+                return { changed: false };
             }
 
             function showPaymentResult(type, title, message) {
@@ -759,16 +749,10 @@
 
             // Only poll while the order is awaiting verification.
             @if($order->payment_status === 'awaiting_verification')
-                checkPaymentStatus();
-
-                statusInterval = setInterval(function () {
-                    if (!checking) {
-                        clearInterval(statusInterval);
-                        return;
-                    }
-
-                    checkPaymentStatus();
-                }, 3000);
+                PomidaPollChain({
+                    schedule: [3000, 5000, 10000, 15000],
+                    run: checkPaymentStatus
+                }).start();
             @endif
 
         });

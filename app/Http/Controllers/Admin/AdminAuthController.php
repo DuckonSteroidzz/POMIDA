@@ -253,12 +253,17 @@ class AdminAuthController extends Controller
             // signed in as this user is signed out on its next request.
             \App\Support\SingleSession::claim($request, 'admin');
 
-            // 8. Redirect to admin home
+            // 8. Record it for the Recent Sign-ins card on Account Settings
+            // (and remember which row is "This device"). Never blocks the
+            // login: a failure is reported and the sign-in carries on.
+            \App\Support\SignInLog::record($request, $user);
+
+            // 9. Redirect to admin home
             return redirect()->route('admin.home')
                 ->with('success', 'Welcome back, ' . ucfirst($user->role) . ' ' . $user->name . '!');
         }
 
-        // 9. Invalid credentials
+        // 10. Invalid credentials
         return back()->withErrors([
             'email' => 'Invalid email or password.',
         ])->withInput($request->only('email'));

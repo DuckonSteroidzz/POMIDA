@@ -188,6 +188,10 @@
     .toast-x:hover { color: #8B1A1A; }
 </style>
 
+{{-- The page's single background poll. The bell no longer runs its own timer:
+     it subscribes to PomidaLive below, and so do the pages that watch an order. --}}
+@include('customer.partials.live-poller')
+
 @once
 <script>
 (function () {
@@ -299,25 +303,17 @@
     var MAX_TOASTS = 4;      // keep the stack from running off a phone screen
 
     /*
-     * HOW OFTEN THE POLL RUNS — and why it moved from 20s to 6s.
+     * HOW OFTEN THE POLL RUNS — owned by partials/live-poller, not by this file.
      *
-     * The reported problem was that a customer whose order silently became
-     * "Serving" was told nothing and went hunting around the app. On the pages
-     * that carry this partial the toast layer was in fact firing correctly for
-     * preparing and serving (verified live), but up to 20 seconds after the
-     * fact — long enough that the moment has passed and the customer has
-     * already started looking for someone to ask.
-     *
-     * 6s is one request per 10s per open tab against
-     * /customer/notifications/unread-count, which carries throttle:60,1 — so a
-     * tab uses 10 of its 60, leaving the rest for manual bell opens and for the
-     * one /customer/notifications call that only fires when something is
-     * genuinely new. This deliberately does NOT add a second polling loop: the
-     * badge and the toasts still share this one poll, and the separate 3s
-     * order-status poll on the menu and orders pages keeps its own, different
-     * job (the terminal full-screen overlay) and is untouched.
+     * History: the poll moved from 20s to 5-6s because a customer whose order
+     * silently became "Serving" was told nothing and went hunting around the
+     * app (see OrderStatusToastTest). That reaction speed is kept: while an
+     * order is open the page polls every 5s, 5s, then 10s. What changed (Oct
+     * 2026) is everything AROUND that — one shared poll instead of this bell
+     * plus two separate order-status timers, a pause while the tab is hidden,
+     * a back-off to 30s when the customer has no open order and nothing is
+     * changing, and a stop on 401/403/419. This bell is now just a subscriber.
      */
-    var POLL_MS = 6000;
 
     // Colour per notification type, reusing the app's existing language:
     // peach-red for "something arrived", green for confirmed, amber for
@@ -392,30 +388,25 @@
             .catch(function () {});
     }
 
-    function poll() {
-        fetch(URL_COUNT, { headers: { 'Accept': 'application/json' } })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .then(function (d) {
-                if (!d) return;
-                setBadge(d.unread);
+    // Fed by the page's one poll (partials/live-poller) — no timer of its own.
+    function onLive(d) {
+        setBadge(d.unread);
 
-                var latest = d.latest_id || 0;
+        var latest = d.latest_id || 0;
 
-                if (lastSeenId === null) {
-                    // First poll of the page load: adopt the current high-water
-                    // mark silently, so opening a page never replays history.
-                    lastSeenId = latest;
-                    saveSeen(latest);
-                    return;
-                }
+        if (lastSeenId === null) {
+            // First answer of the page load: adopt the current high-water
+            // mark silently, so opening a page never replays history.
+            lastSeenId = latest;
+            saveSeen(latest);
+            return;
+        }
 
-                if (latest > lastSeenId) {
-                    toastNewSince(lastSeenId);
-                    lastSeenId = latest;
-                    saveSeen(latest);
-                }
-            })
-            .catch(function () { /* offline / throttled — try again next tick */ });
+        if (latest > lastSeenId) {
+            toastNewSince(lastSeenId);
+            lastSeenId = latest;
+            saveSeen(latest);
+        }
     }
 
     function loadList() {
@@ -506,8 +497,9 @@
         if (e.key === 'Escape') closePanel();
     });
 
-    poll();
-    setInterval(poll, POLL_MS);
+    if (window.PomidaLive) {
+        window.PomidaLive.subscribe({ onData: onLive });
+    }
 })();
 </script>
 @endonce

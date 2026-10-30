@@ -1628,7 +1628,12 @@ private function switchBranch($branchId): void
         ? session()->pull('apply_reward_code')
         : null;
 
+    // GCash per branch (Oct 2026): offered only when this branch has it on
+    // with a QR and a number. placeOrder() refuses it otherwise (same rule).
+    $gcashAvailable = \App\Support\BranchGcash::available((int) session('branch_id'));
+
     return view('customer.cart', compact(
+        'gcashAvailable',
         'applyRewardCode',
         'cart',
         'total',

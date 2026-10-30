@@ -34,22 +34,45 @@ class AdminController extends Controller
 
     // ══════════ Pages ══════════
 
-    public function showAccount()
+    /**
+     * Account Settings — every portal role, always the signed-in account
+     * (Defect Report 5, item 3 — Oct 2026; design:
+     * docs/design-refs/admin-account-settings-all-roles.html).
+     *
+     * Nothing here reads a user id from the request. What differs by role:
+     *
+     *  - GCash card. Owner: EDIT, for the branch in the "Viewing:" bar, which
+     *    this page also accepts as ?branch=<id>|all (ViewingBranch remembers
+     *    it, the same choice every other page's bar shows). Supervisor: VIEW,
+     *    always their own assigned branch — ?branch= is never read for them,
+     *    so a crafted value means nothing. Staff: no card.
+     *  - Recent Sign-ins: the signed-in user's own rows (SignInLog).
+     */
+    public function showAccount(Request $request)
     {
-        // The page used to list every staff and supervisor account here. The
-        // redesign replaced that table with a link to Staff Accounts, so the
-        // query is gone. The GCash settings are read here, once, and only for
-        // the owner: the card is owner-only and the route is `role:admin`.
+        /** @var \App\Models\User $me */
         $me = Auth::guard('admin')->user();
-        $isOwner = $me && $me->role === 'admin';
 
-        $gcashSetting = fn (string $key) => $isOwner
-            ? \App\Models\Setting::where('key', $key)->whereNull('branch_id')->value('value')
-            : null;
+        $gcashMode = match ($me->role) {
+            'admin' => 'edit',
+            'supervisor' => 'view',
+            default => null,
+        };
+
+        $gcashBranch = match ($gcashMode) {
+            'edit' => \App\Support\ViewingBranch::resolve($request->query('branch')),
+            'view' => $me->branch,
+            default => null,
+        };
 
         return view('admin.account', [
-            'gcashQr'    => $gcashSetting('gcash_qr'),
-            'gcashPhone' => $gcashSetting('gcash_phone'),
+            'me' => $me,
+            'gcashMode' => $gcashMode,
+            'gcashBranch' => $gcashBranch,
+            'gcash' => \App\Support\BranchGcash::for($gcashBranch),
+            'signIns' => \App\Support\SignInLog::recentFor($me),
+            'currentSignInId' => \App\Support\SignInLog::currentId($request),
+            'signedInAt' => \App\Support\SignInLog::currentSignedInAt($request),
         ]);
     }
 
@@ -3361,6 +3384,17 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             // request for something that is not theirs.
             if (! \App\Services\AdminOrderAccess::allowsBranch((int) $validated['branch_id'])) {
                 abort(404);
+            }
+
+            // GCash per branch (Oct 2026): the counter may only record a GCash
+            // payment for a branch that offers GCash — the same rule as the
+            // customer checkout (App\Support\BranchGcash::available()). The
+            // modal disables the option; this is the server half.
+            if ($validated['payment_method'] === 'gcash'
+                && ! \App\Support\BranchGcash::available((int) $validated['branch_id'])) {
+                return back()
+                    ->withErrors(['payment_method' => \App\Support\BranchGcash::UNAVAILABLE_MESSAGE])
+                    ->withInput();
             }
 
             /*
@@ -6735,26 +6769,84 @@ public function markOrderRefunded(int $id)
 
     // ══════════ Branches ══════════
 
-    public function showBranches()
+    /**
+     * Branch Management (redesign, Defect Report 5 item 2 — Oct 2026).
+     *
+     * Rows are REAL branches, rendered server-side; search, the All/Open/
+     * Inactive filter and paging run in the page over those rows (there are a
+     * handful of branches, not thousands).
+     *
+     * The "Viewing:" bar applies here like on every other admin page — the same
+     * saved choice (App\Support\ViewingBranch). All Branches shows the full
+     * list; a branch narrows the list to that branch and opens its details. A
+     * branch-locked account is narrowed to its own branch whatever ?branch=
+     * says (the route is owner-only today, so this is the safety net, not a
+     * feature).
+     */
+    public function showBranches(Request $request)
     {
-        $branches = \App\Models\Branch::orderBy('created_at')->get();
+        $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
+        $viewing = \App\Support\ViewingBranch::resolve($request->query('branch'));
 
-        // Load branch-specific store/social settings for the admin form.
-        $settingKeys = [
-            'facebook_url',
-            'instagram_url',
-            'tiktok_url',
-            'other_social_url',
-        ];
+        $query = \App\Models\Branch::orderBy('created_at')->orderBy('id');
 
-        $branchSettings = [];
-        foreach ($branches as $branch) {
-            foreach ($settingKeys as $key) {
-                $branchSettings[$branch->id][$key] = \App\Models\Setting::get($key, '', $branch->id);
-            }
+        if ($lockedBranchId !== null) {
+            $query->whereKey($lockedBranchId);
+        } elseif ($viewing) {
+            $query->whereKey($viewing->id);
         }
 
-        return view('admin.branches', compact('branches', 'branchSettings'));
+        $branches = $query->get();
+
+        // Branch-specific social links + GCash, from the branch-aware settings table.
+        $socialKeys = ['facebook_url', 'instagram_url', 'tiktok_url', 'other_social_url'];
+
+        $settings = \App\Models\Setting::whereIn('branch_id', $branches->pluck('id'))
+            ->whereIn('key', $socialKeys)
+            ->get()
+            ->groupBy('branch_id');
+
+        $branchSettings = [];
+        $branchData = [];
+
+        foreach ($branches as $branch) {
+            $mine = ($settings[$branch->id] ?? collect())->pluck('value', 'key');
+
+            foreach ($socialKeys as $key) {
+                $branchSettings[$branch->id][$key] = (string) ($mine[$key] ?? '');
+            }
+
+            $gcash = \App\Support\BranchGcash::for($branch);
+
+            $branchData[] = array_merge([
+                'id' => $branch->id,
+                'name' => $branch->name,
+                'code' => $branch->code,
+                'address' => $branch->address,
+                'contact_number' => $branch->contact_number,
+                'email' => $branch->email,
+                // datetime:H:i casts on the model: format, never substr (a substr of the
+                // Carbon string is the DATE, which blanked the edit form's hours).
+                'opening_time' => $branch->opening_time ? \Carbon\Carbon::parse($branch->opening_time)->format('H:i') : '',
+                'closing_time' => $branch->closing_time ? \Carbon\Carbon::parse($branch->closing_time)->format('H:i') : '',
+                'is_active' => (bool) $branch->is_active,
+                'is_main_branch' => (bool) $branch->is_main_branch,
+                'gcash_enabled' => $gcash['enabled'],
+                'gcash_number' => $gcash['number'] ?? '',
+                'gcash_qr_url' => $gcash['qr'] ? \App\Support\Img::url($gcash['qr']) : '',
+                'gcash_available' => $gcash['available'],
+                'update_url' => route('admin.branches.update', $branch->id),
+                'toggle_url' => route('admin.branches.toggle', $branch->id),
+            ], $branchSettings[$branch->id]);
+        }
+
+        return view('admin.branches', [
+            'branches' => $branches,
+            'branchSettings' => $branchSettings,
+            'branchData' => $branchData,
+            // A chosen branch opens its details on arrival.
+            'openBranchId' => ($lockedBranchId ?? $viewing?->id),
+        ]);
     }
 
     public function storeBranch(Request $request)
@@ -6767,6 +6859,8 @@ public function markOrderRefunded(int $id)
             'email' => 'nullable|email|max:255',
             'opening_time' => 'nullable',
             'closing_time' => 'nullable',
+        ], [
+            'code.unique' => 'That branch code is already used by another branch. Codes must be unique.',
         ]);
 
         /*
@@ -6777,6 +6871,9 @@ public function markOrderRefunded(int $id)
          * list the instant this row was created. The owner now opens it
          * manually (toggleBranch(), same switch used to close one) once menu
          * items, inventory and tables are actually in place.
+         *
+         * No GCash rows are written: a branch with no gcash_enabled row is off
+         * (App\Support\BranchGcash), which is right for a branch with no QR.
          */
         $branch = \App\Models\Branch::create([
             'name' => $validated['name'],
@@ -6815,6 +6912,22 @@ public function markOrderRefunded(int $id)
             'other_social_url' => 'nullable|string|max:500',
         ]);
 
+        /*
+         * Closing a branch through "Accept orders from this branch" obeys the
+         * same two guards as the Set as Inactive switch (toggleBranch()). The
+         * old edit form could close the main branch, or the last open one,
+         * because only the switch checked.
+         */
+        $closing = $branch->is_active && !$request->has('is_active');
+        if ($closing && ($refusal = $this->branchCloseRefusal($branch))) {
+            throw \Illuminate\Validation\ValidationException::withMessages(['is_active' => $refusal]);
+        }
+
+        // GCash Payment Settings — only when the form carried them (the edit
+        // form always sends gcash_enabled; an older client that does not is
+        // left exactly as it was). Validated in full BEFORE anything is saved.
+        $gcash = $request->has('gcash_enabled') ? $this->validatedBranchGcash($request, $branch) : null;
+
         $branch->update([
             'name' => $validated['name'],
             'address' => $validated['address'] ?? null,
@@ -6837,8 +6950,67 @@ public function markOrderRefunded(int $id)
             \App\Models\Setting::set($key, $value, $branch->id);
         }
 
+        if ($gcash !== null) {
+            \App\Support\BranchGcash::save($branch, $gcash['enabled'], $gcash['number'], $request->file('gcash_qr'));
+        }
+
         return redirect()->route('admin.branches')
             ->with('success', 'Branch and store information updated!');
+    }
+
+    /**
+     * Validate the Edit Branch form's GCash Payment Settings.
+     *
+     * Owner only, checked here as well as by the route group: the money
+     * settings must never become editable by accident when a route moves.
+     *
+     * @return array{enabled: bool, number: ?string}
+     */
+    private function validatedBranchGcash(Request $request, \App\Models\Branch $branch): array
+    {
+        abort_unless(Auth::guard('admin')->user()?->role === 'admin', 403);
+
+        $request->validate([
+            'gcash_enabled' => 'nullable|boolean',
+            'gcash_qr' => \App\Support\BranchGcash::qrRules(),
+            'gcash_number' => 'nullable|string|max:20',
+        ], \App\Support\BranchGcash::qrMessages('gcash_qr'));
+
+        $number = null;
+        if (filled($request->input('gcash_number'))) {
+            $number = \App\Support\BranchGcash::normalizeNumber($request->input('gcash_number'));
+
+            if ($number === null) {
+                throw \Illuminate\Validation\ValidationException::withMessages([
+                    'gcash_number' => \App\Support\BranchGcash::NUMBER_MESSAGE,
+                ]);
+            }
+        }
+
+        $enabled = $request->boolean('gcash_enabled');
+        $hasQr = $request->hasFile('gcash_qr') || \App\Support\BranchGcash::for($branch)['qr'] !== null;
+
+        if ($enabled && (!$hasQr || $number === null)) {
+            throw \Illuminate\Validation\ValidationException::withMessages([
+                'gcash_enabled' => \App\Support\BranchGcash::ENABLE_NEEDS_BOTH_MESSAGE,
+            ]);
+        }
+
+        return ['enabled' => $enabled, 'number' => $number];
+    }
+
+    /** Why this branch may not be closed right now, or null when it may. */
+    private function branchCloseRefusal(\App\Models\Branch $branch): ?string
+    {
+        if ($branch->is_main_branch) {
+            return 'The main branch cannot be closed.';
+        }
+
+        $otherActiveExists = \App\Models\Branch::where('id', '!=', $branch->id)
+            ->where('is_active', true)
+            ->exists();
+
+        return $otherActiveExists ? null : 'At least one branch must stay open for customers to order from.';
     }
 
     public function toggleBranch(int $id)
@@ -6848,20 +7020,8 @@ public function markOrderRefunded(int $id)
         // Branches are never deleted (see panel feedback 9.4) — deactivating
         // is the only way to retire one. Two guards apply only when CLOSING
         // an active branch; reopening a closed branch is always allowed.
-        if ($branch->is_active) {
-            if ($branch->is_main_branch) {
-                return redirect()->route('admin.branches')
-                    ->with('error', 'The main branch cannot be closed.');
-            }
-
-            $otherActiveExists = \App\Models\Branch::where('id', '!=', $branch->id)
-                ->where('is_active', true)
-                ->exists();
-
-            if (!$otherActiveExists) {
-                return redirect()->route('admin.branches')
-                    ->with('error', 'At least one branch must stay open for customers to order from.');
-            }
+        if ($branch->is_active && ($refusal = $this->branchCloseRefusal($branch))) {
+            return redirect()->route('admin.branches')->with('error', $refusal);
         }
 
         $branch->is_active = !$branch->is_active;

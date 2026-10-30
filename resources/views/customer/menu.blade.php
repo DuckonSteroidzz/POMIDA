@@ -782,8 +782,6 @@
 <script>
 (function () {
     let trackedOrderId = @json(session('customer_order_id') ?: session('guest_order_id'));
-    let statusPollTimer = null;
-    let requestInProgress = false;
 
     // Last status this page saw per order, so the reward pop-up is
     // asked only when an order completes WHILE the page is open; one already
@@ -849,58 +847,59 @@
         document.body.style.overflow = 'hidden';
     }
 
-    async function pollCustomerOrderStatus() {
-        if (requestInProgress) return;
-        requestInProgress = true;
+    /*
+     * No timer of its own any more (Oct 2026). This page used to run a
+     * setInterval(…, 3000) against /customer/order-status for as long as it
+     * stayed open — including when there was no order at all, after the order
+     * had completed, and while the tab was hidden. It now subscribes to the
+     * page's single poll (partials/live-poller), which pauses with the tab,
+     * backs off when nothing changes, and is only given an order id while that
+     * order is still open.
+     */
+    function handleLiveStatus(live) {
+        const orders = Array.isArray(live.orders) ? live.orders : [];
 
-        try {
-            let url = '{{ route("customer.order-status") }}';
-            if (trackedOrderId) {
-                url += '?order_id=' + encodeURIComponent(trackedOrderId);
-            }
+        // An order placed from another tab (or the first look at a session
+        // order) is adopted here; the server only reports the session's order
+        // while it is still open, or on this page's first poll.
+        if (!trackedOrderId && live.session_order_id) {
+            trackedOrderId = live.session_order_id;
+        }
+        if (!trackedOrderId) return;
 
-            const response = await fetch(url, {
-                headers: {
-                    'Accept': 'application/json',
-                    'X-Requested-With': 'XMLHttpRequest'
-                },
-                cache: 'no-store'
-            });
+        const data = orders.find(function (o) {
+            return Number(o.order_id) === Number(trackedOrderId);
+        });
 
-            if (!response.ok) return;
+        if (!data) {
+            // Not ours / no longer exists: stop asking about it.
+            trackedOrderId = null;
+            return;
+        }
 
-            const data = await response.json();
-            if (!data.has_order) return;
+        const previousStatus = lastSeenStatus[data.order_id];
+        lastSeenStatus[data.order_id] = data.status;
 
-            trackedOrderId = data.order_id;
+        if (data.status === 'completed' && previousStatus && previousStatus !== 'completed' &&
+            window.PomidaFreeDessertPrompt) {
+            window.PomidaFreeDessertPrompt.orderCompleted(data.order_id);
+        }
 
-            const previousStatus = lastSeenStatus[data.order_id];
-            lastSeenStatus[data.order_id] = data.status;
-
-            if (data.status === 'completed' && previousStatus && previousStatus !== 'completed' &&
-                window.PomidaFreeDessertPrompt) {
-                window.PomidaFreeDessertPrompt.orderCompleted(data.order_id);
-            }
-
-            if ((data.status === 'completed' || data.status === 'cancelled') &&
-                !alreadyNotified(data.order_id, data.status)) {
+        if (data.status === 'completed' || data.status === 'cancelled') {
+            if (!alreadyNotified(data.order_id, data.status)) {
                 showOrderStatusNotice(data.status, data.order_number, data.order_id);
             }
-        } catch (error) {
-            // Retry on the next interval.
-        } finally {
-            requestInProgress = false;
+            // Finished: nothing more will change, so stop asking about it.
+            trackedOrderId = null;
         }
     }
 
-    // Check immediately, then every 3 seconds. This works even if the
-    // order was completed/cancelled before this page was opened.
-    pollCustomerOrderStatus();
-    statusPollTimer = setInterval(pollCustomerOrderStatus, 3000);
-
-    window.addEventListener('beforeunload', function () {
-        if (statusPollTimer) clearInterval(statusPollTimer);
-    });
+    if (window.PomidaLive) {
+        window.PomidaLive.subscribe({
+            orderIds: function () { return trackedOrderId ? [trackedOrderId] : []; },
+            onData: handleLiveStatus
+        });
+    }
 
     // Restore scrolling after the popup is acknowledged.
     const originalClose = window.closeOrderStatusNotice;
