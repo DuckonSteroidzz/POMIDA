@@ -3,10 +3,11 @@
 Entity Relationship Diagrams and a data dictionary for the POMIDA database, **generated from the database itself**
 (nothing is hand-drawn).
 
-> **As of:** the local `pomida_db` (MariaDB 10.4.32) on branch `fix/missing-foreign-keys` (`main` @ `d905de5` plus
-> migration `2026_10_22_000000_add_missing_foreign_keys_for_branches_and_vouchers`), read on 2026-10-22.
-> All 79 migrations were applied (none pending) at that moment. The live site matches this ERD only after the
-> leader has run all migrations there.
+> **As of:** the local `pomida_db_testing` (MariaDB 10.4.32) on branch `feature/ingredient-priority` (`b6368fc`, which
+> adds migration `2026_10_31_100000_add_ingredient_priority_and_order_item_removed_ingredients`), read on 2026-10-31.
+> All 83 migrations were applied there. The local `pomida_db` has since had this migration applied too (83 of 83,
+> checked 2026-10-31), so both local databases are at the same migration level. The live site matches this ERD only after the leader has run
+> all migrations there.
 
 ## Files
 
@@ -36,9 +37,9 @@ Diagrams: `00-full-erd`, `01-users-branches`, `02-menu`, `03-orders-payments`, `
 
 | Module | Tables |
 |---|---|
-| Users & Branches (3) | users, branches, admin_bootstrap |
+| Users & Branches (4) | users, branches, admin_bootstrap, admin_sign_ins |
 | Menu (6) | categories, subcategories, menu_items, menu_item_sizes, menu_options, menu_item_options |
-| Orders & Payments (11) | orders, order_items, order_item_options, order_item_size_ingredients, order_discount_beneficiaries, discount_cards, restaurant_tables, table_access_codes, table_sessions, table_session_devices, help_requests |
+| Orders & Payments (12) | orders, order_items, order_item_options, order_item_size_ingredients, order_item_removed_ingredients, order_discount_beneficiaries, discount_cards, restaurant_tables, table_access_codes, table_sessions, table_session_devices, help_requests |
 | Inventory (5) | inventory, menu_item_ingredients, menu_item_size_ingredients, menu_option_ingredients, stock_movements |
 | Marketing & Loyalty (10) | vouchers, user_vouchers, ads, games_played, loyalty_awards, free_dessert_rewards, free_dessert_ratings, order_ratings, notifications, settings |
 
@@ -48,12 +49,12 @@ Left out of the diagrams (Laravel framework tables, listed in the dictionary app
 
 | | |
 |---|---|
-| Tables in the database | 43 = **35 application** + 8 framework |
-| Columns | 448 = **406 in the application tables** + 42 framework |
-| Declared foreign keys | **70** (all single-column; all ON UPDATE RESTRICT) |
+| Tables in the database | 45 = **37 application** + 8 framework |
+| Columns | 466 = **424 in the application tables** + 42 framework |
+| Declared foreign keys | **73** (all single-column; all ON UPDATE RESTRICT) |
 | Model-only relationships (dotted) | **0** |
-| Lines in the full ERD | 70, all solid |
-| Eloquent relationship methods inspected | 84, on 31 models (62 distinct links) |
+| Lines in the full ERD | 73, all solid |
+| Eloquent relationship methods inspected | 88, on 33 models (62 distinct links) |
 
 ## Relationships that are not plain foreign keys
 
@@ -74,13 +75,13 @@ that do not exist and nothing called them, so they were removed from the models.
 
 ## Cross-check (automatic, in `tools/build.mjs`)
 
-* every one of the 35 application tables is an entity in the full ERD, and nothing else is;
-* every one of the 70 database FKs has a solid line between its child and parent table, and every model-only link (now none) is dotted;
-* the rendered full-ERD SVG contains exactly 70 relationship paths;
-* each of the 70 links is drawn in exactly one module diagram, and the module diagrams hold 35 tables between them;
+* every one of the 37 application tables is an entity in the full ERD, and nothing else is;
+* every one of the 73 database FKs has a solid line between its child and parent table, and every model-only link (now none) is dotted;
+* the rendered full-ERD SVG contains exactly 73 relationship paths;
+* each of the 73 links is drawn in exactly one module diagram, and the module diagrams hold 37 tables between them;
 * `tools/check-render.mjs` loads each SVG in Chrome: no two text boxes overlap and nothing is cut off;
 * `tools/pdf-raster.mjs` re-reads the PDF with pdf.js: 6 pages, real selectable text, title and date on each page;
-* the dictionary has 35 table sections and 406 column rows (= the database), and no broken internal links.
+* the dictionary has 37 table sections and 424 column rows (= the database), and no broken internal links.
 
 ## Regenerating (after a migration changes the schema)
 
@@ -91,6 +92,8 @@ The two extractors only **read** (`information_schema`, and model reflection wit
 $env:PUPPETEER_SKIP_DOWNLOAD = "1"
 npm install --prefix $env:TEMP\erd-tools @mermaid-js/mermaid-cli@12.0.0 pdfjs-dist@4.10.38
 
+# The extractor reads DB_DATABASE from <project-root>/.env. To read a database other than the one in the
+# project's .env, pass a folder holding a copy of .env with DB_DATABASE changed.
 php docs/erd/tools/extract_schema.php    $PWD.Path docs/erd/schema-snapshot.json
 php docs/erd/tools/extract_relations.php $PWD.Path docs/erd/relationships-snapshot.json
 

@@ -392,6 +392,19 @@ class OrderController extends Controller
             }
         }
 
+        /*
+         * A removal that has stopped being allowed while it sat in the cart (the
+         * ingredient has since been marked High). Refused rather than quietly
+         * dropped: the customer asked for it to be left out.
+         */
+        if ($priced['removal_problem']) {
+            foreach ($priced['lines'] as $line) {
+                if (($line['removal_problem'] ?? null) !== null) {
+                    return back()->withErrors(['items' => $line['removal_problem']]);
+                }
+            }
+        }
+
         $total = $priced['subtotal'];
         $itemsData = [];
 
@@ -408,6 +421,8 @@ class OrderController extends Controller
                 // below, so all three read the size exactly once. Null when
                 // the line is unsized.
                 'size' => $line['size'] ?? null,
+                // LOW ingredients the customer took out (Defect Report 6).
+                'removed_inventory_ids' => $line['removed_inventory_ids'] ?? [],
             ];
         }
 
@@ -508,6 +523,7 @@ class OrderController extends Controller
                 'menu_item' => $data['menu_item'],
                 'quantity' => $data['quantity'],
                 'selected_option_ids' => $data['option_ids'],
+                'removed_inventory_ids' => $data['removed_inventory_ids'],
             ];
 
             // Judged against the chosen size's own recipe (Phase 2).
@@ -1050,11 +1066,11 @@ class OrderController extends Controller
                  * Throwing rolls the whole transaction back, so a refused order
                  * leaves no order row, no order_items and no spent voucher.
                  */
-                $lockedShortfalls = app(InventoryDeductionService::class)
-                    ->cartShortfalls($stockLines, (int) $branchId, true);
+                $settled = app(InventoryDeductionService::class)
+                    ->settleCart($stockLines, (int) $branchId, true);
 
-                if (!empty($lockedShortfalls)) {
-                    throw new StockUnavailableException($lockedShortfalls);
+                if (!empty($settled['messages'])) {
+                    throw new StockUnavailableException($settled['messages']);
                 }
 
                 // The loyalty reward, locked FOR UPDATE and re-checked: a
@@ -1105,7 +1121,7 @@ class OrderController extends Controller
                 // discount applies (none claimed, or a bigger voucher won).
                 \App\Support\DiscountBeneficiaries::saveFor($order, $discountBeneficiaries);
 
-                foreach ($itemsData as $data) {
+                foreach ($itemsData as $lineIndex => $data) {
                     // Price and add-ons come from THIS line's own cart entry
                     // (resolved above), not from a first-match scan of the whole
                     // cart, so repeat items with different add-ons bill correctly.
@@ -1129,6 +1145,16 @@ class OrderController extends Controller
                         app(InventoryDeductionService::class)
                             ->freezeSizeRecipe($orderItem, $data['menu_item'], $data['size']);
                     }
+
+                    // What this line goes out without, as the locked gate above
+                    // just settled it. Copied now, so the receipt never changes.
+                    app(InventoryDeductionService::class)->snapshotRemovals(
+                        $orderItem,
+                        $data['menu_item'],
+                        $data['size'],
+                        $data['removed_inventory_ids'],
+                        $settled['unavailable'][$lineIndex] ?? []
+                    );
 
                     foreach ($data['option_details'] as $opt) {
                         DB::table('order_item_options')->insert([
@@ -1171,6 +1197,17 @@ class OrderController extends Controller
                             app(InventoryDeductionService::class)
                                 ->freezeSizeRecipe($rewardLine, $rewardItemLine['menu_item'], $rewardItemLine['size']);
                         }
+
+                        // The reward's stock line is the one after the paid
+                        // lines. Nobody chooses removals on it, but a LOW
+                        // ingredient the shelf cannot cover still drops off.
+                        app(InventoryDeductionService::class)->snapshotRemovals(
+                            $rewardLine,
+                            $rewardItemLine['menu_item'],
+                            $rewardItemLine['size'],
+                            [],
+                            $settled['unavailable'][count($itemsData)] ?? []
+                        );
                     }
 
                     \App\Services\FreeDesserts::markUsed($spentReward, $order, $rewardLine);
@@ -1689,7 +1726,7 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
                  * another, so they could no longer see its progress, its
                  * total, or that it existed at all.
                  */
-                $currentOrders = Order::with(['items.menuItem', 'items.options', 'discountCard', 'voucher', 'customer'])
+                $currentOrders = Order::with(['items.menuItem', 'items.options', 'items.removedIngredients', 'discountCard', 'voucher', 'customer'])
                     ->whereIn('id', $guestOrderIds)
                     ->whereIn('status', ['pending', 'preparing', 'serving'])
                     ->orderByDesc('id')
@@ -1724,7 +1761,7 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
         }
 
         // Same reasoning as the guest branch above: all of them, newest first.
-        $currentOrders = Order::with(['items.menuItem', 'items.options', 'discountCard', 'voucher', 'customer'])
+        $currentOrders = Order::with(['items.menuItem', 'items.options', 'items.removedIngredients', 'discountCard', 'voucher', 'customer'])
             ->where('user_id', Auth::guard('customer')->id())
             ->whereIn('status', ['pending', 'preparing', 'serving'])
             ->orderByDesc('id')
@@ -2138,6 +2175,7 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
         $order = \App\Services\CustomerOrderAccess::resolveOwnedOrder($id, [
             'items.menuItem',
             'items.options',
+            'items.removedIngredients',
             'discountCard',
             'voucher',
             'customer',

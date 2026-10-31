@@ -154,7 +154,7 @@
                     </td>
                     <td data-label="Items" class="co-items">
                         @foreach($order->items as $item)
-                            {{ $item->quantity }}x {{ $item->displayName() }}@if(!$loop->last), @endif
+                            {{ $item->quantity }}x {{ $item->displayName() }}{{ $item->removedIngredients->isNotEmpty() ? ' (' . implode(', ', $item->removalLabels()) . ')' : '' }}@if(!$loop->last), @endif
                         @endforeach
                     </td>
                     <td data-label="Subtotal" class="co-ta-right co-num">₱{{ number_format($order->subtotal, 2) }}</td>

@@ -2,9 +2,11 @@
 
 namespace App\Providers;
 
+use App\Support\PasswordPolicy;
 use Illuminate\Cache\RateLimiting\Limit;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\ServiceProvider;
 
 /**
@@ -305,6 +307,19 @@ class RateLimitServiceProvider extends ServiceProvider
     public const CUSTOMER_NEW_PASSWORD_PER_IP = 6;
 
     /**
+     * Defect Report 6. Trying passwords against the rules on the last reset
+     * step was charged to the *_NEW_PASSWORD_PER_IP budget above, so the 7th try
+     * in a minute got the "Too many attempts" page, and so did everyone else in
+     * the shop on that public IP. Nothing is being guessed there: the session
+     * has already proved the code, and a refused password changes nothing. So
+     * those tries get their own much larger counter, which exists only to cap a
+     * flood. A real person cannot reach it. Everything else on that route (no
+     * verified session, a password that passes) stays on the 6/min budget, and
+     * guessing the code itself stays capped per IP and per code.
+     */
+    public const RESET_PASSWORD_RULE_FAILURES_PER_IP = 60;
+
+    /**
      * The customer notification bell polls unread-count every 6 seconds, and
      * the counter is per IP, so in a café every phone in the room shares it.
      * 120/min is the raw value these three routes already carried; isolating
@@ -431,7 +446,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('admin-forgot-password', self::ADMIN_FORGOT_PASSWORD_PER_IP);
         $this->perIp('admin-verification', self::ADMIN_VERIFICATION_PER_IP);
         $this->perIp('admin-verification-resend', self::ADMIN_VERIFICATION_RESEND_PER_IP);
-        $this->perIp('admin-new-password', self::ADMIN_NEW_PASSWORD_PER_IP);
+        $this->resetPasswordStep('admin-new-password', 'admin_password_reset', self::ADMIN_NEW_PASSWORD_PER_IP);
         $this->perIp('admin-qr-regenerate-code', self::ADMIN_QR_REGENERATE_CODE_PER_IP);
         $this->perIp('admin-qr-table-service', self::ADMIN_QR_TABLE_SERVICE_PER_IP);
         $this->perIp('admin-tables-occupancy', self::ADMIN_TABLES_OCCUPANCY_PER_IP);
@@ -451,7 +466,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-forgot-password', self::CUSTOMER_FORGOT_PASSWORD_PER_IP);
         $this->perIp('customer-verification', self::CUSTOMER_VERIFICATION_PER_IP);
         $this->perIp('customer-verification-resend', self::CUSTOMER_VERIFICATION_RESEND_PER_IP);
-        $this->perIp('customer-new-password', self::CUSTOMER_NEW_PASSWORD_PER_IP);
+        $this->resetPasswordStep('customer-new-password', 'customer_password_reset', self::CUSTOMER_NEW_PASSWORD_PER_IP);
         $this->perIp('customer-notifications', self::CUSTOMER_NOTIFICATIONS_PER_IP);
         $this->perIp('customer-table-clock', self::CUSTOMER_TABLE_CLOCK_PER_IP);
         $this->perIp('customer-add-points', self::CUSTOMER_ADD_POINTS_PER_IP);
@@ -494,6 +509,28 @@ class RateLimitServiceProvider extends ServiceProvider
     {
         RateLimiter::for($name, function (Request $request) use ($name, $perMinute) {
             return Limit::perMinute($perMinute)->by($name . '|ip:' . $request->ip());
+        });
+    }
+
+    /**
+     * The last step of a password reset: per IP like perIp(), except that a
+     * verified session trying a password the rules refuse is counted apart.
+     * See RESET_PASSWORD_RULE_FAILURES_PER_IP. The check runs the same
+     * PasswordPolicy rules updatePassword() runs, so the two cannot disagree.
+     */
+    private function resetPasswordStep(string $name, string $sessionKey, int $perMinute): void
+    {
+        RateLimiter::for($name, function (Request $request) use ($name, $sessionKey, $perMinute) {
+            $isRuleFailure = $request->hasSession()
+                && $request->session()->get($sessionKey . '.email')
+                && $request->session()->get($sessionKey . '.verified')
+                && Validator::make($request->only('password', 'password_confirmation'), [
+                    'password' => PasswordPolicy::required(),
+                ])->fails();
+
+            return $isRuleFailure
+                ? Limit::perMinute(self::RESET_PASSWORD_RULE_FAILURES_PER_IP)->by($name . '|rule-failure|ip:' . $request->ip())
+                : Limit::perMinute($perMinute)->by($name . '|ip:' . $request->ip());
         });
     }
 

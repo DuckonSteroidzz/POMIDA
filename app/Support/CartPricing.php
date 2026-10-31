@@ -49,6 +49,13 @@ use App\Models\MenuOption;
  * a sized item carted without a size (an item that gained sizes while it sat
  * in a cart), or a size id that is missing or is not this item's. Such a line
  * is priced at 0 and can never be checked out.
+ *
+ * INGREDIENT PRIORITY (Defect Report 6). A line's removed_ingredients do not
+ * touch the price: removing a LOW ingredient costs and saves nothing. They are
+ * re-read here against the live recipe, because the line may have sat in the
+ * session while the recipe changed: an ingredient since deleted from the recipe
+ * is dropped, and one since marked HIGH sets `removal_problem`, which checkout
+ * refuses rather than quietly serving what the customer asked to leave out.
  */
 final class CartPricing
 {
@@ -79,7 +86,7 @@ final class CartPricing
         }
 
         $menuItems = $menuItemIds
-            ? MenuItem::whereIn('id', array_unique($menuItemIds))->get()->keyBy('id')
+            ? MenuItem::with('recipeIngredients.inventory')->whereIn('id', array_unique($menuItemIds))->get()->keyBy('id')
             : collect();
 
         $options = $optionIds
@@ -118,6 +125,7 @@ final class CartPricing
         $missing = false;
         $branchMismatch = false;
         $sizeProblemInCart = false;
+        $removalProblemInCart = false;
 
         foreach ($cart as $cartKey => $cartItem) {
             $menuItemId = (int) ($cartItem['menu_item_id'] ?? $cartKey);
@@ -293,6 +301,27 @@ final class CartPricing
             $repriced = $repriced || $lineRepriced;
             $subtotal += $lineSubtotal;
 
+            $removedIds = [];
+            $removedNames = [];
+            $removalProblem = null;
+            $askedToRemove = array_map('intval', (array) ($cartItem['removed_ingredients'] ?? []));
+
+            if ($askedToRemove) {
+                $refusal = $menuItem->removalRefusal($askedToRemove, $size, ignoreGone: true);
+
+                if ($refusal !== null) {
+                    $removalProblem = $refusal . ' Please remove it from your cart and add it again.';
+                    $removalProblemInCart = true;
+                }
+
+                foreach ($menuItem->lowIngredients($size) as $row) {
+                    if (in_array((int) $row->inventory_id, $askedToRemove, true)) {
+                        $removedIds[] = (int) $row->inventory_id;
+                        $removedNames[] = (string) ($row->inventory->item_name ?? 'Ingredient');
+                    }
+                }
+            }
+
             $lines[] = [
                 'cart_key'          => $cartKey,
                 'menu_item'         => $menuItem,
@@ -312,6 +341,9 @@ final class CartPricing
                 'size_id'           => $size?->id,
                 'size_name'         => $size?->name,
                 'size_problem'      => null,
+                'removed_inventory_ids' => $removedIds,
+                'removed_names'     => $removedNames,
+                'removal_problem'   => $removalProblem,
             ];
         }
 
@@ -322,6 +354,7 @@ final class CartPricing
             'missing'         => $missing,
             'branch_mismatch' => $branchMismatch,
             'size_problem'    => $sizeProblemInCart,
+            'removal_problem' => $removalProblemInCart,
         ];
     }
 
@@ -329,8 +362,10 @@ final class CartPricing
      * The same cart, re-rendered for display, with every price refreshed to
      * what checkout will actually charge. Same shape the cart Blade already
      * expects, so the view keeps reading $item['price'] / ['quantity'] / etc.
+     *
+     * @param  array<string, list<string>>  $removalLabels  InventoryDeductionService::cartRemovalLabels()
      */
-    public static function displayCart(array $lines): array
+    public static function displayCart(array $lines, array $removalLabels = []): array
     {
         $display = [];
 
@@ -348,6 +383,8 @@ final class CartPricing
                 'size_id'      => $line['size_id'] ?? null,
                 'size_name'    => $line['size_name'] ?? null,
                 'size_problem' => $line['size_problem'] ?? null,
+                'removal_labels' => $removalLabels[(string) $line['cart_key']] ?? [],
+                'removal_problem' => $line['removal_problem'] ?? null,
             ];
         }
 

@@ -42,7 +42,7 @@
 
             </div>
 
-            <p class="hint">{{ \App\Support\PasswordPolicy::describe() }}</p>
+            @include('partials.password-checklist')
 
             @error('password')
                 <div class="invalid-feedback">{{ $message }}</div>

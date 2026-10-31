@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Support\SessionSide;
 use App\Support\SingleSession;
 use Closure;
 use Illuminate\Http\Request;
@@ -34,12 +35,36 @@ class EnforceSingleSession
             $this->refuseRememberCookie($request, $guard);
         }
 
+        // Defect Report 6. Both guards are still checked on every request, so a
+        // stale login can never be honoured anywhere (/discount-id reads the
+        // admin guard from outside /admin). What differs is the answer. A
+        // request can only be redirected to the login page of its OWN side: a
+        // poll from the staff tab must not move that tab to the customer login
+        // because the customer in the next tab signed in elsewhere. So the
+        // other side's login is removed here, and its own tab is told why on
+        // its next request.
+        $side = SessionSide::of($request);
+
         foreach (array_keys(SingleSession::GUARDS) as $guard) {
             $reason = SingleSession::endedReason($request, $guard);
 
-            if ($reason !== null) {
+            if ($reason === null) {
+                continue;
+            }
+
+            if ($guard === $side) {
                 return $this->end($request, $guard, $reason);
             }
+
+            Auth::guard($guard)->logoutCurrentDevice();
+            SessionSide::forget($request, $guard);
+            SingleSession::rememberEnded($request, $guard, $reason);
+        }
+
+        $reason = SingleSession::pullEnded($request, $side);
+
+        if ($reason !== null) {
+            return $this->sendToLogin($request, $side, $reason);
         }
 
         return $next($request);
@@ -69,13 +94,13 @@ class EnforceSingleSession
         // and that token now belongs to the device that just signed in.
         // Rotating it would sign THAT device out too, and the two browsers
         // would keep ending each other.
-        Auth::guard($guard)->logoutCurrentDevice();
+        SessionSide::end($request, $guard, rotateRememberToken: false);
 
-        // The same full reset every logout in this app performs: the old
-        // session id is discarded and the CSRF token regenerated.
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        return $this->sendToLogin($request, $guard, $reason);
+    }
 
+    private function sendToLogin(Request $request, string $guard, string $reason): Response
+    {
         $url = SingleSession::loginUrl($guard, $reason);
 
         if ($this->isBackgroundRequest($request)) {

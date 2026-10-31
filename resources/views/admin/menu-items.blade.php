@@ -150,9 +150,34 @@
         #menuTable tbody tr td:first-child { justify-content: flex-end; }
     }
 
+    /* The recipe editor's High/Low pill and its stock figure (Defect Report 6). */
+    .recipe-priority-pill {
+        border: 1px solid transparent;
+        border-radius: 999px;
+        padding: 0.2rem 0.65rem;
+        min-height: 28px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        cursor: pointer;
+        white-space: nowrap;
+    }
+    .recipe-priority-pill.is-high { background: #fde8e4; color: #8f2a1d; border-color: #f3b8ad; }
+    .recipe-priority-pill.is-low { background: #eef2f6; color: #374151; border-color: #cbd5e1; }
+    .recipe-priority-pill:disabled { opacity: 0.6; cursor: progress; }
+    .recipe-priority-pill:focus-visible { outline: 2px solid #C0392B; outline-offset: 1px; }
+    .recipe-stock { white-space: nowrap; font-weight: 600; }
+    .recipe-stock-ok { color: #1F2937; }
+    .recipe-stock-low { color: #92600a; }
+    .recipe-stock-out { color: #C0392B; }
+
     @media (max-width: 600px) {
         .recipe-ing-add-row { flex-wrap: wrap; }
         .recipe-ing-add-row > div { flex: 1 1 100% !important; min-width: 0 !important; }
+
+        /* Five columns on a phone: keep the delete button in view. */
+        .recipe-priority-pill { padding: 0.2rem 0.45rem; }
+        [id^="recipe-table-"] th,
+        [id^="recipe-table-"] td { padding-left: 0.15rem !important; padding-right: 0.15rem !important; }
     }
 
     /* ── Branch group headers, one per section of the table ──
@@ -235,6 +260,12 @@
     .menu-price-from { font-size: 0.7rem; font-weight: 600; color: #4B5563; }
     .menu-size-summary { display: flex; flex-direction: column; font-size: 0.7rem; font-weight: 600; color: #4B5563; white-space: nowrap; }
     .menu-size-summary .is-off { text-decoration: line-through; color: #6B7280; }
+    .menu-stock-badge { display: inline-block; padding: 0.15rem 0.55rem; border-radius: 10px; font-size: 0.7rem; font-weight: 600; white-space: nowrap; }
+    .menu-stock-green { background: #d4edda; color: #155724; }
+    .menu-stock-amber { background: #fff3cd; color: #856404; }
+    .menu-stock-red { background: #f8d7da; color: #721c24; }
+    .menu-stock-grey { background: #e5e7eb; color: #374151; }
+    .menu-stock-left { margin-left: 0.35rem; font-size: 0.7rem; font-weight: 600; color: #4B5563; white-space: nowrap; }
 
     @media (max-width: 768px) {
         .size-enable-row > div, .size-price-field { flex: 1 1 100%; }
@@ -258,6 +289,7 @@
                 <th>Gross Profit</th>
                 <th>Branch</th>
                 <th>Available</th>
+                <th>Status</th>
                 @if($canManageMenu)
                 <th>Edit</th>
                 <th>Delete</th>
@@ -284,7 +316,7 @@
                  * already uses two columns over, rather than being dropped
                  * or crashing on a missing ->branch relation.
                  */
-                $menuTableColspan = $canManageMenu ? 12 : 10;
+                $menuTableColspan = $canManageMenu ? 13 : 11;
                 $branchGroupCounts = $menuItems->groupBy(fn ($mi) => $mi->branch_id ?? 'unassigned')->map->count();
                 $currentBranchGroup = null;
             @endphp
@@ -408,6 +440,20 @@
                     </span>
                     @endif
                 </td>
+                {{-- Same verdict as the customer menu card (MenuItem::stockStatus()
+                     -> menuCardState()), so admin and customer cannot disagree.
+                     Separate from Available, the manual switch. --}}
+                @php $st = $stockStatus[$item->id] ?? null; @endphp
+                <td data-label="Status">
+                    @if($st)
+                    <span class="menu-stock-badge menu-stock-{{ $st['tone'] }}" data-stock-state="{{ $st['state'] }}">{{ $st['label'] }}</span>
+                    @if($st['remaining'] !== null)
+                    <span class="menu-stock-left">{{ $st['remaining'] }} left</span>
+                    @endif
+                    @else
+                    -
+                    @endif
+                </td>
                 @if($canManageMenu)
                 <td data-label="Edit">
                     <button type="button" class="btn-edit-custom"
@@ -451,7 +497,7 @@
             @endforeach
             @else
             <tr>
-                <td colspan="{{ $canManageMenu ? 12 : 10 }}" style="text-align: center; color: #4B5563; font-weight: 500; padding: 2rem;">No menu items yet. Click "Add New Item" to get started!</td>
+                <td colspan="{{ $canManageMenu ? 13 : 11 }}" style="text-align: center; color: #4B5563; font-weight: 500; padding: 2rem;">No menu items yet. Click "Add New Item" to get started!</td>
             </tr>
             @endif
         </tbody>
@@ -728,6 +774,7 @@
                                                 'addUrl' => route('admin.menu-items.sizes.ingredients.add', [$mi->id, $size->id]),
                                                 'qtyAttribute' => 'quantity',
                                                 'deleteUrlFor' => fn ($row) => route('admin.menu-items.sizes.ingredients.delete', [$mi->id, $size->id, $row->id]),
+                                                'priorityUrlFor' => fn ($row) => route('admin.menu-items.sizes.ingredients.priority', [$mi->id, $size->id, $row->id]),
                                                 'costLine' => $sizeCosting[$size->id] ?? ['cost' => 0, 'is_fallback' => true],
                                             ])
                                         </div>
@@ -778,7 +825,7 @@
                     <option value="">-- No link --</option>
                     @if(isset($inventoryItems) && count($inventoryItems) > 0)
                         @foreach($inventoryItems as $inv)
-                            <option value="{{ $inv->id }}" {{ (string) old('inventory_item_id') === (string) $inv->id ? 'selected' : '' }}>{{ $inv->item_name }} ({{ $inv->quantity }} {{ $inv->unit }})</option>
+                            <option value="{{ $inv->id }}" {{ (string) old('inventory_item_id') === (string) $inv->id ? 'selected' : '' }}>{{ $inv->item_name }} ({{ \App\Models\Inventory::formatQuantity($inv->quantity) }} {{ $inv->unit }})</option>
                         @endforeach
                     @else
                         <option value="" disabled>No inventory for this branch yet</option>
@@ -862,6 +909,7 @@
      modals above, so for staff it would be dead code that still names
      manager-only endpoints in the page source. --}}
 @if($canManageMenu)
+@include('admin.partials.quantity-step')
 <script>
     // Both Add and Edit share this one modal. openAddModal()/openEditModal()
     // decide which state it is in: title, submit label, form action/method,
@@ -1051,6 +1099,10 @@
 
         var unitLabel = wrap.querySelector('.recipe-unit-label');
         if (unitLabel) unitLabel.textContent = unit ? '(' + unit + ')' : '';
+
+        // Whole numbers for count units (pc, can, ...), up to 3 decimals for
+        // measured ones. The server re-checks (Inventory::quantityError()).
+        pomidaApplyQuantityStep(wrap.querySelector('.recipe-ing-qty'), unit, true);
     });
 
     // Close Modal
@@ -1150,6 +1202,7 @@
         var tbody = document.getElementById('recipe-tbody-' + blockId);
         if (!tbody) return;
         var isSizeBlock = String(blockId).indexOf('size-') === 0;
+        syncAllLowNotice(blockId);
 
         var total = 0;
         var filled = 0;
@@ -1188,6 +1241,112 @@
             }
         }
     }
+
+    // ══════════ Priority Level (Defect Report 6) ══════════
+    function pomidaSetPriorityPill(pill, priority) {
+        pill.dataset.priority = priority;
+        pill.textContent = priority === 'low' ? 'Low' : 'High';
+        pill.classList.toggle('is-low', priority === 'low');
+        pill.classList.toggle('is-high', priority !== 'low');
+    }
+
+    function syncAllLowNotice(blockId) {
+        var tbody = document.getElementById('recipe-tbody-' + blockId);
+        var notice = document.getElementById('recipe-all-low-' + blockId);
+        if (!tbody || !notice) return;
+        var pills = tbody.querySelectorAll('.recipe-priority-pill');
+        var low = tbody.querySelectorAll('.recipe-priority-pill[data-priority="low"]');
+        notice.style.display = pills.length > 0 && pills.length === low.length ? 'block' : 'none';
+    }
+
+    // The list behind the modal says the same thing the server just decided.
+    function applyMenuRowStatus(url, status) {
+        var match = String(url).match(/menu-items\/(\d+)\//);
+        var editBtn = match ? document.querySelector('.btn-edit-custom[data-id="' + match[1] + '"]') : null;
+        var row = editBtn ? editBtn.closest('tr') : null;
+        var cell = row ? row.querySelector('td[data-label="Status"]') : null;
+        var badge = cell ? cell.querySelector('.menu-stock-badge') : null;
+        if (!badge || !status) return;
+
+        badge.className = 'menu-stock-badge menu-stock-' + status.tone;
+        badge.dataset.stockState = status.state;
+        badge.textContent = status.label;
+
+        var left = cell.querySelector('.menu-stock-left');
+        if (status.remaining === null) {
+            if (left) left.remove();
+        } else {
+            if (!left) {
+                left = document.createElement('span');
+                left.className = 'menu-stock-left';
+                cell.appendChild(left);
+            }
+            left.textContent = status.remaining + ' left';
+        }
+    }
+
+    function priorityRefusalText(status, data) {
+        if (status === 403) return 'You do not have permission to change this recipe.';
+        if (status === 404) return 'This ingredient is no longer on the recipe. Reload the page and try again.';
+        if (status === 419) return 'Your session has expired. Reload the page and try again.';
+        return (data && data.message) || 'Could not save the priority. Nothing was changed.';
+    }
+
+    document.addEventListener('click', function (e) {
+        var pill = e.target.closest ? e.target.closest('.recipe-priority-pill') : null;
+        if (!pill || pill.disabled) return;
+
+        var next = pill.dataset.priority === 'low' ? 'high' : 'low';
+        var block = pill.closest('.recipe-block, .size-recipe-block');
+        var blockId = block ? block.id.replace('recipe-', '') : null;
+
+        if (pill.dataset.draft === '1') {
+            // No saved row yet: goes up with the rest of the new item.
+            var input = pill.parentElement.querySelector('input[name$="[priority]"]');
+            if (input) input.value = next;
+            pomidaSetPriorityPill(pill, next);
+            syncAllLowNotice(blockId);
+            return;
+        }
+
+        pill.disabled = true;
+        recipeIngredientClearError(blockId);
+
+        var fd = new FormData();
+        fd.append('_method', 'PUT');
+        fd.append('priority', next);
+
+        fetch(pill.dataset.url, {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'X-CSRF-TOKEN': document.querySelector('#itemForm input[name="_token"]').value,
+            },
+            body: fd,
+        })
+            .then(function (res) {
+                return res.json()
+                    .catch(function () { return null; })
+                    // A role refusal is RoleMiddleware's bounce to the home page.
+                    .then(function (data) { return { status: res.redirected ? 403 : res.status, data: data }; });
+            })
+            .then(function (result) {
+                pill.disabled = false;
+
+                if (result.status >= 400 || !result.data || !result.data.success) {
+                    recipeIngredientError(blockId, priorityRefusalText(result.status, result.data));
+                    return;
+                }
+
+                pomidaSetPriorityPill(pill, result.data.priority);
+                syncAllLowNotice(blockId);
+                applyMenuRowStatus(pill.dataset.url, result.data.status);
+            })
+            .catch(function () {
+                pill.disabled = false;
+                recipeIngredientError(blockId, 'Network error — the priority was not saved.');
+            });
+    });
 
     // Add mode keeps its own name for the existing call sites (draft add/remove,
     // quantity input, price input, the failed-submit re-open).
@@ -1261,6 +1420,15 @@
             return;
         }
 
+        // This is a button, not a form submit, so the browser's own step check
+        // never runs here; say it now for a count unit (the server also refuses).
+        var pickedOpt = select.options[select.selectedIndex];
+        var pickedUnit = pickedOpt ? (pickedOpt.dataset.unit || '') : '';
+        if (pomidaIsCountUnit(pickedUnit) && !/^\d+$/.test(String(qtyInput.value).trim().replace(/\.0*$/, ''))) {
+            recipeIngredientError(blockId, 'Quantity must be a whole number for items counted in ' + pickedUnit + ' (for example 6, not 1.5).');
+            return;
+        }
+
         // Refuse an inventory item that is already a row on this recipe, at the
         // moment of adding — before a draft row is appended (Add) or anything is
         // posted (Edit). The server re-checks either way: storeNewMenuItem()
@@ -1308,6 +1476,8 @@
             row.innerHTML =
                 '<td style="padding:0.35rem 0.4rem;"></td>' +
                 '<td style="padding:0.35rem 0.4rem;"></td>' +
+                '<td style="padding:0.35rem 0.4rem;"><button type="button" class="recipe-priority-pill is-high" data-draft="1" data-priority="high" title="Click to switch between High and Low">High</button></td>' +
+                '<td style="padding:0.35rem 0.4rem;"><span class="recipe-stock"></span></td>' +
                 '<td style="padding:0.35rem 0.4rem; text-align:right;">' +
                 '<button type="button" class="recipe-ing-delete-btn" data-draft="1" ' +
                 'style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">' +
@@ -1315,6 +1485,15 @@
                 '</td>';
             row.children[0].textContent = name;
             row.children[1].textContent = qtyInput.value + (unit ? ' ' + unit : '');
+
+            // Stock Remaining, from the figures the picker option already carries:
+            // the same reading Inventory::formatQuantity() and stockLevel() give
+            // a saved row.
+            var draftStock = parseFloat(opt.dataset.stock || '0') || 0;
+            var draftLow = parseFloat(opt.dataset.low || '0') || 0;
+            var draftStockCell = row.children[3].querySelector('.recipe-stock');
+            draftStockCell.textContent = draftStock.toLocaleString('en-US', { maximumFractionDigits: 3 }) + (unit ? ' ' + unit : '');
+            draftStockCell.classList.add('recipe-stock-' + (draftStock <= 0 ? 'out' : (draftStock <= draftLow ? 'low' : 'ok')));
 
             // Phase 3b F11: built via createElement + .value, like the two
             // cells above, rather than concatenated into the innerHTML string
@@ -1333,6 +1512,12 @@
             quantityUsedInput.name = 'ingredients[' + idx + '][quantity_used]';
             quantityUsedInput.value = qtyInput.value;
             row.children[2].appendChild(quantityUsedInput);
+
+            var priorityInput = document.createElement('input');
+            priorityInput.type = 'hidden';
+            priorityInput.name = 'ingredients[' + idx + '][priority]';
+            priorityInput.value = 'high';
+            row.children[2].appendChild(priorityInput);
 
             document.getElementById('recipe-tbody-add').appendChild(row);
             toggleAddModeTableVisibility();
@@ -1385,6 +1570,8 @@
                 row.innerHTML =
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
+                    '<td style="padding:0.35rem 0.4rem;"><button type="button" class="recipe-priority-pill" title="Click to switch between High and Low"></button></td>' +
+                    '<td style="padding:0.35rem 0.4rem;"><span class="recipe-stock"></span></td>' +
                     '<td style="padding:0.35rem 0.4rem; text-align:right;">' +
                     '<button type="button" class="recipe-ing-delete-btn" ' +
                     'style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">' +
@@ -1394,6 +1581,12 @@
                 // Property, not string-concatenated markup — as the draft-row
                 // inputs above already are (Phase 3b F11).
                 row.querySelector('.recipe-ing-delete-btn').dataset.url = ing.delete_url;
+                var newPill = row.querySelector('.recipe-priority-pill');
+                newPill.dataset.url = ing.priority_url;
+                pomidaSetPriorityPill(newPill, ing.priority);
+                var newStock = row.querySelector('.recipe-stock');
+                newStock.textContent = ing.stock_remaining + (ing.unit ? ' ' + ing.unit : '');
+                newStock.classList.add('recipe-stock-' + ing.stock_state);
                 tbody.appendChild(row);
 
                 document.getElementById('recipe-empty-' + blockId).style.display = 'none';

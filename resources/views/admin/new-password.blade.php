@@ -46,7 +46,7 @@
 
             </div>
 
-            <p class="hint">{{ \App\Support\PasswordPolicy::describe() }}</p>
+            @include('partials.password-checklist')
 
         </div>
 

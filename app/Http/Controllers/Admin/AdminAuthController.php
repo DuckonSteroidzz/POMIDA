@@ -283,6 +283,9 @@ class AdminAuthController extends Controller
      * Auth::guard('admin')->logout() clears the session key, forgets the
      * admin recaller cookie, and cycles the user's remember_token so any other
      * copy of that cookie is dead too.
+     *
+     * Only the staff side ends. A customer signed in on the same browser stays
+     * signed in as they were. See App\Support\SessionSide.
      */
     public function logout(Request $request)
     {
@@ -291,9 +294,7 @@ class AdminAuthController extends Controller
         // you just left, which matters now there are three portal roles.
         $role = Auth::guard('admin')->user()?->role;
 
-        Auth::guard('admin')->logout();
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        \App\Support\SessionSide::end($request, \App\Support\SessionSide::STAFF);
 
         $labels = [
             'admin' => 'Administrator',

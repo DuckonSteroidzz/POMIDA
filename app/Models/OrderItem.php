@@ -143,4 +143,29 @@ class OrderItem extends Model
         return $this->belongsTo(MenuItemSize::class, 'menu_item_size_id')
             ->withoutGlobalScope(\App\Models\Concerns\NotArchivedScope::class);
     }
+
+    /**
+     * The LOW ingredients this line went out without (Defect Report 6). Empty
+     * on every line that removed nothing, which is every line sold before the
+     * feature, so an old order reads and deducts exactly as it always has.
+     */
+    public function removedIngredients(): HasMany
+    {
+        return $this->hasMany(OrderItemRemovedIngredient::class);
+    }
+
+    /**
+     * What the receipts, the kitchen board and the order views print under the
+     * line: "No Pancake Syrup", "Garnish not available". Snapshots only.
+     *
+     * @return list<string>
+     */
+    public function removalLabels(): array
+    {
+        return $this->removedIngredients
+            ->sortBy('id')
+            ->map(fn (OrderItemRemovedIngredient $row) => $row->label())
+            ->values()
+            ->all();
+    }
 }

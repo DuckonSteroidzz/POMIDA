@@ -238,10 +238,19 @@
                              rtrim pair keeps whole numbers reading as "4970", exactly as before,
                              and matches how recipe lines are already printed
                              (partials/recipe-ingredients.blade.php). --}}
-                        {{ rtrim(rtrim(number_format($item->quantity, 3), '0'), '.') }}
+                        {{-- Inventory::formatQuantity() is that same trim, named once: a
+                             count reads "6", never "6.000". A count that is NOT whole
+                             (older data) is shown as stored, with a warning beside it. --}}
+                        {{ \App\Models\Inventory::formatQuantity($item->quantity) }}
+                        @if($item->hasFractionalCountQuantity())
+                            <span class="iv-badge iv-badge-warn iv-frac-warn"
+                                  title="{{ $item->item_name }} is counted in {{ $item->unit }}, so its stock should be a whole number. Edit the item and correct it by hand.">
+                                <i class="bi bi-exclamation-triangle-fill"></i> Not a whole number
+                            </span>
+                        @endif
                     </td>
                     <td data-label="Unit" class="iv-muted">{{ $item->unit }}</td>
-                    <td data-label="Low Alert" class="iv-ta-right iv-num iv-muted">{{ rtrim(rtrim(number_format($item->low_stock_alert, 2), '0'), '.') }}</td>
+                    <td data-label="Low Alert" class="iv-ta-right iv-num iv-muted">{{ \App\Models\Inventory::formatQuantity($item->low_stock_alert) }}</td>
                     {{--
                         quantity × unit_cost for THIS row. unit_cost is a
                         NOT NULL decimal column (defaults to 0.00), so this
@@ -281,9 +290,9 @@
                             data-name="{{ $item->item_name }}"
                             data-code="{{ $item->item_code }}"
                             data-category="{{ $item->category }}"
-                            data-quantity="{{ $item->quantity }}"
+                            data-quantity="{{ rtrim(rtrim((string) $item->quantity, '0'), '.') }}"
                             data-unit="{{ $item->unit }}"
-                            data-low="{{ $item->low_stock_alert }}"
+                            data-low="{{ rtrim(rtrim((string) $item->low_stock_alert, '0'), '.') }}"
                             data-cost="{{ $item->unit_cost }}"
                             data-supplier="{{ $item->supplier }}"
                             onclick="openEditModal(this)" title="Edit">
@@ -505,7 +514,7 @@
             <div class="iv-grid-3">
                 <div class="iv-field">
                     <label class="iv-label">Quantity <span class="iv-req">*</span></label>
-                    <input type="number" name="quantity" id="itemQuantity" class="iv-input" step="0.01" min="0" value="{{ old('quantity') }}" required>
+                    <input type="number" name="quantity" id="itemQuantity" class="iv-input" step="0.001" min="0" value="{{ old('quantity') }}" required>
                 </div>
                 <div class="iv-field">
                     <label class="iv-label">Unit <span class="iv-req">*</span></label>
@@ -518,7 +527,7 @@
                 </div>
                 <div class="iv-field">
                     <label class="iv-label">Low Stock Alert</label>
-                    <input type="number" name="low_stock_alert" id="itemLow" class="iv-input" step="0.01" min="0" value="{{ old('low_stock_alert') }}">
+                    <input type="number" name="low_stock_alert" id="itemLow" class="iv-input" step="0.001" min="0" value="{{ old('low_stock_alert') }}">
                 </div>
             </div>
 
@@ -560,7 +569,7 @@
             @csrf
             <div class="iv-field">
                 <label class="iv-label">Amount <span id="stockUnit"></span></label>
-                <input type="number" name="amount" id="stockAmount" class="iv-input" step="0.01" min="0.01" required autofocus>
+                <input type="number" name="amount" id="stockAmount" class="iv-input" step="0.001" min="0.001" required autofocus>
             </div>
             <div class="iv-field">
                 <label class="iv-label">Note (Optional)</label>
@@ -698,6 +707,8 @@
     .iv-badge-ok { background: #E6F4EC; color: #2E7D5B; border: 1px solid #C6E6D5; }
     .iv-badge-low { background: #FDF1E6; color: #A85A2B; border: 1px solid #F8D7B0; }
     .iv-badge-out { background: #FBE7E4; color: #C0392B; border: 1px solid #F6C9C1; }
+    .iv-badge-warn { background: #FFF3CD; color: #7A5600; border: 1px solid #F0D98A; }
+    .iv-frac-warn { margin-left: .4rem; }
 
     .iv-tag { display: inline-block; font-size: .65rem; font-weight: 700; padding: .15rem .5rem; border-radius: 999px; white-space: nowrap; }
     .iv-tag-manual { background: #F3EEEA; color: #6B5A52; }
@@ -817,6 +828,7 @@
 @endpush
 
 @push('scripts')
+@include('admin.partials.quantity-step')
 <script>
 {{-- The modal drivers — Add / Edit / Stock In / Stock Out / Delete. Gated on
      the same flags as the buttons and modals they operate, so a staff member's
@@ -837,8 +849,19 @@
         document.getElementById('itemLow').value = '10';
         document.getElementById('itemCost').value = '';
         document.getElementById('itemSupplier').value = '';
+        syncItemQuantitySteps();
         document.getElementById('itemModal').style.display = 'flex';
     }
+
+    // Count units (pc, can, ...) take whole numbers; measured units up to 3
+    // decimals. Re-run whenever the unit changes. The server enforces it too.
+    function syncItemQuantitySteps() {
+        pomidaApplyQuantityStep(
+            [document.getElementById('itemQuantity'), document.getElementById('itemLow')],
+            document.getElementById('itemUnit').value
+        );
+    }
+    document.getElementById('itemUnit').addEventListener('change', syncItemQuantitySteps);
 
     function openEditModal(btn) {
         document.getElementById('modalTitle').innerText = 'Edit Inventory Item';
@@ -864,6 +887,7 @@
         document.getElementById('itemLow').value = btn.dataset.low || '';
         document.getElementById('itemCost').value = btn.dataset.cost || '';
         document.getElementById('itemSupplier').value = btn.dataset.supplier || '';
+        syncItemQuantitySteps();
         document.getElementById('itemModal').style.display = 'flex';
     }
 
@@ -894,6 +918,7 @@
         document.getElementById('stockItemName').innerText = `Item: ${name}`;
         document.getElementById('stockUnit').innerText = `(${unit})`;
         document.getElementById('stockAmount').value = '';
+        pomidaApplyQuantityStep(document.getElementById('stockAmount'), unit, true);
         document.getElementById('stockModal').style.display = 'flex';
     }
 

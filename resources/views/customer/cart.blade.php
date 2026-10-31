@@ -496,6 +496,16 @@
                 </div>
                 @endif
 
+                {{-- Defect Report 6: an ingredient this line asked to leave out
+                     has since become essential. The line says which one. --}}
+                @if(!empty($cartHasRemovalIssue))
+                <div class="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-xs font-semibold text-red-700">
+                    <i class="bi bi-x-circle"></i>
+                    An ingredient you removed from an item can no longer be removed.
+                    Please remove the item and add it again.
+                </div>
+                @endif
+
                 @if(isset($cart) && count($cart) > 0)
                 @foreach($cart as $itemId => $item)
                 @php
@@ -505,7 +515,7 @@
                     $lineOutOfStock = in_array($lineItemId, $outOfStockItemIds ?? [], true)
                         || in_array((string) $itemId, $outOfStockCartKeys ?? [], true);
                     $lineNoRecipe = in_array($lineItemId, $noRecipeItemIds ?? [], true);
-                    $lineSizeIssue = ($sizeIssueByCartKey ?? [])[(string) $itemId] ?? null;
+                    $lineSizeIssue = ($sizeIssueByCartKey ?? [])[(string) $itemId] ?? ($item['removal_problem'] ?? null);
                     $lineBlocked = $lineOutOfStock || $lineNoRecipe || $lineSizeIssue !== null;
                 @endphp
                 <article class="card-surface p-3.5 sm:p-4">
@@ -547,6 +557,10 @@
                                 {{ implode(', ', array_column($item['options'], 'name')) }}
                             </p>
                             @endif
+
+                            {{-- "No Pancake Syrup", "Garnish not available". Always in the
+                                 page, so the quantity sync can fill it in. --}}
+                            <p class="mt-1 text-xs font-semibold text-peach-deep/70" data-line-removals="{{ $itemId }}" @if(empty($item['removal_labels'])) hidden @endif>{{ implode(' · ', $item['removal_labels'] ?? []) }}</p>
 
                             <p class="mt-1 text-xs font-bold text-peach-red">₱{{ number_format($item['price'], 2) }} each</p>
 
@@ -622,7 +636,7 @@
                     @endforeach
 
                     @php
-                    $sessionOrderType = session('order_type', Auth::check() ? 'pick_up' : 'dine_in');
+                    $sessionOrderType = session('order_type', Auth::guard('customer')->check() ? 'pick_up' : 'dine_in');
                     $sessionBranchId = session('branch_id');
                     $sessionBranch = $sessionBranchId ? \App\Models\Branch::find($sessionBranchId) : null;
                     $sessionTable = session('table_number');
@@ -929,7 +943,7 @@
                  * the summary block above, so this stays correct if either
                  * block moves. Same expression, same default.
                  */
-                $cashOrderType = session('order_type', Auth::check() ? 'pick_up' : 'dine_in');
+                $cashOrderType = session('order_type', Auth::guard('customer')->check() ? 'pick_up' : 'dine_in');
                 @endphp
 
                 <span class="min-w-0">
@@ -989,7 +1003,7 @@
                     <button
                         type="button"
                         onclick="openOrderConfirmation()"
-                        @disabled(!empty($cartHasOutOfStockItem) || !empty($cartHasUnavailableItem) || !empty($cartHasNoRecipeItem) || !empty($cartHasSizeIssue))
+                        @disabled(!empty($cartHasOutOfStockItem) || !empty($cartHasUnavailableItem) || !empty($cartHasNoRecipeItem) || !empty($cartHasSizeIssue) || !empty($cartHasRemovalIssue))
                         class="inline-flex flex-1 items-center justify-center gap-2 rounded-full bg-peach-red px-6 py-3 text-sm font-bold text-white transition hover:bg-peach-deep disabled:cursor-not-allowed disabled:bg-peach-deep/30 disabled:hover:bg-peach-deep/30"
                     >
                         <i class="bi bi-check-circle"></i>
@@ -1056,6 +1070,8 @@
                                         </p>
                                     @endif
 
+                                    <p class="order-review-options" data-review-removals="{{ $itemId }}" @if(empty($item['removal_labels'])) hidden @endif>{{ implode(' · ', $item['removal_labels'] ?? []) }}</p>
+
                                     <p class="order-review-unit">₱{{ number_format($item['price'], 2) }} each</p>
                                 </div>
                             </div>
@@ -1082,7 +1098,7 @@
                      This modal renders even for an empty cart, i.e. outside the
                      summary block that defines $sessionOrderType, so fall back to
                      the session directly if the controller ever stops passing it. --}}
-                @if(($sessionOrderType ?? session('order_type', Auth::check() ? 'pick_up' : 'dine_in')) === 'dine_in')
+                @if(($sessionOrderType ?? session('order_type', Auth::guard('customer')->check() ? 'pick_up' : 'dine_in')) === 'dine_in')
                 <div class="order-review-takeout">
                     <label class="order-review-row" for="isTakeoutCheckbox">
                         <span>Take Out</span>
@@ -1386,6 +1402,13 @@
                         // Reconcile against the server's authoritative figure.
                         cartLines[key].unitPrice = data.lines[key].unit_price;
                         cartRenderLine(key);
+
+                        // A new quantity can outrun a LOW ingredient, or bring one back.
+                        var removalText = (data.lines[key].removal_labels || []).join(' · ');
+                        document.querySelectorAll('[data-line-removals="' + key + '"], [data-review-removals="' + key + '"]').forEach(function (el) {
+                            el.textContent = removalText;
+                            el.hidden = removalText === '';
+                        });
                     } else if (data && data.success === false) {
                         // Stock can no longer cover the quantity just tapped in —
                         // revert to the true max (or drop back to 1) and say why,

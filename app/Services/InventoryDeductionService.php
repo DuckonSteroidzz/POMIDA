@@ -9,6 +9,7 @@ use App\Models\MenuItemSize;
 use App\Models\MenuOption;
 use App\Models\Order;
 use App\Models\OrderItem;
+use App\Models\OrderItemRemovedIngredient;
 use App\Models\OrderItemSizeIngredient;
 use App\Models\StockMovement;
 use Illuminate\Database\Eloquent\Collection as EloquentCollection;
@@ -80,6 +81,22 @@ use RuntimeException;
  * untouched — base recipe, exactly as before. A NEW order still goes through
  * requirementsForLine() with the size, which still refuses a size that cannot
  * be sold.
+ *
+ * INGREDIENT PRIORITY (Defect Report 6, Oct 2026). A recipe line is HIGH or LOW
+ * (App\Models\Concerns\HasIngredientPriority). Only HIGH lines and selected
+ * add-ons decide whether a line can be sold: requirementsForLine(highOnly: true)
+ * is what availabilityBreakdownFor() and settleCart() measure, the same rule
+ * MenuItem applies in recipeCoversServings() and servingsCoveredBy(). A LOW line
+ * never blocks. It is included when the shelf can cover it, and otherwise the
+ * order line goes out without it. settleCart() decides that per line, after every
+ * HIGH need in the cart has been served, so a garnish can never take the stock
+ * another line's essential ingredient needs. What a line went out without is
+ * snapshotted in order_item_removed_ingredients (snapshotRemovals()), and
+ * requirementsForOrderLine() leaves those ingredients out, so the commitment, the
+ * deduction and the COGS snapshot are all the same smaller recipe. If the shelf
+ * runs short of a LOW line after the order is placed, deductWithLock() records it
+ * as unavailable instead of blocking completion. Item COST (MenuItemCosting) stays
+ * the whole recipe: that is what the dish costs when nothing is left out.
  */
 class InventoryDeductionService
 {
@@ -123,16 +140,28 @@ class InventoryDeductionService
      *                                            Selected options are handled below
      *                                            exactly as without a size — add-ons are
      *                                            not size-dependent.
+     * @param  int[]  $leftOut                  Inventory ids to leave out of the RECIPE
+     *                                            part only: what this line went out
+     *                                            without. An add-on that uses the same
+     *                                            ingredient still needs it.
+     * @param  bool   $highOnly                 Count HIGH recipe lines only — what decides
+     *                                            stock status. false (the default) is the
+     *                                            whole recipe, which is what costing and an
+     *                                            order line's own deduction want.
      * @return array<int,float>                 [inventory_id => amount]
      *
      * @throws MenuItemSizeUnavailableException  only when $size is given
      */
-    public function requirementsForLine(MenuItem $menuItem, int $quantity, array $selectedOptionIds, ?int $branchId = null, MenuItemSize|int|null $size = null): array
+    public function requirementsForLine(MenuItem $menuItem, int $quantity, array $selectedOptionIds, ?int $branchId = null, MenuItemSize|int|null $size = null, array $leftOut = [], bool $highOnly = false): array
     {
         $needs = [];
 
         if ($size !== null) {
             foreach ($menuItem->sizeRecipe($size) as $row) {
+                if (($highOnly && $row->isLow()) || in_array((int) $row->inventory_id, $leftOut, true)) {
+                    continue;
+                }
+
                 $needs[$row->inventory_id] = ($needs[$row->inventory_id] ?? 0)
                     + ((float) $row->quantity * $quantity);
             }
@@ -156,6 +185,10 @@ class InventoryDeductionService
             // Otherwise: no recipe, no legacy link — skip silently (handled by caller).
         } else {
             foreach ($recipe as $row) {
+                if (($highOnly && $row->isLow()) || in_array((int) $row->inventory_id, $leftOut, true)) {
+                    continue;
+                }
+
                 $needs[$row->inventory_id] = ($needs[$row->inventory_id] ?? 0)
                     + ((float) $row->quantity_used * $quantity);
             }
@@ -303,6 +336,8 @@ class InventoryDeductionService
             ->with([
                 'items.menuItem.recipeIngredients',
                 'items.options.ingredients.inventory',
+                // What each line went out without holds no stock.
+                'items.removedIngredients',
             ])
             ->get();
 
@@ -421,10 +456,17 @@ class InventoryDeductionService
         $inventoryById = null,
         MenuItemSize|int|null $size = null
     ): array {
-        $perUnit = $this->requirementsForLine($menuItem, 1, $selectedOptionIds, $branchId, $size);
+        // HIGH lines and add-ons only: a LOW ingredient limits nothing. So an item
+        // whose lines are all LOW has a recipe but nothing to measure.
+        $perUnit = $this->requirementsForLine($menuItem, 1, $selectedOptionIds, $branchId, $size, highOnly: true);
 
         if (empty($perUnit)) {
-            return ['units' => null, 'reason' => self::UNMEASURABLE_NO_RECIPE, 'bottleneck' => null, 'ingredients' => []];
+            return [
+                'units'       => null,
+                'reason'      => $menuItem->hasRecipe($size) ? self::UNMEASURABLE_NO_INGREDIENT : self::UNMEASURABLE_NO_RECIPE,
+                'bottleneck'  => null,
+                'ingredients' => [],
+            ];
         }
 
         // Deterministic walk, so a tie between two equally limiting ingredients
@@ -529,7 +571,33 @@ class InventoryDeductionService
      */
     public function cartShortfalls(array $lines, ?int $branchId = null, bool $lock = false): array
     {
+        return $this->settleCart($lines, $branchId, $lock)['messages'];
+    }
+
+    /**
+     * cartShortfalls() with its other half: which LOW ingredients each line will
+     * go out without because the shelf cannot cover them. Both order paths call
+     * this inside their order transaction and record the answer on the lines they
+     * create (snapshotRemovals()); the cart page calls it unlocked to say the same
+     * thing before the customer checks out.
+     *
+     * A line may carry `removed_inventory_ids`, the LOW ingredients the customer
+     * took out, which need nothing. Those ids were validated by
+     * MenuItem::removalRefusal() on the way in.
+     *
+     * HIGH needs are settled first across the WHOLE cart, then LOW needs share what
+     * is left in cart order, each line taking its whole need or none of it. LOW can
+     * therefore never block a line or starve another line's HIGH need.
+     *
+     * @param  array<int,float>|null  $committed  Reuse a committedQuantities() map.
+     *                      Never with $lock: the lock has to be taken first.
+     * @return array{messages: string[], unavailable: array<int, list<array{inventory_id: int, name: string}>>}
+     *                      `unavailable` is keyed by the line's index in $lines.
+     */
+    public function settleCart(array $lines, ?int $branchId = null, bool $lock = false, ?array $committed = null): array
+    {
         $perUnit = [];
+        $lowPerUnit = [];
         $ids = [];
 
         foreach ($lines as $i => $line) {
@@ -538,17 +606,28 @@ class InventoryDeductionService
                 1,
                 $line['selected_option_ids'] ?? [],
                 $branchId,
-                $line['size'] ?? null
+                $line['size'] ?? null,
+                highOnly: true
             );
 
             $perUnit[$i] = $needs;
             foreach (array_keys($needs) as $invId) {
                 $ids[$invId] = true;
             }
+
+            $removed = array_map('intval', $line['removed_inventory_ids'] ?? []);
+            $lowPerUnit[$i] = [];
+
+            foreach ($line['menu_item']->lowIngredients($line['size'] ?? null) as $row) {
+                if (! in_array((int) $row->inventory_id, $removed, true)) {
+                    $lowPerUnit[$i][(int) $row->inventory_id] = $row->recipeQuantity();
+                    $ids[(int) $row->inventory_id] = true;
+                }
+            }
         }
 
         if (empty($ids)) {
-            return [];
+            return ['messages' => [], 'unavailable' => []];
         }
 
         // Same ordering as deductWithLock() so the two paths can never grab the
@@ -563,7 +642,7 @@ class InventoryDeductionService
 
         // Read AFTER the lock above, so a checkout that just lost the race sees
         // the winner's order rather than the pantry as it looked before it.
-        $committed = $this->committedQuantities();
+        $committed = $committed ?? $this->committedQuantities();
 
         $remaining = [];
         foreach ($ids as $invId) {
@@ -619,7 +698,118 @@ class InventoryDeductionService
             }
         }
 
-        return $messages;
+        // LOW ingredients share what the HIGH pass above left, all or nothing per
+        // line. A line that cannot have its LOW ingredient goes out without it.
+        $unavailable = [];
+
+        foreach ($lines as $i => $line) {
+            $quantity = (int) $line['quantity'];
+
+            foreach ($lowPerUnit[$i] as $invId => $perServing) {
+                $need = $perServing * $quantity;
+                $inv = $inventory->get($invId);
+
+                if ($need <= 0 || ! $inv) {
+                    continue;
+                }
+
+                if ($remaining[$invId] > 0 && $remaining[$invId] + 1e-9 >= $need) {
+                    $remaining[$invId] -= $need;
+                } else {
+                    $unavailable[$i][] = ['inventory_id' => (int) $invId, 'name' => (string) $inv->item_name];
+                }
+            }
+        }
+
+        return ['messages' => $messages, 'unavailable' => $unavailable];
+    }
+
+    /**
+     * Record what a just-created order line goes out without, in the order
+     * transaction, with the rows the stock gate just measured. Names are copied
+     * here so history stays correct whatever later happens to the recipe.
+     *
+     * A customer removal no longer on the recipe is skipped: the ingredient is not
+     * in the dish any more, so there is nothing to print or leave out.
+     *
+     * @param  int[]  $customerRemoved  the line's removed_inventory_ids
+     * @param  list<array{inventory_id: int, name: string}>  $unavailable  settleCart()'s answer for this line
+     */
+    public function snapshotRemovals(OrderItem $orderItem, MenuItem $menuItem, ?MenuItemSize $size, array $customerRemoved, array $unavailable): void
+    {
+        foreach ($menuItem->lowIngredients($size) as $row) {
+            if (in_array((int) $row->inventory_id, array_map('intval', $customerRemoved), true)) {
+                OrderItemRemovedIngredient::create([
+                    'order_item_id'   => $orderItem->id,
+                    'inventory_id'    => $row->inventory_id,
+                    'ingredient_name' => (string) ($row->inventory->item_name ?? 'Ingredient'),
+                    'reason'          => OrderItemRemovedIngredient::REASON_CUSTOMER,
+                ]);
+            }
+        }
+
+        foreach ($unavailable as $entry) {
+            OrderItemRemovedIngredient::create([
+                'order_item_id'   => $orderItem->id,
+                'inventory_id'    => $entry['inventory_id'],
+                'ingredient_name' => $entry['name'],
+                'reason'          => OrderItemRemovedIngredient::REASON_UNAVAILABLE,
+            ]);
+        }
+    }
+
+    /**
+     * The per-line sentences a priced cart shows ("No Pancake Syrup", "Garnish not
+     * available"), keyed by cart key. The cart page and the quantity sync both ask
+     * here, so they cannot word or judge it differently from checkout.
+     *
+     * @param  array<int, array<string, mixed>>  $pricedLines  CartPricing::price()['lines']
+     * @param  array<int,float>|null  $committed  Reuse a committedQuantities() map.
+     * @return array<string, list<string>>
+     */
+    public function cartRemovalLabels(array $pricedLines, ?int $branchId, ?array $committed = null): array
+    {
+        $lines = [];
+        $keys = [];
+        $labels = [];
+
+        foreach ($pricedLines as $line) {
+            $menuItem = $line['menu_item'] ?? null;
+            $size = $line['size'] ?? null;
+
+            if (! $menuItem || ($line['size_problem'] ?? null) !== null) {
+                continue;
+            }
+
+            foreach ($line['removed_names'] ?? [] as $name) {
+                $labels[(string) $line['cart_key']][] = OrderItemRemovedIngredient::labelFor($name, OrderItemRemovedIngredient::REASON_CUSTOMER);
+            }
+
+            // A size that cannot be sold has its own refusal on the line already,
+            // and the gate below would throw for it.
+            if ($size !== null && ! $menuItem->hasRecipe($size)) {
+                continue;
+            }
+
+            $keys[] = (string) $line['cart_key'];
+            $lines[] = [
+                'menu_item'             => $menuItem,
+                'quantity'              => (int) $line['quantity'],
+                'selected_option_ids'   => $line['option_ids'] ?? [],
+                'size'                  => $size,
+                'removed_inventory_ids' => $line['removed_inventory_ids'] ?? [],
+            ];
+        }
+
+        $settled = $lines ? $this->settleCart($lines, $branchId, false, $committed) : ['unavailable' => []];
+
+        foreach ($settled['unavailable'] as $i => $entries) {
+            foreach ($entries as $entry) {
+                $labels[$keys[$i]][] = OrderItemRemovedIngredient::labelFor($entry['name'], OrderItemRemovedIngredient::REASON_UNAVAILABLE);
+            }
+        }
+
+        return $labels;
     }
 
     /**
@@ -684,6 +874,11 @@ class InventoryDeductionService
      * UNSIZED LINE: requirementsForLine() with no size, unchanged — the
      * item's base recipe (or legacy link) plus add-ons.
      *
+     * EITHER WAY, what the line went out without (order_item_removed_ingredients)
+     * is left out of its recipe. Matched by inventory id and not by today's
+     * priority: a customer who was promised no syrup stays without it even if
+     * syrup is marked High later.
+     *
      * @return array<int,float>  [inventory_id => amount]
      */
     private function requirementsForOrderLine(Order $order, OrderItem $orderItem, MenuItem $menuItem): array
@@ -691,11 +886,16 @@ class InventoryDeductionService
         $quantity = (int) $orderItem->quantity;
         $selectedOptionIds = $orderItem->options->pluck('id')->all();
         $branchId = $order->branch_id !== null ? (int) $order->branch_id : null;
+        $leftOut = $this->leftOutInventoryIds($orderItem);
 
         if ($orderItem->isSized()) {
             $needs = [];
 
             foreach ($orderItem->sizeIngredients as $row) {
+                if (in_array((int) $row->inventory_id, $leftOut, true)) {
+                    continue;
+                }
+
                 $needs[$row->inventory_id] = ($needs[$row->inventory_id] ?? 0)
                     + ((float) $row->quantity * $quantity);
             }
@@ -703,7 +903,105 @@ class InventoryDeductionService
             return $this->addSelectedOptionRequirements($needs, $quantity, $selectedOptionIds, $branchId);
         }
 
-        return $this->requirementsForLine($menuItem, $quantity, $selectedOptionIds, $branchId);
+        return $this->requirementsForLine($menuItem, $quantity, $selectedOptionIds, $branchId, null, $leftOut);
+    }
+
+    /** @return int[] */
+    private function leftOutInventoryIds(OrderItem $orderItem): array
+    {
+        return $orderItem->removedIngredients
+            ->pluck('inventory_id')
+            ->filter()
+            ->map(fn ($id) => (int) $id)
+            ->all();
+    }
+
+    /**
+     * The LOW lines an order line is still carrying, per ONE unit: its frozen rows
+     * when sized, the live recipe otherwise, less what it already went out without.
+     *
+     * @return array<int,float>  [inventory_id => amount per unit]
+     */
+    private function lowLinesStillIncluded(OrderItem $orderItem, MenuItem $menuItem): array
+    {
+        $rows = $orderItem->isSized()
+            ? $orderItem->sizeIngredients->filter(fn ($row) => $row->isLow())
+            : $menuItem->lowIngredients();
+
+        $leftOut = $this->leftOutInventoryIds($orderItem);
+        $lines = [];
+
+        foreach ($rows as $row) {
+            if (! in_array((int) $row->inventory_id, $leftOut, true)) {
+                $lines[(int) $row->inventory_id] = $orderItem->isSized()
+                    ? (float) $row->quantity
+                    : $row->recipeQuantity();
+            }
+        }
+
+        return $lines;
+    }
+
+    /**
+     * A LOW ingredient never blocks. Staff may have taken the shelf down after the
+     * order was placed, or a line may have been marked Low since: rather than stop
+     * completion for a garnish, the line goes out without it and says so.
+     *
+     * Runs under deductWithLock()'s row locks. HIGH needs and add-ons are served
+     * first, then LOW lines, all or nothing per line, exactly as settleCart() does
+     * at placement. Written in the completion transaction, so it rolls back with
+     * everything else if a HIGH ingredient then refuses the order.
+     *
+     * @param  \Illuminate\Support\Collection  $locked  inventory rows keyed by id
+     */
+    private function leaveOutShortLowIngredients(Order $order, $locked): void
+    {
+        $pool = $locked->map(fn ($inv) => (float) $inv->quantity)->all();
+        $lowByLine = [];
+
+        foreach ($order->items as $orderItem) {
+            $menuItem = $orderItem->menuItem;
+
+            if (! $menuItem) {
+                continue;
+            }
+
+            $low = $this->lowLinesStillIncluded($orderItem, $menuItem);
+            $lowByLine[$orderItem->id] = $low;
+
+            foreach ($this->requirementsForOrderLine($order, $orderItem, $menuItem) as $invId => $amount) {
+                $notLow = $amount - (($low[$invId] ?? 0) * (int) $orderItem->quantity);
+
+                if (isset($pool[$invId])) {
+                    $pool[$invId] -= $notLow;
+                }
+            }
+        }
+
+        foreach ($order->items as $orderItem) {
+            foreach ($lowByLine[$orderItem->id] ?? [] as $invId => $perUnit) {
+                $need = $perUnit * (int) $orderItem->quantity;
+                $inv = $locked->get($invId);
+
+                if ($need <= 0 || ! $inv) {
+                    continue;
+                }
+
+                if ($pool[$invId] + 1e-9 >= $need) {
+                    $pool[$invId] -= $need;
+                    continue;
+                }
+
+                OrderItemRemovedIngredient::create([
+                    'order_item_id'   => $orderItem->id,
+                    'inventory_id'    => $invId,
+                    'ingredient_name' => (string) $inv->item_name,
+                    'reason'          => OrderItemRemovedIngredient::REASON_UNAVAILABLE,
+                ]);
+
+                $orderItem->unsetRelation('removedIngredients');
+            }
+        }
     }
 
     /**
@@ -723,8 +1021,11 @@ class InventoryDeductionService
     {
         $perUnit = [];
 
+        $priority = [];
+
         foreach ($menuItem->sizeRecipe($size) as $row) {
             $perUnit[$row->inventory_id] = ($perUnit[$row->inventory_id] ?? 0) + (float) $row->quantity;
+            $priority[$row->inventory_id] = $row->priority;
         }
 
         foreach ($perUnit as $inventoryId => $quantity) {
@@ -732,6 +1033,9 @@ class InventoryDeductionService
                 'order_item_id' => $orderItem->id,
                 'inventory_id'  => $inventoryId,
                 'quantity'      => $quantity,
+                // The level it was sold at: completion reads this copy, never
+                // the live size.
+                'priority'      => $priority[$inventoryId],
             ]);
         }
     }
@@ -765,6 +1069,11 @@ class InventoryDeductionService
         sort($ids);
         $locked = Inventory::whereIn('id', $ids)->lockForUpdate()->get()->keyBy('id');
 
+        // A LOW ingredient the shelf can no longer cover drops off its line here,
+        // so the re-check below only ever refuses for a HIGH one or an add-on.
+        $this->leaveOutShortLowIngredients($order, $locked);
+        $totals = $this->totalRequirements($order);
+
         // Final re-check under the lock.
         foreach ($totals as $invId => $needed) {
             $inv = $locked->get($invId);
@@ -794,6 +1103,12 @@ class InventoryDeductionService
             // the same answer totalRequirements() summed and locked above.
             $needs = $this->requirementsForOrderLine($order, $orderItem, $menuItem);
             if (empty($needs)) {
+                // Left with nothing because every line was removed: that is a
+                // real cost of zero, not a cost nobody recorded.
+                if ($orderItem->removedIngredients->isNotEmpty()) {
+                    $orderItem->ingredient_cost = 0;
+                    $orderItem->save();
+                }
                 continue;
             }
             // Use the MenuOption's live name for the human-readable reason.

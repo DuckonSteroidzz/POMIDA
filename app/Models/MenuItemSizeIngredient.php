@@ -14,15 +14,32 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class MenuItemSizeIngredient extends Model
 {
+    use Concerns\HasIngredientPriority;
+
+    public const PRIORITY_HIGH = 'high';
+
+    public const PRIORITY_LOW = 'low';
+
     protected $fillable = [
         'menu_item_size_id',
         'inventory_id',
         'quantity',
+        'priority',
+    ];
+
+    protected $attributes = [
+        'priority' => self::PRIORITY_HIGH,
     ];
 
     protected $casts = [
         'quantity' => 'decimal:3',
     ];
+
+    /** How much of the inventory row one serving uses — the same question on both recipe tables. */
+    public function recipeQuantity(): float
+    {
+        return (float) $this->quantity;
+    }
 
     public function size(): BelongsTo
     {

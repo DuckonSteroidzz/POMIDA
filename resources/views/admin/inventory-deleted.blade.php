@@ -95,7 +95,7 @@
                             @else
                                 (date not recorded)
                             @endif
-                            &middot; {{ $item->quantity }} {{ $item->unit }}
+                            &middot; {{ \App\Models\Inventory::formatQuantity($item->quantity) }} {{ $item->unit }}
                             @if($item->branch) &middot; {{ $item->branch->name }} @endif
                         </p>
                         @if($recipeLinks > 0 || $movementCount > 0)

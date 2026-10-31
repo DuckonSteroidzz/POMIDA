@@ -30,7 +30,7 @@ class AdminMiddleware
         // and always will be. The strict flag matters — without it PHP's loose
         // comparison lets some non-string role values slip past this array.
         if (!in_array($user->role, \App\Models\User::PORTAL_ROLES, true)) {
-            Auth::guard('admin')->logout();
+            \App\Support\SessionSide::end($request, \App\Support\SessionSide::STAFF);
 
             return redirect()->route('admin.login')
                 ->withErrors([
@@ -40,7 +40,7 @@ class AdminMiddleware
 
         // Check if account is active
         if (!$user->is_active) {
-            Auth::guard('admin')->logout();
+            \App\Support\SessionSide::end($request, \App\Support\SessionSide::STAFF);
 
             return redirect()->route('admin.login')
                 ->withErrors([

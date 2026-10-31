@@ -334,11 +334,22 @@ class MenuItem extends Model
      * The one per-row walk behind hasIngredientStock(), for the base recipe
      * (menu_item_ingredients.quantity_used) and a size recipe
      * (menu_item_size_ingredients.quantity) alike — same rule for both: every
-     * row whose inventory row exists must cover $servings of it.
+     * HIGH row whose inventory row exists must cover $servings of it.
+     *
+     * INGREDIENT PRIORITY (Defect Report 6): a LOW row is skipped here and in
+     * servingsCoveredBy() below, and those two walks are what every stock
+     * verdict comes from — the menu cards and item page, the admin Status
+     * column (menuCardState(), stockStatus()), sizeChoices() and
+     * orderBlockedReason(). A LOW ingredient cannot make an item out of stock
+     * or low on stock. An item whose lines are all LOW is never out of stock.
      */
     private function recipeCoversServings(iterable $recipe, string $quantityColumn, int $servings, ?array $reserved): bool
     {
         foreach ($recipe as $row) {
+            if ($row->isLow()) {
+                continue;
+            }
+
             $inv = $row->inventory; // eager-loaded by every caller
             if (!$inv) {
                 // Recipe line points at a missing inventory row — cannot
@@ -368,7 +379,7 @@ class MenuItem extends Model
         $max = null;
         foreach ($recipe as $row) {
             $inv = $row->inventory;
-            if (!$inv || (float) $row->{$quantityColumn} <= 0) {
+            if ($row->isLow() || !$inv || (float) $row->{$quantityColumn} <= 0) {
                 continue;
             }
             $servingsFromRow = (int) floor($this->freeQuantity($inv, $reserved) / (float) $row->{$quantityColumn});
@@ -376,6 +387,118 @@ class MenuItem extends Model
         }
 
         return $max === null ? null : max(0, $max);
+    }
+
+    /**
+     * INGREDIENT PRIORITY (Defect Report 6): the LOW lines of this item's recipe,
+     * or of $size's recipe when one is given (it replaces the base recipe, as
+     * everywhere). Empty for a size that cannot be sold. Reuses eager-loaded
+     * rows when the caller has them, else costs one query.
+     */
+    public function lowIngredients(MenuItemSize|int|null $size = null): EloquentCollection
+    {
+        if ($size !== null) {
+            try {
+                $rows = $this->sizeRecipe($size);
+            } catch (MenuItemSizeUnavailableException) {
+                return new EloquentCollection();
+            }
+        } else {
+            $rows = $this->relationLoaded('recipeIngredients')
+                ? $this->recipeIngredients
+                : $this->recipeIngredients()->with('inventory')->get();
+        }
+
+        return $rows->filter(fn ($row) => $row->isLow())->values();
+    }
+
+    /**
+     * What the "Remove Ingredients" choices offer: one entry per LOW line, with
+     * whether the shelf can still cover it. `servings` is how many it can cover
+     * (the item page greys a line out when the chosen quantity passes it);
+     * `available` is the verdict for $servings. Judged against stock open orders
+     * have not already spoken for, exactly as the rest of the stock rule is.
+     *
+     * @param  array<int,float>|null  $reserved  InventoryDeductionService::committedQuantities()
+     * @return list<array{inventory_id: int, name: string, servings: int, available: bool}>
+     */
+    public function removableIngredients(?array $reserved = null, MenuItemSize|int|null $size = null, int $servings = 1): array
+    {
+        $choices = [];
+
+        foreach ($this->lowIngredients($size) as $row) {
+            $inv = $row->inventory;
+            $perServing = $row->recipeQuantity();
+
+            if (! $inv || $perServing <= 0) {
+                continue;
+            }
+
+            $canCover = max(0, (int) floor($this->freeQuantity($inv, $reserved) / $perServing));
+
+            $choices[] = [
+                'inventory_id' => (int) $row->inventory_id,
+                'name'         => (string) $inv->item_name,
+                'servings'     => $canCover,
+                'available'    => $canCover >= max(1, $servings),
+            ];
+        }
+
+        return $choices;
+    }
+
+    /**
+     * The refusal for a list of ingredients to leave out of this item (or of
+     * $size), or null when every one may be removed. The server's half of "only
+     * LOW ingredients of that exact item and size": a HIGH ingredient, or one
+     * that belongs to something else, is refused however the request was built.
+     *
+     * $ignoreGone is for a cart that has already sat in the session: a line since
+     * deleted from the recipe is no longer in the item at all, so the customer
+     * gets what they asked for and nothing needs refusing.
+     *
+     * @param  int[]  $inventoryIds
+     */
+    public function removalRefusal(array $inventoryIds, MenuItemSize|int|null $size = null, bool $ignoreGone = false): ?string
+    {
+        if (empty($inventoryIds)) {
+            return null;
+        }
+
+        $low = $this->lowIngredients($size)->pluck('inventory_id')->map(fn ($id) => (int) $id)->all();
+
+        foreach ($inventoryIds as $inventoryId) {
+            if (in_array((int) $inventoryId, $low, true)) {
+                continue;
+            }
+
+            if ($ignoreGone && ! $this->recipeHasInventory((int) $inventoryId, $size)) {
+                continue;
+            }
+
+            $name = Inventory::whereKey((int) $inventoryId)->value('item_name');
+            $inThisRecipe = $this->recipeHasInventory((int) $inventoryId, $size);
+
+            return ($inThisRecipe && $name !== null ? $name : 'That ingredient')
+                . ' cannot be removed from ' . $this->name . '.';
+        }
+
+        return null;
+    }
+
+    private function recipeHasInventory(int $inventoryId, MenuItemSize|int|null $size): bool
+    {
+        if ($size !== null) {
+            try {
+                return $this->sizeRecipe($size)->contains(fn ($row) => (int) $row->inventory_id === $inventoryId);
+            } catch (MenuItemSizeUnavailableException) {
+                return false;
+            }
+        }
+
+        return $this->relationLoaded('recipeIngredients')
+            ? $this->recipeIngredients->contains(fn ($row) => (int) $row->inventory_id === $inventoryId)
+            : $this->recipeIngredients()->where('inventory_id', $inventoryId)->exists();
     }
 
     /**
@@ -774,5 +897,37 @@ class MenuItem extends Model
             'low_stock'   => false,
             'remaining'   => null,
         ];
+    }
+
+    /**
+     * The admin Menu Items "Status" badge — menuCardState() restated as one of
+     * five fixed states, so the admin table and the customer menu card are the
+     * same verdict by construction (never a second copy of the stock rules).
+     *
+     * Pass the same committedQuantities() map the customer menu passes, so
+     * "Out of Stock" / "Low Stock" mean "what a customer could still order".
+     * Independent of is_available, the admin's manual switch (own column).
+     *
+     * @return array{state: string, label: string, tone: string, remaining: ?int}
+     *   state is 'in_stock', 'low_stock', 'out_of_stock', 'no_recipe' or
+     *   'unavailable' (a sized item whose sizes are all switched off).
+     */
+    public function stockStatus(?array $reserved = null): array
+    {
+        $card = $this->menuCardState($reserved);
+
+        if ($card['unavailable']) {
+            return match ($card['label']) {
+                'Out of Stock'  => ['state' => 'out_of_stock', 'label' => 'Out of Stock', 'tone' => 'red',  'remaining' => null],
+                'No Recipe Set' => ['state' => 'no_recipe',    'label' => 'No Recipe Set', 'tone' => 'grey', 'remaining' => null],
+                default         => ['state' => 'unavailable',  'label' => 'Unavailable',  'tone' => 'grey', 'remaining' => null],
+            };
+        }
+
+        if ($card['low_stock']) {
+            return ['state' => 'low_stock', 'label' => 'Low Stock', 'tone' => 'amber', 'remaining' => $card['remaining']];
+        }
+
+        return ['state' => 'in_stock', 'label' => 'In Stock', 'tone' => 'green', 'remaining' => null];
     }
 }

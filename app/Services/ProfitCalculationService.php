@@ -121,7 +121,10 @@ class ProfitCalculationService
             ->join('orders', 'orders.id', '=', 'order_items.order_id')
             ->where('orders.status', 'completed')
             ->whereBetween('orders.completed_at', [$start, $end])
-            ->when($branchScope !== 'all', fn ($q) => $q->where('orders.branch_id', $branchScope));
+            ->when($branchScope !== 'all', fn ($q) => $q->where('orders.branch_id', $branchScope))
+            // A subquery on these same rows, not another query: tells
+            // unitIngredientCost() a true zero from a cost nobody recorded.
+            ->withExists('removedIngredients');
     }
 
     /**
@@ -469,6 +472,12 @@ class ProfitCalculationService
     private function unitIngredientCost(OrderItem $item, array &$costCounts, array $fallbackCosts = []): float
     {
         $snapshot = $item->ingredient_cost;
+
+        // A line that went out without its ingredients and recorded a zero really
+        // cost zero. It is not the "never recorded" case the fallback is for.
+        if ($snapshot !== null && (float) $snapshot === 0.0 && $item->removed_ingredients_exists) {
+            return 0.0;
+        }
 
         if ($snapshot !== null && (float) $snapshot > 0) {
             if ($item->ingredient_cost_estimated) {

@@ -1,5 +1,5 @@
 {
-    "database": "pomida_db",
+    "database": "pomida_db_testing",
     "tables": {
         "admin_bootstrap": {
             "type": "BASE TABLE",
@@ -99,6 +99,123 @@
                         "id"
                     ],
                     "on_delete": "SET NULL",
+                    "on_update": "RESTRICT"
+                }
+            ]
+        },
+        "admin_sign_ins": {
+            "type": "BASE TABLE",
+            "engine": "InnoDB",
+            "comment": "",
+            "columns": [
+                {
+                    "name": "id",
+                    "pos": 1,
+                    "default": null,
+                    "null": false,
+                    "data_type": "bigint",
+                    "type": "bigint(20) unsigned",
+                    "key": "PRI",
+                    "extra": "auto_increment",
+                    "comment": ""
+                },
+                {
+                    "name": "user_id",
+                    "pos": 2,
+                    "default": null,
+                    "null": false,
+                    "data_type": "bigint",
+                    "type": "bigint(20) unsigned",
+                    "key": "MUL",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "signed_in_at",
+                    "pos": 3,
+                    "default": "current_timestamp()",
+                    "null": false,
+                    "data_type": "timestamp",
+                    "type": "timestamp",
+                    "key": "",
+                    "extra": "on update current_timestamp()",
+                    "comment": ""
+                },
+                {
+                    "name": "browser",
+                    "pos": 4,
+                    "default": null,
+                    "null": false,
+                    "data_type": "varchar",
+                    "type": "varchar(60)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "os",
+                    "pos": 5,
+                    "default": null,
+                    "null": false,
+                    "data_type": "varchar",
+                    "type": "varchar(60)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "device_type",
+                    "pos": 6,
+                    "default": null,
+                    "null": false,
+                    "data_type": "varchar",
+                    "type": "varchar(20)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "ip_address",
+                    "pos": 7,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "varchar",
+                    "type": "varchar(45)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                }
+            ],
+            "indexes": [
+                {
+                    "name": "admin_sign_ins_user_id_signed_in_at_index",
+                    "unique": false,
+                    "primary": false,
+                    "columns": [
+                        "user_id",
+                        "signed_in_at"
+                    ]
+                },
+                {
+                    "name": "PRIMARY",
+                    "unique": true,
+                    "primary": true,
+                    "columns": [
+                        "id"
+                    ]
+                }
+            ],
+            "fks": [
+                {
+                    "name": "admin_sign_ins_user_id_foreign",
+                    "columns": [
+                        "user_id"
+                    ],
+                    "ref_table": "users",
+                    "ref_columns": [
+                        "id"
+                    ],
+                    "on_delete": "CASCADE",
                     "on_update": "RESTRICT"
                 }
             ]
@@ -2905,8 +3022,19 @@
                     "comment": ""
                 },
                 {
-                    "name": "created_at",
+                    "name": "priority",
                     "pos": 5,
+                    "default": "'high'",
+                    "null": false,
+                    "data_type": "enum",
+                    "type": "enum('high','low')",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "created_at",
+                    "pos": 6,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -2917,7 +3045,7 @@
                 },
                 {
                     "name": "updated_at",
-                    "pos": 6,
+                    "pos": 7,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -3285,8 +3413,19 @@
                     "comment": ""
                 },
                 {
-                    "name": "created_at",
+                    "name": "priority",
                     "pos": 5,
+                    "default": "'high'",
+                    "null": false,
+                    "data_type": "enum",
+                    "type": "enum('high','low')",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "created_at",
+                    "pos": 6,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -3297,7 +3436,7 @@
                 },
                 {
                     "name": "updated_at",
-                    "pos": 6,
+                    "pos": 7,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -4972,6 +5111,143 @@
                 }
             ]
         },
+        "order_item_removed_ingredients": {
+            "type": "BASE TABLE",
+            "engine": "InnoDB",
+            "comment": "",
+            "columns": [
+                {
+                    "name": "id",
+                    "pos": 1,
+                    "default": null,
+                    "null": false,
+                    "data_type": "bigint",
+                    "type": "bigint(20) unsigned",
+                    "key": "PRI",
+                    "extra": "auto_increment",
+                    "comment": ""
+                },
+                {
+                    "name": "order_item_id",
+                    "pos": 2,
+                    "default": null,
+                    "null": false,
+                    "data_type": "bigint",
+                    "type": "bigint(20) unsigned",
+                    "key": "MUL",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "inventory_id",
+                    "pos": 3,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "bigint",
+                    "type": "bigint(20) unsigned",
+                    "key": "MUL",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "ingredient_name",
+                    "pos": 4,
+                    "default": null,
+                    "null": false,
+                    "data_type": "varchar",
+                    "type": "varchar(255)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "reason",
+                    "pos": 5,
+                    "default": null,
+                    "null": false,
+                    "data_type": "enum",
+                    "type": "enum('customer','unavailable')",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "created_at",
+                    "pos": 6,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "timestamp",
+                    "type": "timestamp",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "updated_at",
+                    "pos": 7,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "timestamp",
+                    "type": "timestamp",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                }
+            ],
+            "indexes": [
+                {
+                    "name": "order_item_removed_ingredients_inventory_id_index",
+                    "unique": false,
+                    "primary": false,
+                    "columns": [
+                        "inventory_id"
+                    ]
+                },
+                {
+                    "name": "order_item_removed_ingredients_order_item_id_inventory_id_unique",
+                    "unique": true,
+                    "primary": false,
+                    "columns": [
+                        "order_item_id",
+                        "inventory_id"
+                    ]
+                },
+                {
+                    "name": "PRIMARY",
+                    "unique": true,
+                    "primary": true,
+                    "columns": [
+                        "id"
+                    ]
+                }
+            ],
+            "fks": [
+                {
+                    "name": "order_item_removed_ingredients_inventory_id_foreign",
+                    "columns": [
+                        "inventory_id"
+                    ],
+                    "ref_table": "inventory",
+                    "ref_columns": [
+                        "id"
+                    ],
+                    "on_delete": "SET NULL",
+                    "on_update": "RESTRICT"
+                },
+                {
+                    "name": "order_item_removed_ingredients_order_item_id_foreign",
+                    "columns": [
+                        "order_item_id"
+                    ],
+                    "ref_table": "order_items",
+                    "ref_columns": [
+                        "id"
+                    ],
+                    "on_delete": "CASCADE",
+                    "on_update": "RESTRICT"
+                }
+            ]
+        },
         "order_item_size_ingredients": {
             "type": "BASE TABLE",
             "engine": "InnoDB",
@@ -5022,8 +5298,19 @@
                     "comment": ""
                 },
                 {
-                    "name": "created_at",
+                    "name": "priority",
                     "pos": 5,
+                    "default": "'high'",
+                    "null": false,
+                    "data_type": "enum",
+                    "type": "enum('high','low')",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "created_at",
+                    "pos": 6,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -5034,7 +5321,7 @@
                 },
                 {
                     "name": "updated_at",
-                    "pos": 6,
+                    "pos": 7,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -6898,8 +7185,19 @@
                     "comment": ""
                 },
                 {
-                    "name": "password",
+                    "name": "email_verification_token",
                     "pos": 22,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "char",
+                    "type": "char(64)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "password",
+                    "pos": 23,
                     "default": null,
                     "null": false,
                     "data_type": "varchar",
@@ -6910,7 +7208,7 @@
                 },
                 {
                     "name": "remember_token",
-                    "pos": 23,
+                    "pos": 24,
                     "default": "NULL",
                     "null": true,
                     "data_type": "varchar",
@@ -6921,7 +7219,7 @@
                 },
                 {
                     "name": "created_at",
-                    "pos": 24,
+                    "pos": 25,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -6932,7 +7230,7 @@
                 },
                 {
                     "name": "updated_at",
-                    "pos": 25,
+                    "pos": 26,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",

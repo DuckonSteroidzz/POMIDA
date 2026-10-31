@@ -416,11 +416,7 @@ class LoyaltyAwardsTest extends TestCase
 
     private function verificationUrl(User $user): string
     {
-        return URL::temporarySignedRoute(
-            'customer.email-verification.verify',
-            now()->addMinutes(60),
-            ['id' => $user->id, 'hash' => sha1($user->email)]
-        );
+        return $user->issueEmailVerificationUrl();
     }
 
     public function test_verifying_the_email_pays_the_welcome_bonus(): void
@@ -466,9 +462,11 @@ class LoyaltyAwardsTest extends TestCase
             ['id' => $user->id, 'hash' => sha1('someone-else@example.test')]
         );
 
-        $this->get($url)->assertForbidden();
+        // A link for another address is refused (no longer valid), not honoured.
+        $this->get($url)->assertRedirect(route('customer.email-verification.pending'));
 
         $this->assertCount(0, $this->awards($user));
+        $this->assertNull($user->fresh()->email_verified_at);
     }
 
     public function test_portal_accounts_never_get_customer_bonuses(): void

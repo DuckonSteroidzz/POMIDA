@@ -20,8 +20,10 @@ use Tests\TestCase;
  * Pickup, logged-in Dine-In, and a guest holding only a table_session_token —
  * because "end the session for real" is the same server action regardless of
  * which one is live: log the customer guard out if signed in, then destroy
- * the whole session (session()->invalidate(), not a handful of forget()
- * calls) so nothing the client is still holding can be replayed.
+ * the whole customer side and the old session id (SessionSide::end(), not a
+ * handful of forget() calls) so nothing the client is still holding can be
+ * replayed. Staff on the same browser stay signed in: see
+ * SessionSideIndependenceTest.
  *
  * NOT covered here (and deliberately untouched by this feature): the
  * ninety-minute sweepIdle() table release, and the guest's own structural

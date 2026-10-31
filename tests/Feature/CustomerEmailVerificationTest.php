@@ -226,18 +226,185 @@ class CustomerEmailVerificationTest extends TestCase
             'email_verified_at' => null,
         ]);
 
-        $url = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+        $url = $user->issueEmailVerificationUrl();
+
+        // Verifying signs nobody in; the default flow is Pick-Up.
+        $this->get($url)->assertRedirect(route('customer.login', ['order_type' => 'pick_up']));
+
+        $this->assertNotNull($user->fresh()->email_verified_at);
+        $this->assertNull($user->fresh()->email_verification_token, 'the token is spent');
+        $this->assertGuest('customer');
+    }
+
+    // ── one-time links (Defect Report 6) ─────────────────────────────────────
+
+    private function unverifiedCustomer(string $tag): User
+    {
+        return User::create([
+            'name' => self::PREFIX . ' ' . $tag,
+            'email' => strtolower(self::PREFIX) . '-' . $tag . '-' . uniqid() . '@example.test',
+            'password' => self::STRONG_PASSWORD,
+            'contact_number' => '09171234567',
+            'role' => 'customer',
+            'is_active' => true,
+            'email_verified_at' => null,
+        ]);
+    }
+
+    public function test_a_used_link_says_it_was_used_and_changes_nothing(): void
+    {
+        $user = $this->unverifiedCustomer('used');
+        $url = $user->issueEmailVerificationUrl();
+
+        $this->get($url)->assertRedirect();
+        $verifiedAt = $user->fresh()->email_verified_at;
+        $this->assertNotNull($verifiedAt);
+
+        // Second click, from a clean browser state with a pending-page memory
+        // that must survive untouched.
+        $response = $this->withSession([\App\Support\VerificationFlow::SESSION_EMAIL => 'keep@example.test'])
+            ->get($url);
+
+        $response->assertRedirect(route('customer.login', ['order_type' => 'pick_up']));
+        $response->assertSessionHas('success', \App\Support\VerificationFlow::LINK_USED_MESSAGE);
+        $response->assertSessionHas(\App\Support\VerificationFlow::SESSION_EMAIL, 'keep@example.test');
+        $this->assertGuest('customer');
+        $this->assertSame($verifiedAt->timestamp, $user->fresh()->email_verified_at->timestamp, 'not re-confirmed');
+    }
+
+    public function test_a_used_link_does_not_log_in_even_a_signed_in_owner_of_the_account(): void
+    {
+        $user = $this->unverifiedCustomer('usedauth');
+        $url = $user->issueEmailVerificationUrl();
+        $this->get($url)->assertRedirect();
+
+        $this->get($url)->assertRedirect(route('customer.login', ['order_type' => 'pick_up']));
+        $this->assertGuest('customer');
+    }
+
+    public function test_resending_kills_the_older_link_and_only_the_newest_works(): void
+    {
+        $user = $this->unverifiedCustomer('resend');
+        $old = $user->issueEmailVerificationUrl();
+        $new = $user->issueEmailVerificationUrl();
+
+        $this->get($old)
+            ->assertRedirect(route('customer.email-verification.pending'))
+            ->assertSessionHas('error', \App\Support\VerificationFlow::LINK_STALE_MESSAGE);
+        $this->assertNull($user->fresh()->email_verified_at, 'the older link confirmed nothing');
+        $this->assertGuest('customer');
+
+        $this->get($new)->assertRedirect(route('customer.login', ['order_type' => 'pick_up']));
+        $this->assertNotNull($user->fresh()->email_verified_at);
+    }
+
+    public function test_the_real_resend_button_replaces_the_link_from_the_first_email(): void
+    {
+        Mail::fake();
+
+        $payload = $this->registerPayload('realresend');
+        $this->post(route('customer.register.post'), $payload);
+        $user = User::where('email', $payload['email'])->firstOrFail();
+
+        $this->post(route('customer.email-verification.request'), ['email' => $payload['email']]);
+        // The resend mails after the response; terminate to run it, as the server would.
+        $this->app->terminate();
+
+        $links = [];
+        Mail::assertSent(VerifyEmailMail::class, function ($mail) use (&$links) {
+            $links[] = $mail->verificationUrl;
+
+            return true;
+        });
+        $this->assertCount(2, $links, 'sign-up mail + resend mail');
+
+        $this->get($links[0])->assertSessionHas('error', \App\Support\VerificationFlow::LINK_STALE_MESSAGE);
+        $this->assertNull($user->fresh()->email_verified_at);
+
+        $this->get($links[1])->assertSessionMissing('error');
+        $this->assertNotNull($user->fresh()->email_verified_at);
+    }
+
+    public function test_a_link_for_the_old_email_address_cannot_confirm_the_new_one(): void
+    {
+        $user = $this->unverifiedCustomer('oldaddr');
+        $old = $user->issueEmailVerificationUrl();
+
+        $user->forceFill(['email' => strtolower(self::PREFIX) . '-newaddr-' . uniqid() . '@example.test'])->save();
+
+        $this->get($old)
+            ->assertRedirect(route('customer.email-verification.pending'))
+            ->assertSessionHas('error', \App\Support\VerificationFlow::LINK_STALE_MESSAGE);
+        $this->assertNull($user->fresh()->email_verified_at);
+
+        // Even the link of the OLD address that was already used: still "no longer valid".
+        // And a link minted for the new address works.
+        $this->get($user->fresh()->issueEmailVerificationUrl())->assertRedirect();
+        $this->assertNotNull($user->fresh()->email_verified_at);
+    }
+
+    public function test_a_link_with_no_token_or_a_wrong_token_confirms_nothing(): void
+    {
+        $user = $this->unverifiedCustomer('notoken');
+        $user->issueEmailVerificationUrl();
+
+        // Signed and unexpired, but carrying no token (a link from before tokens existed).
+        $noToken = \Illuminate\Support\Facades\URL::temporarySignedRoute(
             'customer.email-verification.verify',
             now()->addMinutes(60),
             ['id' => $user->id, 'hash' => sha1($user->email)]
         );
+        $wrong = \Illuminate\Support\Facades\URL::temporarySignedRoute(
+            'customer.email-verification.verify',
+            now()->addMinutes(60),
+            ['id' => $user->id, 'hash' => sha1($user->email), 'token' => 'not-the-token']
+        );
 
-        // Changed Oct 2026: a link with no `flow` (like one emailed before
-        // this change) opens the Pick-Up login. Verifying signs nobody in.
-        $this->get($url)->assertRedirect(route('customer.login', ['order_type' => 'pick_up']));
+        foreach ([$noToken, $wrong] as $url) {
+            $this->get($url)->assertSessionHas('error', \App\Support\VerificationFlow::LINK_STALE_MESSAGE);
+            $this->assertNull($user->fresh()->email_verified_at);
+        }
+    }
 
+    public function test_an_unused_link_still_expires_after_sixty_minutes(): void
+    {
+        $user = $this->unverifiedCustomer('expiry');
+        $url = $user->issueEmailVerificationUrl();
+
+        $this->travel(61)->minutes();
+        $this->get($url)->assertForbidden();
+        $this->assertNull($user->fresh()->email_verified_at);
+
+        $this->travelBack();
+        $this->get($url)->assertRedirect();
         $this->assertNotNull($user->fresh()->email_verified_at);
-        $this->assertGuest('customer');
+    }
+
+    public function test_the_token_is_stored_hashed_and_never_in_the_clear(): void
+    {
+        $user = $this->unverifiedCustomer('hashed');
+        $q = [];
+        parse_str((string) parse_url($user->issueEmailVerificationUrl(), PHP_URL_QUERY), $q);
+
+        $stored = DB::table('users')->where('id', $user->id)->value('email_verification_token');
+        $this->assertSame(hash('sha256', $q['token']), $stored);
+        $this->assertNotSame($q['token'], $stored);
+        $this->assertArrayNotHasKey('email_verification_token', $user->fresh()->toArray());
+    }
+
+    public function test_the_welcome_bonus_is_paid_once_however_many_times_the_link_is_opened(): void
+    {
+        $user = $this->unverifiedCustomer('welcomeonce');
+        $url = $user->issueEmailVerificationUrl();
+
+        $this->get($url);
+        $this->get($url);
+        $this->get($url);
+
+        $this->assertSame(
+            1,
+            DB::table('loyalty_awards')->where('user_id', $user->id)->count()
+        );
     }
 
     public function test_a_verification_link_whose_hash_no_longer_matches_the_account_is_rejected(): void
@@ -258,7 +425,9 @@ class CustomerEmailVerificationTest extends TestCase
             ['id' => $user->id, 'hash' => sha1('someone-elses-email@example.test')]
         );
 
-        $this->get($url)->assertForbidden();
+        // Since the one-time-link change a signed link for a different address
+        // is "no longer valid" (a friendly redirect) rather than a bare 403.
+        $this->get($url)->assertRedirect(route('customer.email-verification.pending'));
 
         $this->assertNull($user->fresh()->email_verified_at);
     }

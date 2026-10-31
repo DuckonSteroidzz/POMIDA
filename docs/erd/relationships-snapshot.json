@@ -9,6 +9,15 @@
         "parent_col": "id"
     },
     {
+        "model": "AdminSignIn",
+        "method": "user",
+        "kind": "BelongsTo",
+        "child_table": "admin_sign_ins",
+        "child_col": "user_id",
+        "parent_table": "users",
+        "parent_col": "id"
+    },
+    {
         "model": "Branch",
         "method": "users",
         "kind": "HasMany",
@@ -531,6 +540,33 @@
         "child_table": "order_items",
         "child_col": "menu_item_size_id",
         "parent_table": "menu_item_sizes",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItem",
+        "method": "removedIngredients",
+        "kind": "HasMany",
+        "child_table": "order_item_removed_ingredients",
+        "child_col": "order_item_id",
+        "parent_table": "order_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItemRemovedIngredient",
+        "method": "orderItem",
+        "kind": "BelongsTo",
+        "child_table": "order_item_removed_ingredients",
+        "child_col": "order_item_id",
+        "parent_table": "order_items",
+        "parent_col": "id"
+    },
+    {
+        "model": "OrderItemRemovedIngredient",
+        "method": "inventory",
+        "kind": "BelongsTo",
+        "child_table": "order_item_removed_ingredients",
+        "child_col": "inventory_id",
+        "parent_table": "inventory",
         "parent_col": "id"
     },
     {

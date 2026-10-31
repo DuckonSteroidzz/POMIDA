@@ -106,6 +106,13 @@ class AuthFlowSessionGuardCoverageTest extends TestCase
         $session = ["{$sessionKey}.email" => 'guard-test@example.test'];
         if ($verified) {
             $session["{$sessionKey}.verified"] = true;
+
+            // Step three draws its form only while the reset is really open
+            // (Defect Report 6), and an open reset has a token row.
+            \Illuminate\Support\Facades\DB::table('password_reset_tokens')->updateOrInsert(
+                ['email' => 'guard-test@example.test'],
+                ['token' => 'not-a-real-hash', 'created_at' => now()]
+            );
         }
 
         $html = $this->withSession($session)->get($uri)->assertOk()->getContent();

@@ -396,6 +396,10 @@
                                             @endforeach
                                         </div>
                                         @endif
+                                        {{-- The sale-time snapshot, so a later recipe change cannot rewrite it. --}}
+                                        @if($item->removedIngredients->isNotEmpty())
+                                        <p class="mt-1.5 text-xs font-semibold text-peach-deep/70">{{ implode(' · ', $item->removalLabels()) }}</p>
+                                        @endif
                                     </div>
                                 </div>
                                 <span class="shrink-0 font-display text-sm font-black text-peach-deep sm:text-base">₱{{ number_format($item->subtotal, 2) }}</span>

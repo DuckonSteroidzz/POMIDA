@@ -421,6 +421,9 @@
                                          change what an in-progress order card says was ordered. --}}
                                     <p class="item-options mt-0.5 truncate text-xs font-medium text-peach-red/80">{{ $item->options->map(fn($option) => $option->pivot->option_name ?? $option->name)->implode(', ') }}</p>
                                     @endif
+                                    @if($item->removedIngredients->isNotEmpty())
+                                    <p class="mt-0.5 text-xs font-semibold text-peach-deep/70">{{ implode(' · ', $item->removalLabels()) }}</p>
+                                    @endif
                                     <span class="item-price mt-0.5 block text-[0.875rem] text-peach-deep/45">₱{{ number_format($item->item_price, 2) }} each</span>
                                 </div>
                                 <span class="item-subtotal shrink-0 font-display text-sm font-black text-peach-deep sm:text-base">₱{{ number_format($item->subtotal, 2) }}</span>

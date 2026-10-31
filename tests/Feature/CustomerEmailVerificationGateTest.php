@@ -117,12 +117,19 @@ class CustomerEmailVerificationGateTest extends TestCase
         return $q;
     }
 
+    /**
+     * A real link: the account's live token (User::issueEmailVerificationUrl())
+     * with $extra query values overriding or adding to it (for example an
+     * unknown `flow`), re-signed so the signature stays valid.
+     */
     private function signedLink(User $user, array $extra = []): string
     {
+        $issued = $this->queryOf($user->issueEmailVerificationUrl());
+
         return URL::temporarySignedRoute(
             'customer.email-verification.verify',
             now()->addMinutes(60),
-            array_merge(['id' => $user->id, 'hash' => sha1($user->email)], $extra)
+            array_merge(['id' => $user->id, 'hash' => sha1($user->email), 'token' => $issued['token']], $extra)
         );
     }
 

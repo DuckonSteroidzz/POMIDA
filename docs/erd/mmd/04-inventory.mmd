@@ -1,4 +1,4 @@
-%% POMIDA ERD - POMIDA — Module 4: Inventory - generated 2026-10-22 from pomida_db
+%% POMIDA ERD - POMIDA — Module 4: Inventory - generated 2026-10-31 from pomida_db_testing
 %% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
 %% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
 erDiagram
@@ -25,6 +25,7 @@ erDiagram
         bigint menu_item_id FK "UK with inventory_id"
         bigint inventory_id FK "UK with menu_item_id"
         decimal(10_3) quantity_used
+        enum priority
         timestamp created_at
         timestamp updated_at
     }
@@ -33,6 +34,7 @@ erDiagram
         bigint menu_item_size_id FK "UK with inventory_id"
         bigint inventory_id FK "UK with menu_item_size_id"
         decimal(12_3) quantity
+        enum priority
         timestamp created_at
         timestamp updated_at
     }

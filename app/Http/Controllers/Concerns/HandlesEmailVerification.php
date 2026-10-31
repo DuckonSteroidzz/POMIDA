@@ -45,20 +45,56 @@ trait HandlesEmailVerification
     public function verifyEmail(Request $request, $id, $hash)
     {
         $user = User::find($id);
+        $flow = VerificationFlow::normalize($request->query('flow'));
 
-        if (! $user || ! hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
+        if (! $user) {
             abort(403, 'This verification link is invalid.');
         }
 
-        if (! $user->hasVerifiedEmail()) {
-            $user->markEmailAsVerified();
-            event(new Verified($user));
-
-            // The one-time welcome bonus (config/loyalty.php). Only on the
-            // transition: a second click on the link lands outside this `if`,
-            // and the ledger's unique key would refuse a repeat anyway.
-            \App\Services\Loyalty::welcome($user);
+        // A link minted for an address the account no longer has must never
+        // confirm the new one — checked before "already used" so it cannot
+        // even be mistaken for a link that worked.
+        if (! hash_equals(sha1($user->getEmailForVerification()), (string) $hash)) {
+            return $this->staleVerificationLink();
         }
+
+        // ONE-TIME USE. Once the account is confirmed, no link does anything
+        // else: no login, no session change (the forget() below is skipped),
+        // just the explanation and a way to the right login page.
+        if ($user->hasVerifiedEmail()) {
+            return VerificationFlow::redirectAfterVerification($flow, VerificationFlow::LINK_USED_MESSAGE);
+        }
+
+        // The link must carry the token of the NEWEST email sent
+        // (User::issueEmailVerificationUrl()). A Resend replaced it, so older
+        // links, and links sent before tokens existed, stop here.
+        $token = (string) $request->query('token', '');
+        $stored = (string) $user->email_verification_token;
+
+        if ($token === '' || $stored === '' || ! hash_equals($stored, hash('sha256', $token))) {
+            return $this->staleVerificationLink();
+        }
+
+        // Spend the token and confirm in ONE conditional UPDATE, so two clicks
+        // (or a double-tap) cannot both succeed: whoever loses sees 0 rows.
+        $claimed = User::whereKey($user->getKey())
+            ->whereNull('email_verified_at')
+            ->where('email_verification_token', $stored)
+            ->update(['email_verified_at' => now(), 'email_verification_token' => null]);
+
+        if ($claimed !== 1) {
+            return User::whereKey($user->getKey())->whereNotNull('email_verified_at')->exists()
+                ? VerificationFlow::redirectAfterVerification($flow, VerificationFlow::LINK_USED_MESSAGE)
+                : $this->staleVerificationLink();
+        }
+
+        $user->refresh();
+        event(new Verified($user));
+
+        // The one-time welcome bonus (config/loyalty.php). Only the click that
+        // claimed the token reaches here, and the ledger's unique key would
+        // refuse a repeat anyway.
+        \App\Services\Loyalty::welcome($user);
 
         // The "check your email" page's memory of this address is finished with.
         session()->forget([VerificationFlow::SESSION_EMAIL, VerificationFlow::SESSION_FLOW]);
@@ -71,9 +107,18 @@ trait HandlesEmailVerification
                 ->with('success', 'Your email address has been verified. Thanks!');
         }
 
-        return VerificationFlow::redirectAfterVerification(
-            VerificationFlow::normalize($request->query('flow'))
-        );
+        return VerificationFlow::redirectAfterVerification($flow);
+    }
+
+    /**
+     * A link that is signed and unexpired but no longer the live one. Sends the
+     * visitor to the check-your-email page (which has the Resend box), with
+     * the reason. Changes nothing: no login, no session keys, no account row.
+     */
+    private function staleVerificationLink()
+    {
+        return redirect()->route('customer.email-verification.pending')
+            ->with('error', VerificationFlow::LINK_STALE_MESSAGE);
     }
 
     /**

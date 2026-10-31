@@ -88,6 +88,36 @@ final class SingleSession
     private const SESSION_KEY = 'single_session';
 
     /**
+     * Why a guard's login was ended by a request from the OTHER side of this
+     * browser, kept until that side's own tab next asks. See
+     * EnforceSingleSession::handle().
+     */
+    private const ENDED_KEY = 'single_session_ended';
+
+    /**
+     * Every session path this class keeps for one guard, for
+     * App\Support\SessionSide.
+     *
+     * @return string[]
+     */
+    public static function sessionPaths(string $guard): array
+    {
+        return [self::SESSION_KEY . '.' . $guard, self::ENDED_KEY . '.' . $guard];
+    }
+
+    /** Remember why $guard's login ended, for that side's next request. */
+    public static function rememberEnded(Request $request, string $guard, string $reason): void
+    {
+        $request->session()->put(self::ENDED_KEY . '.' . $guard, $reason);
+    }
+
+    /** The reason left by rememberEnded(), once. */
+    public static function pullEnded(Request $request, string $guard): ?string
+    {
+        return $request->session()->pull(self::ENDED_KEY . '.' . $guard);
+    }
+
+    /**
      * Make the account signed in on $guard in this request the only live
      * session of that account. Call it after the login has succeeded and the
      * session has been regenerated.
@@ -108,6 +138,7 @@ final class SingleSession
         $auth->getProvider()->updateRememberToken($user, $token);
 
         $request->session()->put(self::SESSION_KEY . '.' . $guard, self::fingerprint($token));
+        $request->session()->forget(self::ENDED_KEY . '.' . $guard);
     }
 
     /**

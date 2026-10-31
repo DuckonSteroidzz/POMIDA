@@ -992,6 +992,7 @@
 
                             'name' => $item->displayName(),
 
+                            'removals' => $item->removalLabels(),
 
                             'subtotal' => number_format((float) $item->subtotal, 2),
 
@@ -1015,7 +1016,12 @@
                     <p class="pc-item">
 
 
-                        <span><span class="qty">{{ $item->quantity }}×</span> {{ $item->displayName() }}</span>
+                        <span>
+                            <span class="qty">{{ $item->quantity }}×</span> {{ $item->displayName() }}
+                            @if($item->removedIngredients->isNotEmpty())
+                            <span style="display:block;font-size:0.72rem;font-weight:700;color:#C0392B;">{{ implode(' · ', $item->removalLabels()) }}</span>
+                            @endif
+                        </span>
 
 
                         <span class="price">₱{{ number_format($item->subtotal, 2) }}</span>
@@ -2045,6 +2051,72 @@ function getManualCardSizes(card)
     }
 }
 
+/*
+ * Remove Ingredients (Defect Report 6): the card's LOW lines as shipped by the
+ * page — {"base": [...]} or {"<size id>": [...]}, each entry
+ * {inventory_id, name, servings, available}. storeManualOrder() re-checks them.
+ */
+function getManualCardRemovable(card, sizeId)
+{
+    try {
+        const parsed = JSON.parse(card.dataset.removable || '{}');
+        const rows = parsed[sizeId ? String(sizeId) : 'base'];
+        return Array.isArray(rows) ? rows : [];
+    } catch (error) {
+        return [];
+    }
+}
+
+/* The choices for the size ticked right now, or the item's own when unsized. */
+function renderManualRemovals()
+{
+    const wrap = document.getElementById('manualRemovalsWrap');
+    const list = document.getElementById('manualRemovalsList');
+
+    if (!wrap || !list || !manualOptionTarget) {
+        return;
+    }
+
+    const size = selectedManualSize();
+    const rows = getManualCardRemovable(manualOptionTarget, size ? size.id : null);
+
+    list.innerHTML = '';
+    wrap.style.display = rows.length > 0 ? 'block' : 'none';
+
+    rows.forEach(function(row) {
+        const label = document.createElement('label');
+        label.style.cssText = `
+            display:flex;
+            align-items:center;
+            gap:0.55rem;
+            padding:0.65rem 0.75rem;
+            border:1px solid #ead8d2;
+            border-radius:8px;
+            background:#fff;
+            cursor:${row.available ? 'pointer' : 'not-allowed'};
+            opacity:${row.available ? '1' : '0.6'};
+        `;
+
+        label.innerHTML = `
+            <input
+                type="checkbox"
+                class="manual-removal-check"
+                value="${escapeManualHtml(row.inventory_id)}"
+                data-name="${escapeManualHtml(row.name)}"
+                ${row.available ? '' : 'disabled'}
+                style="width:17px;height:17px;accent-color:#C0392B;"
+            >
+            <span style="font-weight:700;color:#5A2920;font-size:0.8rem;">
+                ${row.available
+                    ? 'Remove ' + escapeManualHtml(row.name)
+                    : escapeManualHtml(row.name) + '<span style="display:block;font-size:0.62rem;color:#C0392B;text-transform:uppercase;">Not available today</span>'}
+            </span>
+        `;
+
+        list.appendChild(label);
+    });
+}
+
 /* The size ticked in the modal, or null. */
 function selectedManualSize()
 {
@@ -2076,7 +2148,7 @@ function addManualItem(id)
 
     // A sized item always goes through the modal: a size must be picked
     // (storeManualOrder() refuses a sized line without one).
-    if (options.length > 0 || sizes.length > 0) {
+    if (options.length > 0 || sizes.length > 0 || getManualCardRemovable(card, null).length > 0) {
         openManualOptions(card, options, sizes);
         return;
     }
@@ -2199,6 +2271,7 @@ function openManualOptions(card, options, sizes)
         list.appendChild(label);
     });
 
+    renderManualRemovals();
     updateManualOptionPreview();
 
     modal.style.display = 'flex';
@@ -2265,12 +2338,23 @@ function confirmManualOptions()
         });
     });
 
-    addManualItemToCart(manualOptionTarget, selectedOptions, size);
+    const removedIngredients = [];
+
+    document.querySelectorAll('.manual-removal-check:checked').forEach(function(check) {
+        removedIngredients.push({
+            id: parseInt(check.value, 10),
+            name: check.dataset.name
+        });
+    });
+
+    addManualItemToCart(manualOptionTarget, selectedOptions, size, removedIngredients);
     closeManualOptions();
 }
 
-function addManualItemToCart(card, selectedOptions, size)
+function addManualItemToCart(card, selectedOptions, size, removedIngredients)
 {
+    removedIngredients = removedIngredients || [];
+
     const id = parseInt(card.dataset.id, 10);
     const itemName = card.querySelector('.manual-item-name').textContent.trim();
     // A sized line is named and priced by its size (Phase 2).
@@ -2286,7 +2370,17 @@ function addManualItemToCart(card, selectedOptions, size)
         });
 
     // Regular and Large are separate lines; an unsized key is unchanged.
-    const cartKey = id + (size ? '_s' + size.id : '') + '_' + (optionIds.length ? optionIds.join('-') : 'none');
+    // Different removals are a different line too; none leaves the key as it was.
+    const removedIds = removedIngredients
+        .map(function(removed) {
+            return removed.id;
+        })
+        .sort(function(a, b) {
+            return a - b;
+        });
+
+    const cartKey = id + (size ? '_s' + size.id : '') + '_' + (optionIds.length ? optionIds.join('-') : 'none')
+        + (removedIds.length ? '_r' + removedIds.join('-') : '');
 
     let optionTotal = 0;
 
@@ -2304,7 +2398,8 @@ function addManualItemToCart(card, selectedOptions, size)
             price: finalPrice,
             quantity: 1,
             options: selectedOptions,
-            sizeId: size ? size.id : null
+            sizeId: size ? size.id : null,
+            removed: removedIngredients
         };
     } else {
         manualCart[cartKey].quantity++;
@@ -2361,6 +2456,12 @@ function renderManualCart()
             }).join(', ')
             : '';
 
+        const removedText = (item.removed || [])
+            .map(function(removed) {
+                return 'No ' + escapeManualHtml(removed.name);
+            })
+            .join(' · ');
+
         const row = document.createElement('div');
 
         row.style.cssText = `
@@ -2392,6 +2493,17 @@ function renderManualCart()
                             color:#8A6A61;
                             margin-top:0.2rem;
                         ">${optionText}</div>`
+                        : ''
+                }
+
+                ${
+                    removedText
+                        ? `<div style="
+                            font-size:0.67rem;
+                            font-weight:700;
+                            color:#C0392B;
+                            margin-top:0.2rem;
+                        ">${removedText}</div>`
                         : ''
                 }
 
@@ -2496,6 +2608,12 @@ function renderManualCart()
                             value="${option.id}"
                         >
                     `;
+                }).join('')
+            }
+
+            ${
+                (item.removed || []).map(function(removed) {
+                    return `<input type="hidden" name="items[${safeKey}][removed_ingredients][]" value="${removed.id}">`;
                 }).join('')
             }
         `;
@@ -2908,6 +3026,13 @@ function openOrderDetails(button) {
             name.appendChild(qty);
             name.appendChild(document.createTextNode(' ' + (item.name || '')));
 
+            if (item.removals && item.removals.length) {
+                const removals = document.createElement('span');
+                removals.style.cssText = 'display:block;font-size:0.72rem;font-weight:700;color:#C0392B;';
+                removals.textContent = item.removals.join(' · ');
+                name.appendChild(removals);
+            }
+
             const price = document.createElement('span');
             price.className = 'price';
             price.textContent = '₱' + item.subtotal;
@@ -3072,6 +3197,8 @@ document.addEventListener('DOMContentLoaded', function() {
         ) {
             if (event.target.classList.contains('manual-size-radio')) {
                 document.getElementById('manualSizeError').style.display = 'none';
+                // Each size has its own recipe, so its own removable lines.
+                renderManualRemovals();
             }
             updateManualOptionPreview();
         }
@@ -3276,6 +3403,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 })
                 : null;
 
+            // The line's removals, named from the same list the modal offers.
+            const rowRemovable = getManualCardRemovable(card, rowSize ? rowSize.id : null);
+            const rowRemoved = (row.removed_ingredients || [])
+                .map(Number)
+                .map(function (inventoryId) {
+                    const known = rowRemovable.find(function (entry) {
+                        return Number(entry.inventory_id) === inventoryId;
+                    });
+                    return known ? { id: inventoryId, name: known.name } : null;
+                })
+                .filter(Boolean);
+
             manualCart[key] = {
                 key: key,
                 id: parseInt(row.menu_item_id, 10),
@@ -3283,7 +3422,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 price: (rowSize ? (parseFloat(rowSize.price) || 0) : (parseFloat(card.dataset.price) || 0)) + optionTotal,
                 quantity: parseInt(row.quantity, 10) || 1,
                 options: chosen,
-                sizeId: rowSize ? rowSize.id : null
+                sizeId: rowSize ? rowSize.id : null,
+                removed: rowRemoved
             };
         });
 
@@ -3583,6 +3723,18 @@ document.addEventListener('DOMContentLoaded', function() {
                             $itemMissingRecipe = $itemIsSized
                                 ? $manualSizes->where('orderable', true)->isEmpty()
                                 : $item->isMissingRecipe();
+
+                            // Remove Ingredients: the LOW lines this card can offer,
+                            // per size when sized (each size has its own recipe).
+                            $manualRemovable = [];
+                            if ($itemIsSized) {
+                                foreach ($manualSizes as $manualSize) {
+                                    $manualRemovable[$manualSize['id']] = $item->removableIngredients($reserved ?? null, $manualSize['id']);
+                                }
+                            } else {
+                                $manualRemovable['base'] = $item->removableIngredients($reserved ?? null);
+                            }
+
                             $itemBlockedText = ($itemIsSized && ! $manualSizes->contains('label', 'No Recipe Set'))
                                 ? 'Unavailable'
                                 : 'No Recipe Set';
@@ -3599,6 +3751,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             data-price="{{ $item->price }}"
                             data-options="{{ $item->options->toJson() }}"
                             data-sizes="{{ $manualSizes->toJson() }}"
+                            data-removable="{{ json_encode($manualRemovable) }}"
                             @if($itemMissingRecipe)
                                 disabled
                                 title="{{ $itemIsSized ? 'No size of this item can be sold yet — each size needs its own recipe.' : 'No recipe set — this item cannot be added to an order yet.' }}"
@@ -4239,6 +4392,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     gap:0.5rem;
                 "
             ></div>
+            </div>
+
+            <div id="manualRemovalsWrap" style="display:none;margin-top:0.85rem;">
+                <div style="font-size:0.78rem;color:#8A6A61;margin-bottom:0.65rem;">
+                    Remove ingredients the customer does not want. The price stays the same.
+                </div>
+
+                <div id="manualRemovalsList" style="display:grid;gap:0.5rem;"></div>
             </div>
 
             <div

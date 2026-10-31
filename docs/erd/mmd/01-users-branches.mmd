@@ -1,4 +1,4 @@
-%% POMIDA ERD - POMIDA — Module 1: Users & Branches - generated 2026-10-22 from pomida_db
+%% POMIDA ERD - POMIDA — Module 1: Users & Branches - generated 2026-10-31 from pomida_db_testing
 %% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
 %% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
 erDiagram
@@ -24,6 +24,7 @@ erDiagram
         varchar(6) verification_code
         timestamp verified_at
         timestamp email_verified_at
+        char(64) email_verification_token
         varchar(255) password
         varchar(100) remember_token
         timestamp created_at
@@ -51,9 +52,19 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    admin_sign_ins {
+        bigint id PK
+        bigint user_id FK
+        timestamp signed_in_at
+        varchar(60) browser
+        varchar(60) os
+        varchar(20) device_type
+        varchar(45) ip_address
+    }
 
     branches |o--o{ users : "employs"
     users |o--o{ admin_bootstrap : "is recorded as first admin in"
+    users ||--o{ admin_sign_ins : "signs in as"
 
     classDef mod_users fill:#dbeafe,stroke:#2563eb,stroke-width:2px,color:#111827
     classDef mod_menu fill:#fef3c7,stroke:#d97706,stroke-width:2px,color:#111827
@@ -61,4 +72,4 @@ erDiagram
     classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
     classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
     classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
-    class users,branches,admin_bootstrap mod_users
+    class users,branches,admin_bootstrap,admin_sign_ins mod_users

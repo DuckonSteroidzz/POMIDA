@@ -55,6 +55,16 @@
     login page happens here, once, for every page that includes this partial.
     Same latch as the reload.
 
+    THE OTHER TAB (Defect Report 6)
+    -------------------------------
+    A customer and staff can share one browser, and so one session. A login or
+    logout in the other tab correctly rotates the CSRF token, which leaves this
+    tab holding a dead one even though this side is still signed in. So when the
+    tab comes back to the front, the live token is read again and written to the
+    meta tag and to every form's hidden _token, native forms included. Each side
+    asks its own read-only endpoint: EnforceSingleSession answers a request for
+    the login page of the side it came from.
+
     Scope is deliberately same-origin only, so nothing here can leak a CSRF
     token to a third party.
 --}}
@@ -71,6 +81,36 @@
         var meta = document.querySelector('meta[name="csrf-token"]');
         return meta ? meta.getAttribute('content') : '';
     }
+
+    var TOKEN_URL = @json(route(request()->is('admin', 'admin/*') ? 'admin.session-token' : 'customer.session-token'));
+    var refreshingToken = false;
+
+    function refreshToken() {
+        if (refreshingToken || document.hidden || typeof window.fetch !== 'function') { return; }
+        refreshingToken = true;
+
+        function done() { refreshingToken = false; }
+
+        // window.fetch, once wrapped below: a session that has really ended is
+        // answered here the same way as on any other background request.
+        window.fetch(TOKEN_URL, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+            .then(function (response) { return response.ok ? response.json() : null; })
+            .then(function (data) {
+                if (!data || !data.token) { return; }
+                var meta = document.querySelector('meta[name="csrf-token"]');
+                if (meta) { meta.setAttribute('content', data.token); }
+                document.querySelectorAll('input[name="_token"]').forEach(function (input) {
+                    input.value = data.token;
+                });
+            })
+            .then(done, done);
+    }
+
+    document.addEventListener('visibilitychange', refreshToken);
+    window.addEventListener('focus', refreshToken);
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted) { refreshToken(); }
+    });
 
     // Exposed so page scripts can ask for the live token rather than a
     // server-rendered literal.

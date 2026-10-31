@@ -5,10 +5,20 @@
 
 @section('content')
 
-    <p class="hint">
-        Enter the email address on your admin or staff account and we will send
-        you a 6-digit verification code.
-    </p>
+    @if (session('reset_expired'))
+
+        <div class="alert alert-warning" role="alert" data-reset-expired>
+            {{ session('reset_expired') }}
+        </div>
+
+    @else
+
+        <p class="hint">
+            Enter the email address on your admin or staff account and we will send
+            you a 6-digit verification code.
+        </p>
+
+    @endif
 
     <form action="{{ route('admin.forgot-password.post') }}" method="POST">
 
@@ -34,7 +44,7 @@
         </div>
 
         <button type="submit" class="btn-login">
-            Send Code
+            {{ session('reset_expired') ? 'Request a New Code' : 'Send Code' }}
         </button>
 
     </form>

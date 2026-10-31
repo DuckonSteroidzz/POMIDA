@@ -1,4 +1,4 @@
-%% POMIDA ERD - POMIDA — Full ERD - generated 2026-10-22 from pomida_db
+%% POMIDA ERD - POMIDA — Full ERD - generated 2026-10-31 from pomida_db_testing
 %% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
 %% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
 erDiagram
@@ -8,6 +8,15 @@ erDiagram
         bigint user_id FK
         timestamp created_at
         timestamp updated_at
+    }
+    admin_sign_ins {
+        bigint id PK
+        bigint user_id FK
+        timestamp signed_in_at
+        varchar(60) browser
+        varchar(60) os
+        varchar(20) device_type
+        varchar(45) ip_address
     }
     ads {
         bigint id PK
@@ -154,6 +163,7 @@ erDiagram
         bigint menu_item_id FK "UK with inventory_id"
         bigint inventory_id FK "UK with menu_item_id"
         decimal(10_3) quantity_used
+        enum priority
         timestamp created_at
         timestamp updated_at
     }
@@ -169,6 +179,7 @@ erDiagram
         bigint menu_item_size_id FK "UK with inventory_id"
         bigint inventory_id FK "UK with menu_item_size_id"
         decimal(12_3) quantity
+        enum priority
         timestamp created_at
         timestamp updated_at
     }
@@ -260,11 +271,21 @@ erDiagram
         timestamp created_at
         timestamp updated_at
     }
+    order_item_removed_ingredients {
+        bigint id PK
+        bigint order_item_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with order_item_id"
+        varchar(255) ingredient_name
+        enum reason
+        timestamp created_at
+        timestamp updated_at
+    }
     order_item_size_ingredients {
         bigint id PK
         bigint order_item_id FK "UK with inventory_id"
         bigint inventory_id FK "UK with order_item_id"
         decimal(12_3) quantity
+        enum priority
         timestamp created_at
         timestamp updated_at
     }
@@ -455,6 +476,7 @@ erDiagram
         varchar(6) verification_code
         timestamp verified_at
         timestamp email_verified_at
+        char(64) email_verification_token
         varchar(255) password
         varchar(100) remember_token
         timestamp created_at
@@ -499,6 +521,7 @@ erDiagram
     inventory ||--o{ menu_item_size_ingredients : "is used in"
     inventory |o--o{ menu_items : "is stock source of"
     inventory ||--o{ menu_option_ingredients : "is used in"
+    inventory |o--o{ order_item_removed_ingredients : "is left out via"
     inventory ||--o{ order_item_size_ingredients : "is deducted via"
     inventory |o--o{ stock_movements : "logs"
     loyalty_awards ||--o| free_dessert_rewards : "unlocks"
@@ -515,6 +538,7 @@ erDiagram
     order_items |o--o{ free_dessert_ratings : "has dessert rated in"
     order_items |o--o{ free_dessert_rewards : "is redeemed as"
     order_items ||--o{ order_item_options : "has add-on"
+    order_items ||--o{ order_item_removed_ingredients : "goes out without"
     order_items ||--o{ order_item_size_ingredients : "freezes recipe line"
     orders ||--o| free_dessert_ratings : "receives"
     orders |o--o{ free_dessert_rewards : "is redeemed on"
@@ -529,6 +553,7 @@ erDiagram
     subcategories |o--o{ menu_items : "groups"
     table_sessions ||--o{ table_session_devices : "has device"
     users |o--o{ admin_bootstrap : "is recorded as first admin in"
+    users ||--o{ admin_sign_ins : "signs in as"
     users ||--o{ discount_cards : "owns"
     users |o--o{ discount_cards : "verifies"
     users |o--o{ free_dessert_ratings : "writes"
@@ -556,8 +581,8 @@ erDiagram
     classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
     classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
     classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
-    class admin_bootstrap,branches,users mod_users
+    class admin_bootstrap,admin_sign_ins,branches,users mod_users
     class categories,menu_item_options,menu_item_sizes,menu_items,menu_options,subcategories mod_menu
-    class discount_cards,help_requests,order_discount_beneficiaries,order_item_options,order_item_size_ingredients,order_items,orders,restaurant_tables,table_access_codes,table_session_devices,table_sessions mod_orders
+    class discount_cards,help_requests,order_discount_beneficiaries,order_item_options,order_item_removed_ingredients,order_item_size_ingredients,order_items,orders,restaurant_tables,table_access_codes,table_session_devices,table_sessions mod_orders
     class inventory,menu_item_ingredients,menu_item_size_ingredients,menu_option_ingredients,stock_movements mod_inventory
     class ads,free_dessert_ratings,free_dessert_rewards,games_played,loyalty_awards,notifications,order_ratings,settings,user_vouchers,vouchers mod_marketing

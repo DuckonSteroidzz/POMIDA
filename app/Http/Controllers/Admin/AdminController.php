@@ -1144,6 +1144,14 @@ class AdminController extends Controller
         // eager-loaded above — no query.
         $sizeCosting = app(\App\Services\MenuItemCosting::class)->sizeCostLines($menuItems);
 
+        // The Status column: the customer menu's own verdict
+        // (MenuItem::menuCardState() via stockStatus()), judged against the
+        // same committed-stock map, from the relations eager-loaded above.
+        $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+        $stockStatus = $menuItems->mapWithKeys(
+            fn (\App\Models\MenuItem $mi) => [$mi->id => $mi->stockStatus($reserved)]
+        );
+
         return view('admin.menu-items', compact(
             'menuItems',
             'categories',
@@ -1155,6 +1163,7 @@ class AdminController extends Controller
             'archivedCount',
             'costing',
             'sizeCosting',
+            'stockStatus',
             'filterCategory',
             'filterSubcategory'
         ));
@@ -1251,6 +1260,8 @@ class AdminController extends Controller
             'ingredients' => 'nullable|array',
             'ingredients.*.inventory_id' => 'required|integer|exists:inventory,id',
             'ingredients.*.quantity_used' => 'required|numeric|gt:0',
+            // High unless the draft row's pill was switched (Defect Report 6).
+            'ingredients.*.priority' => 'nullable|in:high,low',
         ], [
             'category_id.required' => 'Please select a category.',
             'name.required' => 'Item name is required.',
@@ -1303,6 +1314,29 @@ class AdminController extends Controller
                     'ingredients' => 'Every ingredient must be an active inventory item in the selected branch.'
                 ])->withInput();
             }
+
+            // Count units (pc, can, ...) take whole numbers only.
+            $rowInventory = \App\Models\Inventory::find($invId);
+            $quantityError = \App\Models\Inventory::quantityError(
+                $rowInventory?->unit,
+                $row['quantity_used'],
+                ($rowInventory?->item_name ?? 'Ingredient') . ' quantity'
+            );
+            if ($quantityError) {
+                return back()->withErrors(['ingredients' => $quantityError])->withInput();
+            }
+        }
+
+        // The legacy single-ingredient amount follows the same rule.
+        if (!empty($validated['inventory_item_id']) && !empty($validated['inventory_amount_used'])) {
+            $legacyError = \App\Models\Inventory::quantityError(
+                \App\Models\Inventory::find($validated['inventory_item_id'])?->unit,
+                $validated['inventory_amount_used'],
+                'Amount used'
+            );
+            if ($legacyError) {
+                return back()->withErrors(['inventory_amount_used' => $legacyError])->withInput();
+            }
         }
 
         $imagePath = null;
@@ -1348,6 +1382,7 @@ class AdminController extends Controller
                         'menu_item_id' => $menuItem->id,
                         'inventory_id' => (int) $row['inventory_id'],
                         'quantity_used' => $row['quantity_used'],
+                        'priority' => $row['priority'] ?? \App\Models\MenuItemIngredient::PRIORITY_HIGH,
                     ]);
                 }
 
@@ -1423,6 +1458,20 @@ class AdminController extends Controller
                 return back()->withErrors([
                     'inventory_item_id' => 'Selected inventory item must belong to the same branch as this menu item.'
                 ])->withInput();
+            }
+
+            // Count units (pc, can, ...) take whole numbers only. Judged only
+            // when the amount or the ingredient is being CHANGED, so an old
+            // fractional value (left as it is) never blocks an unrelated edit.
+            $amountChanged = (int) $menuItem->inventory_item_id !== (int) $inventory->id
+                || abs((float) $menuItem->inventory_amount_used - (float) ($validated['inventory_amount_used'] ?? 0)) > 1e-9;
+
+            if ($amountChanged && !empty($validated['inventory_amount_used'])) {
+                $legacyError = \App\Models\Inventory::quantityError($inventory->unit, $validated['inventory_amount_used'], 'Amount used');
+
+                if ($legacyError) {
+                    return back()->withErrors(['inventory_amount_used' => $legacyError])->withInput();
+                }
             }
         }
 
@@ -1588,6 +1637,32 @@ class AdminController extends Controller
         );
     }
 
+    /**
+     * The recipe-quantity half of the count-unit rule, shared by the three
+     * "add one ingredient line" endpoints (menu item, size, add-on option):
+     * a count unit (pc, can, ...) takes a whole number, a measured unit at
+     * most 3 decimals — see Inventory::quantityError(). Null when fine, else
+     * the 422 JSON (recipe editor) or redirect-with-errors (plain form).
+     */
+    private function refuseBadRecipeQuantity(Request $request, \App\Models\Inventory $inventory, mixed $quantity)
+    {
+        $message = \App\Models\Inventory::quantityError($inventory->unit, $quantity, 'Quantity');
+
+        if ($message === null) {
+            return null;
+        }
+
+        if ($request->expectsJson()) {
+            return response()->json([
+                'success' => false,
+                'message' => $message,
+                'errors'  => ['quantity_used' => [$message]],
+            ], 422);
+        }
+
+        return redirect()->back()->withErrors(['quantity_used' => $message])->withInput();
+    }
+
     public function addIngredient(Request $request, int $menuItem)
 {
     // Branch-scoped for supervisor, unrestricted for admins — see
@@ -1602,6 +1677,10 @@ class AdminController extends Controller
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
+
+    if ($refusal = $this->refuseBadRecipeQuantity($request, $inventory, $validated['quantity_used'])) {
+        return $refusal;
+    }
 
     // Same rule storeNewMenuItem()/updateMenuItem() already apply to every
     // recipe row: an ingredient must belong to the item's own branch. Only
@@ -1658,6 +1737,10 @@ class AdminController extends Controller
                 'quantity_used' => rtrim(rtrim(number_format((float) $ingredient->quantity_used, 3), '0'), '.'),
                 'unit' => $inventory->unit,
                 'delete_url' => route('admin.menu-items.ingredients.delete', [$menuItemModel->id, $ingredient->id]),
+                'priority' => $ingredient->priority,
+                'priority_url' => route('admin.menu-items.ingredients.priority', [$menuItemModel->id, $ingredient->id]),
+                'stock_remaining' => \App\Models\Inventory::formatQuantity($inventory->quantity),
+                'stock_state' => $inventory->stockLevel(),
             ],
         ]);
     }
@@ -1701,6 +1784,77 @@ public function deleteIngredient(Request $request, int $menuItem, int $ingredien
         'success',
         'Ingredient removed successfully.'
     );
+}
+
+/**
+ * Switch one recipe line between High and Low (Defect Report 6). Same gate and
+ * same record scope as addIngredient(): the route's role group decides who, and
+ * resolveRecordInScope() gives another branch's item the same 404 as a missing one.
+ */
+public function updateIngredientPriority(Request $request, int $menuItem, int $ingredient)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+
+    $row = \App\Models\MenuItemIngredient::with('inventory')
+        ->where('id', $ingredient)
+        ->where('menu_item_id', $menuItemModel->id)
+        ->firstOrFail();
+
+    return $this->savePriority($request, $row, $menuItemModel);
+}
+
+/** The same switch on one line of a size's recipe. Mirrors updateIngredientPriority(). */
+public function updateSizeIngredientPriority(Request $request, int $menuItem, int $size, int $ingredient)
+{
+    $menuItemModel = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\MenuItem::class, $menuItem);
+    $sizeModel = $menuItemModel->sizes()->whereKey($size)->firstOrFail();
+    $row = $sizeModel->ingredients()->with('inventory')->whereKey($ingredient)->firstOrFail();
+
+    return $this->savePriority($request, $row, $menuItemModel);
+}
+
+/**
+ * The level is posted, not flipped on the server, so a double click or a stale
+ * tab lands on what the person saw rather than toggling back. Answers with the
+ * item's new Status too, since this can change it.
+ */
+private function savePriority(Request $request, $row, \App\Models\MenuItem $menuItem)
+{
+    $validated = $request->validate([
+        'priority' => 'required|in:high,low',
+    ], [
+        'priority.required' => 'Choose High or Low.',
+        'priority.in' => 'Choose High or Low.',
+    ]);
+
+    try {
+        $row->priority = $validated['priority'];
+        $row->save();
+    } catch (\Throwable $e) {
+        \Illuminate\Support\Facades\Log::error('Recipe priority save failed', ['exception' => $e]);
+
+        $message = 'Could not save that just now. Nothing was changed — please try again.';
+
+        return $request->expectsJson()
+            ? response()->json(['success' => false, 'message' => $message], 422)
+            : redirect()->back()->withErrors(['error' => $message]);
+    }
+
+    $message = ($row->inventory->item_name ?? 'Ingredient') . ' is now ' . ucfirst($row->priority) . ' priority.';
+
+    if ($request->expectsJson()) {
+        $fresh = \App\Models\MenuItem::with(['recipeIngredients.inventory', 'inventoryItem', 'allSizes.ingredients.inventory'])
+            ->find($menuItem->id);
+
+        return response()->json([
+            'success'  => true,
+            'message'  => $message,
+            'priority' => $row->priority,
+            'status'   => $fresh?->stockStatus(app(\App\Services\InventoryDeductionService::class)->committedQuantities()),
+        ]);
+    }
+
+    return redirect()->back()->with('success', $message);
 }
 
 // ══════════ MENU ITEM SIZES (Phase 1) ══════════
@@ -1862,6 +2016,10 @@ public function addSizeIngredient(Request $request, int $menuItem, int $size)
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
 
+    if ($refusal = $this->refuseBadRecipeQuantity($request, $inventory, $validated['quantity_used'])) {
+        return $refusal;
+    }
+
     // THE branch rule — the same one addIngredient() applies, against the
     // PARENT item's branch. A supervisor cannot reach another branch's item
     // (404 above), and cannot attach another branch's inventory to their own.
@@ -1911,6 +2069,10 @@ public function addSizeIngredient(Request $request, int $menuItem, int $size)
                 'quantity_used' => rtrim(rtrim(number_format((float) $ingredient->quantity, 3), '0'), '.'),
                 'unit' => $inventory->unit,
                 'delete_url' => route('admin.menu-items.sizes.ingredients.delete', [$menuItemModel->id, $sizeModel->id, $ingredient->id]),
+                'priority' => $ingredient->priority,
+                'priority_url' => route('admin.menu-items.sizes.ingredients.priority', [$menuItemModel->id, $sizeModel->id, $ingredient->id]),
+                'stock_remaining' => \App\Models\Inventory::formatQuantity($inventory->quantity),
+                'stock_state' => $inventory->stockLevel(),
             ],
         ]);
     }
@@ -1973,6 +2135,10 @@ public function addOptionIngredient(Request $request, int $menuOption)
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
+
+    if ($refusal = $this->refuseBadRecipeQuantity($request, $inventory, $validated['quantity_used'])) {
+        return $refusal;
+    }
 
     $lockedBranchId = \App\Services\AdminOrderAccess::lockedBranchId();
 
@@ -3020,6 +3186,8 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
             $pendingOrders = \App\Models\Order::with([
                     'items',
+                    // "No Pancake Syrup" on the board — the kitchen must see it.
+                    'items.removedIngredients',
                     'discountCard',
                     // Every listed PWD/Senior ID, for the discount modal —
                     // one query for the whole board, not one per card.
@@ -3094,7 +3262,9 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             $menuItems = \App\Models\MenuItem::with([
                 'category',
                 'subcategory',
-                'recipeIngredients',
+                // .inventory: the counter's Remove Ingredients choices name
+                // each LOW line and say whether the shelf can cover it.
+                'recipeIngredients.inventory',
                 'options' => function ($query) {
                     $query->where('is_active', true)
                         ->orderBy('display_order')
@@ -3107,7 +3277,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 // Menu Item Sizes (Phase 2): the counter's Regular/Large
                 // picker (MenuItem::sizeChoices(), recipe verdicts only). One
                 // query for the page, a second only when any size exists.
-                'allSizes.ingredients',
+                'allSizes.ingredients.inventory',
             ])
             ->where('is_available', true)
             ->where(function ($query) {
@@ -3168,6 +3338,10 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 ])
                 ->all();
 
+            // The counter's Remove Ingredients choices are judged against what
+            // open orders have not already spoken for, as the order gate will be.
+            $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+
             return view(
                 'admin.home',
                 compact(
@@ -3179,7 +3353,8 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     'categories',
                     'subcategories',
                     'selectedBranch',
-                    'optionBranchIds'
+                    'optionBranchIds',
+                    'reserved'
                 )
             );
         }
@@ -3348,6 +3523,10 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 // Menu Item Sizes (Phase 2): required for a sized item, and
                 // must be one of that item's own — checked per line below.
                 'items.*.size_id' => 'nullable|integer',
+                // LOW ingredients to leave out (Defect Report 6). Must be that
+                // item's and size's own LOW lines — checked per line below.
+                'items.*.removed_ingredients' => 'nullable|array',
+                'items.*.removed_ingredients.*' => 'integer',
 
                 // PWD / Senior Citizen — staff verifies the physical ID in
                 // person at the counter, so there is no discount_status =
@@ -3513,7 +3692,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             // allSizes.ingredients.inventory (Phase 2): the size a line names
             // is resolved against THIS item's own rows, and the same loaded
             // model is what the stock gate measures and the freeze records.
-            $menuItems = \App\Models\MenuItem::with(['options.ingredients.inventory', 'recipeIngredients', 'allSizes.ingredients.inventory'])
+            $menuItems = \App\Models\MenuItem::with(['options.ingredients.inventory', 'recipeIngredients.inventory', 'allSizes.ingredients.inventory'])
                 ->whereIn(
                     'id',
                     collect($validated['items'])
@@ -3611,6 +3790,20 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                         ->withInput();
                 }
 
+                // The same refusal the customer's Add to cart gives: only LOW
+                // ingredients of this item and size can be left out.
+                $removedIngredients = collect($item['removed_ingredients'] ?? [])
+                    ->map(fn($id) => (int) $id)
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                if ($refusal = $menuItem->removalRefusal($removedIngredients, $size)) {
+                    return back()
+                        ->withErrors(['items' => $refusal])
+                        ->withInput();
+                }
+
                 $selectedOptionIds = collect($item['options'] ?? [])
                     ->map(fn($id) => (int) $id)
                     ->unique()
@@ -3667,6 +3860,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     'subtotal' => $subtotal,
                     'options' => $optionDetails,
                     'size' => $size,
+                    'removed_inventory_ids' => $removedIngredients,
                 ];
             }
 
@@ -3700,6 +3894,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     'menu_item' => $data['menu_item'],
                     'quantity' => $data['quantity'],
                     'selected_option_ids' => array_column($data['options'], 'id'),
+                    'removed_inventory_ids' => $data['removed_inventory_ids'],
                 ];
 
                 // Judged against the chosen size's own recipe (Phase 2).
@@ -3891,11 +4086,11 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                      * no order_items, no spent voucher. RuntimeException is
                      * what the catch below already renders to staff verbatim.
                      */
-                    $lockedShortfalls = app(\App\Services\InventoryDeductionService::class)
-                        ->cartShortfalls($stockLines, (int) $branchId, true);
+                    $settled = app(\App\Services\InventoryDeductionService::class)
+                        ->settleCart($stockLines, (int) $branchId, true);
 
-                    if (!empty($lockedShortfalls)) {
-                        throw new \RuntimeException($lockedShortfalls[0]);
+                    if (!empty($settled['messages'])) {
+                        throw new \RuntimeException($settled['messages'][0]);
                     }
 
                     $adminUser = \Illuminate\Support\Facades\Auth::guard('admin')->user();
@@ -3940,7 +4135,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     // if anything below throws. Empty when none applies.
                     \App\Support\DiscountBeneficiaries::saveFor($order, $discountBeneficiaries);
 
-                    foreach ($itemsToCreate as $data) {
+                    foreach ($itemsToCreate as $lineIndex => $data) {
                         $orderItem = \App\Models\OrderItem::create([
                             'order_id' => $order->id,
                             'menu_item_id' => $data['menu_item']->id,
@@ -3959,6 +4154,16 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                             app(\App\Services\InventoryDeductionService::class)
                                 ->freezeSizeRecipe($orderItem, $data['menu_item'], $data['size']);
                         }
+
+                        // What this line goes out without, as the locked gate
+                        // just settled it — the same record checkout writes.
+                        app(\App\Services\InventoryDeductionService::class)->snapshotRemovals(
+                            $orderItem,
+                            $data['menu_item'],
+                            $data['size'],
+                            $data['removed_inventory_ids'],
+                            $settled['unavailable'][$lineIndex] ?? []
+                        );
 
                         foreach ($data['options'] as $option) {
                             \Illuminate\Support\Facades\DB::table(
@@ -4087,7 +4292,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
     {
         $selectedBranch = $this->getSelectedBranch();
 
-        $query = \App\Models\Order::with(['items', 'customer'])
+        $query = \App\Models\Order::with(['items', 'items.removedIngredients', 'customer'])
             ->whereIn('status', ['completed', 'cancelled']);
 
         if ($selectedBranch !== 'all') {
@@ -4267,7 +4472,11 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                         ->map(fn ($o) => '+ ' . $o->option_name)
                         ->implode(', ');
 
-                    return $item->quantity . 'x ' . $item->displayName() . ($options !== '' ? ' [' . $options . ']' : '');
+                    $removals = implode(', ', $item->removalLabels());
+
+                    return $item->quantity . 'x ' . $item->displayName()
+                        . ($options !== '' ? ' [' . $options . ']' : '')
+                        . ($removals !== '' ? ' (' . $removals . ')' : '');
                 })->implode('; ');
 
                 fputcsv($file, [
@@ -4308,6 +4517,8 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
             // Menu Item Sizes (Phase 2): a sized line deducts the recipe
             // frozen when it was placed, never the size's live one.
             'items.sizeIngredients',
+            // What each line went out without is not deducted.
+            'items.removedIngredients',
         ]);
 
         if (!in_array($order->status, ['pending', 'preparing', 'serving'])) {
@@ -4989,6 +5200,14 @@ public function markOrderRefunded(int $id)
             'item_code.unique' => 'That item code is already used by another inventory item.',
         ]);
 
+        // Count units (pc, can, ...) take whole numbers only.
+        if ($errors = $this->inventoryAmountErrors($validated['unit'], [
+            'quantity' => [$validated['quantity'], 'Quantity'],
+            'low_stock_alert' => [$validated['low_stock_alert'] ?? null, 'Low stock alert'],
+        ])) {
+            return back()->withErrors($errors)->withInput();
+        }
+
         \App\Models\Inventory::create([
             'branch_id' => $selectedBranch,
             'item_name' => $validated['item_name'],
@@ -5078,10 +5297,43 @@ public function markOrderRefunded(int $id)
             'item_code.unique' => 'That item code is already used by another inventory item.',
         ]);
 
+        // Count units (pc, can, ...) take whole numbers only. Judged against
+        // the unit being SAVED, so switching a row pc -> g is checked as g.
+        if ($errors = $this->inventoryAmountErrors($validated['unit'], [
+            'quantity' => [$validated['quantity'], 'Quantity'],
+            'low_stock_alert' => [$validated['low_stock_alert'] ?? null, 'Low stock alert'],
+        ])) {
+            return back()->withErrors($errors)->withInput();
+        }
+
         $item->update($validated);
 
         return redirect()->route('admin.inventory')
             ->with('success', 'Inventory item updated!');
+    }
+
+    /**
+     * The whole-number-for-counts rule (Inventory::quantityError()) applied to
+     * a set of named fields against ONE unit.
+     *
+     * @param  array<string, array{0: mixed, 1: string}>  $fields  field => [value, label]
+     * @return array<string, string>  field => message; empty when all pass
+     */
+    private function inventoryAmountErrors(?string $unit, array $fields): array
+    {
+        $errors = [];
+
+        foreach ($fields as $field => [$value, $label]) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            if ($message = \App\Models\Inventory::quantityError($unit, $value, $label)) {
+                $errors[$field] = $message;
+            }
+        }
+
+        return $errors;
     }
 
     public function stockIn(Request $request, int $id)
@@ -5093,9 +5345,13 @@ public function markOrderRefunded(int $id)
         $item = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\Inventory::class, $id);
 
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.01',
+            'amount' => 'required|numeric|min:0.001',
             'note' => 'nullable|string|max:255',
         ]);
+
+        if ($errors = $this->inventoryAmountErrors($item->unit, ['amount' => [$validated['amount'], 'Amount']])) {
+            return back()->withErrors($errors)->withInput();
+        }
 
         $item->quantity += $validated['amount'];
         $item->save();
@@ -5113,12 +5369,12 @@ public function markOrderRefunded(int $id)
         return redirect()->route('admin.inventory')
             ->with(
                 'success',
-                '+' . $validated['amount'] . ' ' .
+                '+' . \App\Models\Inventory::formatQuantity($validated['amount']) . ' ' .
                 $item->unit .
                 ' added to "' .
                 $item->item_name .
                 '". New stock: ' .
-                $item->quantity
+                \App\Models\Inventory::formatQuantity($item->quantity)
             );
     }
 
@@ -5131,14 +5387,18 @@ public function markOrderRefunded(int $id)
         $item = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\Inventory::class, $id);
 
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.01',
+            'amount' => 'required|numeric|min:0.001',
             'note' => 'nullable|string|max:255',
         ]);
+
+        if ($errors = $this->inventoryAmountErrors($item->unit, ['amount' => [$validated['amount'], 'Amount']])) {
+            return back()->withErrors($errors)->withInput();
+        }
 
         if ($validated['amount'] > $item->quantity) {
             return back()->withErrors([
                 'amount' => 'Not enough stock. Only ' .
-                    $item->quantity .
+                    \App\Models\Inventory::formatQuantity($item->quantity) .
                     ' ' .
                     $item->unit .
                     ' available.'
@@ -5161,12 +5421,12 @@ public function markOrderRefunded(int $id)
         return redirect()->route('admin.inventory')
             ->with(
                 'success',
-                '-' . $validated['amount'] . ' ' .
+                '-' . \App\Models\Inventory::formatQuantity($validated['amount']) . ' ' .
                 $item->unit .
                 ' removed from "' .
                 $item->item_name .
                 '". Remaining: ' .
-                $item->quantity
+                \App\Models\Inventory::formatQuantity($item->quantity)
             );
     }
 
@@ -6757,6 +7017,7 @@ public function markOrderRefunded(int $id)
         // gap even though nothing is written.
         $order = \App\Services\AdminOrderAccess::resolveInScope($id, [
             'items.menuItem',
+            'items.removedIngredients',
             'customer',
         ]);
 

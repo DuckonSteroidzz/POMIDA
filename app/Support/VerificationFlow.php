@@ -44,6 +44,12 @@ final class VerificationFlow
 
     public const VERIFIED_MESSAGE = 'Email verified — please log in.';
 
+    /** A link opened again after the account was confirmed. */
+    public const LINK_USED_MESSAGE = 'This link has already been used. Your email is already confirmed. You can log in.';
+
+    /** A link replaced by a newer email, or issued for an address the account no longer has. */
+    public const LINK_STALE_MESSAGE = 'This link is no longer valid. Use the newest email we sent.';
+
     /** The one answer the check-your-email page's Resend button ever gives. */
     public const RESEND_ANSWER = 'If that email belongs to an account that still needs confirming, '
         . 'we have sent a new confirmation link. Please check your inbox.';
@@ -87,21 +93,21 @@ final class VerificationFlow
      * login with a table attached. Sending them to the plain login instead
      * would sign them in as Pick-Up.
      */
-    public static function redirectAfterVerification(string $flow): RedirectResponse
+    public static function redirectAfterVerification(string $flow, string $message = self::VERIFIED_MESSAGE): RedirectResponse
     {
         if (self::normalize($flow) === self::DINEIN) {
             if (session('order_type') === 'dine_in' && session('table_number')) {
                 return redirect()->route('customer.login')
-                    ->with('success', self::VERIFIED_MESSAGE);
+                    ->with('success', $message);
             }
 
             return redirect()->route('customer.dineinqr')
-                ->with('success', self::VERIFIED_MESSAGE
+                ->with('success', $message
                     . ' Enter the code on your table below, then choose "Log In".');
         }
 
         return redirect()->route('customer.login', ['order_type' => 'pick_up'])
-            ->with('success', self::VERIFIED_MESSAGE);
+            ->with('success', $message);
     }
 
     /** "Back to login" from the check-your-email page, per flow. */

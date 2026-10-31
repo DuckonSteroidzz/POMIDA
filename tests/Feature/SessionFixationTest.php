@@ -28,8 +28,8 @@ use Tests\TestCase;
  *   customer login        AuthController::login       session()->regenerate()      (~line 970)
  *   customer registration AuthController::register    session()->regenerate()      (~line 886)
  *   admin / staff login   AdminAuthController::login  session()->regenerate()      (~line 105)
- *   customer logout       AuthController::logout      invalidate() + regenerateToken()
- *   admin logout          AdminAuthController::logout invalidate() + regenerateToken()
+ *   customer logout       AuthController::logout      SessionSide::end() (one side's keys + regenerate(true))
+ *   admin logout          AdminAuthController::logout SessionSide::end() (one side's keys + regenerate(true))
  *
  * Registration was *believed* to regenerate already. It does — and it is
  * asserted below rather than taken on trust.

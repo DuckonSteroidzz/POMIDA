@@ -39,9 +39,9 @@ class RoleMiddleware
         }
 
         if (!$user->is_active) {
-            Auth::guard('admin')->logout();
-            $request->session()->invalidate();
-            $request->session()->regenerateToken();
+            // Only the staff side. A customer signed in on the same browser
+            // stays signed in. See App\Support\SessionSide.
+            \App\Support\SessionSide::end($request, \App\Support\SessionSide::STAFF);
 
             return redirect()->route('admin.login')
                 ->withErrors(['email' => 'Your account has been deactivated.']);

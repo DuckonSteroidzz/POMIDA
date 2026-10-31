@@ -1321,6 +1321,12 @@ Route::prefix('admin')
                 ->whereNumber(['menuItem', 'ingredient'])
                 ->name('menu-items.ingredients.delete');
 
+            // High / Low on one recipe line (Defect Report 6). Same gate as
+            // the add and delete routes above: whoever can edit the recipe.
+            Route::put('/menu-items/{menuItem}/ingredients/{ingredient}/priority', [AdminController::class, 'updateIngredientPriority'])
+                ->whereNumber(['menuItem', 'ingredient'])
+                ->name('menu-items.ingredients.priority');
+
 
             // ══════════ MENU ITEM SIZES (Phase 1) ══════════
             //
@@ -1356,6 +1362,10 @@ Route::prefix('admin')
             Route::delete('/menu-items/{menuItem}/sizes/{size}/ingredients/{ingredient}', [AdminController::class, 'deleteSizeIngredient'])
                 ->whereNumber(['menuItem', 'size', 'ingredient'])
                 ->name('menu-items.sizes.ingredients.delete');
+
+            Route::put('/menu-items/{menuItem}/sizes/{size}/ingredients/{ingredient}/priority', [AdminController::class, 'updateSizeIngredientPriority'])
+                ->whereNumber(['menuItem', 'size', 'ingredient'])
+                ->name('menu-items.sizes.ingredients.priority');
 
 
             // ══════════ CATEGORIES ══════════

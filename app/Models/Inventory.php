@@ -23,6 +23,109 @@ class Inventory extends Model
      */
     public const ALLOWED_UNITS = ['pc', 'pcs', 'g', 'kg', 'ml', 'L', 'pack', 'bottle', 'can'];
 
+    /**
+     * THE one place that says which units are COUNTS. A count is whole things
+     * (an egg, a can); half of one is not a quantity anyone can stock, buy or
+     * put in a recipe, so every ingredient quantity in a count unit must be a
+     * whole number. Every other unit is MEASURED: decimals allowed, up to 3
+     * places (the columns are decimal(_,3)).
+     *
+     * Compared case-insensitively and trimmed. The dropdown above only offers
+     * pc, pcs, g, kg, ml, L, pack, bottle and can; the extra spellings here
+     * cover legacy rows and anything typed before the dropdown existed.
+     *
+     * Measured units (documented, not consulted): g, kg, mg, ml, L, oz, lb.
+     * A unit in neither list is treated as measured, so an odd legacy unit is
+     * never blocked from saving.
+     */
+    public const COUNT_UNITS = [
+        'pc', 'pcs', 'piece', 'pieces',
+        'pack', 'packs',
+        'bottle', 'bottles',
+        'can', 'cans',
+        'box', 'boxes',
+        'tray', 'trays',
+    ];
+
+    /** Decimal places a measured quantity may carry — matches decimal(_,3). */
+    public const MEASURED_DECIMALS = 3;
+
+    public static function isCountUnit(?string $unit): bool
+    {
+        return in_array(strtolower(trim((string) $unit)), self::COUNT_UNITS, true);
+    }
+
+    /** The HTML step for a quantity input in $unit: 1 for counts, 0.001 otherwise. */
+    public static function quantityStep(?string $unit): string
+    {
+        return self::isCountUnit($unit) ? '1' : '0.001';
+    }
+
+    /**
+     * The server-side half of the rule. Null when $value is acceptable for
+     * $unit, else the sentence to show the admin. $label names the field
+     * ("Quantity", "Low stock alert", "Amount").
+     */
+    public static function quantityError(?string $unit, mixed $value, string $label = 'Quantity'): ?string
+    {
+        if (! is_numeric($value)) {
+            return null; // 'numeric' already refuses this; not this rule's job
+        }
+
+        $number = (float) $value;
+
+        if (self::isCountUnit($unit)) {
+            if (abs($number - round($number)) > 1e-9) {
+                return $label . ' must be a whole number for items counted in ' . trim((string) $unit)
+                    . ' (for example 6, not ' . self::formatQuantity($number) . ').';
+            }
+
+            return null;
+        }
+
+        if (abs($number - round($number, self::MEASURED_DECIMALS)) > 1e-9) {
+            return $label . ' can have at most ' . self::MEASURED_DECIMALS . ' decimal places.';
+        }
+
+        return null;
+    }
+
+    /**
+     * A quantity as people read it: no trailing zeros, so a count shows as
+     * "6" (never "6.000") and a measured amount as "1.5" or "250". A count
+     * that is NOT whole (legacy data, see isFractionalCount()) is shown as
+     * stored, never rounded: hiding it would make the shelf look right when
+     * it is not.
+     */
+    public static function formatQuantity(mixed $value): string
+    {
+        return rtrim(rtrim(number_format((float) $value, self::MEASURED_DECIMALS), '0'), '.');
+    }
+
+    /**
+     * 'out', 'low' or 'ok': how the recipe editor's Stock Remaining cell colours
+     * this row, against the row's own low-stock alert.
+     */
+    public function stockLevel(): string
+    {
+        if ((float) $this->quantity <= 0) {
+            return 'out';
+        }
+
+        return (float) $this->quantity <= (float) $this->low_stock_alert ? 'low' : 'ok';
+    }
+
+    /**
+     * A count-unit row whose stock is not a whole number, for example "Egg 1.5
+     * pc". Never produced by the forms any more; found only in older data, and
+     * flagged in the admin inventory so the owner can correct it by hand.
+     */
+    public function hasFractionalCountQuantity(): bool
+    {
+        return self::isCountUnit($this->unit)
+            && abs((float) $this->quantity - round((float) $this->quantity)) > 1e-9;
+    }
+
     protected $fillable = [
         'branch_id',
         'item_name',

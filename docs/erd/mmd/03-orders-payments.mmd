@@ -1,4 +1,4 @@
-%% POMIDA ERD - POMIDA — Module 3: Orders & Payments - generated 2026-10-22 from pomida_db
+%% POMIDA ERD - POMIDA — Module 3: Orders & Payments - generated 2026-10-31 from pomida_db_testing
 %% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
 %% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
 erDiagram
@@ -72,6 +72,16 @@ erDiagram
         bigint order_item_id FK "UK with inventory_id"
         bigint inventory_id FK "UK with order_item_id"
         decimal(12_3) quantity
+        enum priority
+        timestamp created_at
+        timestamp updated_at
+    }
+    order_item_removed_ingredients {
+        bigint id PK
+        bigint order_item_id FK "UK with inventory_id"
+        bigint inventory_id FK "UK with order_item_id"
+        varchar(255) ingredient_name
+        enum reason
         timestamp created_at
         timestamp updated_at
     }
@@ -189,11 +199,13 @@ erDiagram
     branches ||--o{ table_access_codes : "issues code for"
     branches ||--o{ table_sessions : "hosts"
     discount_cards |o--o{ orders : "discounts"
+    inventory |o--o{ order_item_removed_ingredients : "is left out via"
     inventory ||--o{ order_item_size_ingredients : "is deducted via"
     menu_item_sizes |o--o{ order_items : "is sold as"
     menu_items |o--o{ order_items : "is sold as"
     menu_options ||--o{ order_item_options : "is chosen as"
     order_items ||--o{ order_item_options : "has add-on"
+    order_items ||--o{ order_item_removed_ingredients : "goes out without"
     order_items ||--o{ order_item_size_ingredients : "freezes recipe line"
     orders |o--o{ help_requests : "is linked to"
     orders ||--o{ order_discount_beneficiaries : "lists"
@@ -216,5 +228,5 @@ erDiagram
     classDef mod_inventory fill:#fce7f3,stroke:#db2777,stroke-width:2px,color:#111827
     classDef mod_marketing fill:#ede9fe,stroke:#7c3aed,stroke-width:2px,color:#111827
     classDef ext fill:#f1f5f9,stroke:#94a3b8,stroke-width:2px,stroke-dasharray:5 4,color:#475569
-    class orders,order_items,order_item_options,order_item_size_ingredients,order_discount_beneficiaries,discount_cards,restaurant_tables,table_access_codes,table_sessions,table_session_devices,help_requests mod_orders
+    class orders,order_items,order_item_options,order_item_size_ingredients,order_item_removed_ingredients,order_discount_beneficiaries,discount_cards,restaurant_tables,table_access_codes,table_sessions,table_session_devices,help_requests mod_orders
     class branches,inventory,menu_item_sizes,menu_items,menu_options,users,vouchers ext

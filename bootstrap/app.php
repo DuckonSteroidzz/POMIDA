@@ -173,6 +173,30 @@ return Application::configure(basePath: dirname(__DIR__))
                     ->withInput($request->except('password'));
             }
 
+            /*
+             * Defect Report 6. The reset screens can sit open for minutes, and
+             * a login or logout in another tab of the same browser rotates the
+             * CSRF token under them. That reset is still alive in the session,
+             * so the branded "Your session timed out" card was simply wrong.
+             * The request is still refused, nothing was changed, and the same
+             * step reloads with a fresh token.
+             */
+            $resetSteps = [
+                'customer.forgot-password.post' => 'customer.forgot-password',
+                'customer.verification.post'    => 'customer.verification',
+                'customer.new-password.post'    => 'customer.new-password',
+                'admin.forgot-password.post'    => 'admin.forgot-password',
+                'admin.verification.post'       => 'admin.verification',
+                'admin.new-password.post'       => 'admin.new-password',
+            ];
+            $resetStep = $resetSteps[$request->route()?->getName()] ?? null;
+
+            if ($resetStep !== null && ! $request->expectsJson()) {
+                return redirect()->route($resetStep)->withErrors([
+                    'session' => 'This page needed refreshing, so nothing was submitted. Please enter that again.',
+                ]);
+            }
+
             return null;
         });
 

@@ -4,9 +4,11 @@ namespace App\Http\Controllers\Concerns;
 
 use App\Mail\PasswordResetCode;
 use App\Models\User;
+use App\Support\SessionSide;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -179,9 +181,7 @@ trait HandlesPasswordReset
         $email = session($this->resetSessionKey() . '.email');
 
         if (! $email) {
-            return redirect()
-                ->route($this->resetRoutePrefix() . '.forgot-password')
-                ->withErrors(['email' => 'Your reset session expired. Please start again.']);
+            return $this->resetExpiredResponse();
         }
 
         // The form posts six single-character inputs named otp[].
@@ -215,7 +215,10 @@ trait HandlesPasswordReset
         // before getting it right does not carry that history forward.
         $this->clearResetAttempts($email);
 
-        session([$this->resetSessionKey() . '.verified' => true]);
+        session([
+            $this->resetSessionKey() . '.verified' => true,
+            $this->resetSessionKey() . '.verified_at' => now()->getTimestamp(),
+        ]);
 
         return redirect()->route($this->resetRoutePrefix() . '.new-password');
     }
@@ -272,6 +275,14 @@ trait HandlesPasswordReset
                 ->withErrors(['email' => 'Please verify your email address first.']);
         }
 
+        $email = session($this->resetSessionKey() . '.email');
+
+        if (! $this->resetIsStillOpen($email)) {
+            $this->clearResetState($email);
+
+            return $this->resetExpiredResponse($email);
+        }
+
         return view($this->resetViewPrefix() . '.new-password');
     }
 
@@ -280,10 +291,29 @@ trait HandlesPasswordReset
         $email = session($this->resetSessionKey() . '.email');
         $verified = session($this->resetSessionKey() . '.verified');
 
-        if (! $email || ! $verified) {
+        // The form was open, so a session holding nothing at all means the
+        // reset ended under it.
+        if (! $email) {
+            return $this->resetExpiredResponse();
+        }
+
+        if (! $verified) {
             return redirect()
                 ->route($this->resetRoutePrefix() . '.forgot-password')
                 ->withErrors(['email' => 'Please verify your email address first.']);
+        }
+
+        // Checked BEFORE the password rules. This used to come after them, so a
+        // dead reset kept reporting "needs a symbol" until the person finally
+        // typed a valid password, and only then said it had expired.
+        //
+        // A password that fails the rules below changes nothing: the code row,
+        // the session and the attempt budget are all left alone, so it costs the
+        // person nothing but another try. Limits apply to guessing the CODE.
+        if (! $this->resetIsStillOpen($email)) {
+            $this->clearResetState($email);
+
+            return $this->resetExpiredResponse($email);
         }
 
         // Security review 2026-08-31: this step previously accepted `min:6`
@@ -308,16 +338,6 @@ trait HandlesPasswordReset
                 ->withErrors(['email' => 'That account is no longer available. Please start again.']);
         }
 
-        // The token row must still exist and be unexpired. This stops a stale
-        // session being replayed after the code was already consumed.
-        if (! $this->pendingResetRow($email)) {
-            $this->clearResetState($email);
-
-            return redirect()
-                ->route($this->resetRoutePrefix() . '.forgot-password')
-                ->withErrors(['email' => 'Your reset request expired. Please start again.']);
-        }
-
         // The User model casts `password` to "hashed", so assigning the plain
         // value here hashes it exactly once.
         $user->forceFill([
@@ -326,6 +346,20 @@ trait HandlesPasswordReset
         ])->save();
 
         $this->clearResetState($email);
+
+        // Defect Report 6, the exact "session has ended" sentence. A person
+        // resetting the password of the account this browser is signed in to
+        // had just rotated their own remember_token, so EnforceSingleSession
+        // ended the login on the very next request, threw away the success
+        // message below, and told them "Your session has ended" over a password
+        // that had in fact been changed. Sign that login out here instead, so
+        // the page says what really happened. Every OTHER device still ends on
+        // its next request, which is the point of rotating the token.
+        //
+        // resetRoutePrefix() is also the guard's name on both portals.
+        if ((string) Auth::guard($this->resetRoutePrefix())->id() === (string) $user->id) {
+            SessionSide::end($request, $this->resetRoutePrefix(), rotateRememberToken: false);
+        }
 
         return redirect()
             ->route($this->resetRoutePrefix() . '.login')
@@ -441,6 +475,52 @@ trait HandlesPasswordReset
         $row = $this->pendingResetRow($email);
 
         return $row !== null && Hash::check($code, $row->token);
+    }
+
+    /**
+     * May this session still set the password?
+     *
+     * The row must still exist, which stops a stale session being replayed after
+     * the code was consumed. Its age is NOT what limits this step, because that
+     * clock also counts the minutes spent reading the email: a code entered at
+     * minute 9 left one minute to invent a password that passes the rules. The
+     * code's own lifetime still limits guessing it (matchResetCode() above);
+     * this session has already proved it, and gets the same length of time from
+     * that moment. A session from before verified_at existed falls back to the
+     * row's age.
+     */
+    protected function resetIsStillOpen(string $email): bool
+    {
+        $row = DB::table('password_reset_tokens')->where('email', $email)->first();
+
+        if (! $row) {
+            return false;
+        }
+
+        $verifiedAt = session($this->resetSessionKey() . '.verified_at');
+
+        $openedAt = $verifiedAt
+            ? Carbon::createFromTimestamp($verifiedAt)
+            : Carbon::parse($row->created_at);
+
+        return ! $openedAt->addMinutes($this->resetCodeLifetime)->isPast();
+    }
+
+    /**
+     * The one answer for a reset that has really ended: back to the first step,
+     * saying so, with the address filled in so a new code is one button away.
+     * forgot-password.blade.php draws the message from `reset_expired`.
+     */
+    protected function resetExpiredResponse(?string $email = null)
+    {
+        return redirect()
+            ->route($this->resetRoutePrefix() . '.forgot-password')
+            ->with(
+                'reset_expired',
+                'Your password reset has expired. It stays open for ' . $this->resetCodeLifetime
+                    . ' minutes, and your password has not been changed. Request a new code to continue.'
+            )
+            ->withInput($email ? ['email' => $email] : []);
     }
 
     protected function clearResetState(string $email): void

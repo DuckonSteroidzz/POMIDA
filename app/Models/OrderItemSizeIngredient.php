@@ -18,10 +18,21 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  */
 class OrderItemSizeIngredient extends Model
 {
+    use Concerns\HasIngredientPriority;
+
+    public const PRIORITY_HIGH = 'high';
+
+    public const PRIORITY_LOW = 'low';
+
     protected $fillable = [
         'order_item_id',
         'inventory_id',
         'quantity',
+        'priority',
+    ];
+
+    protected $attributes = [
+        'priority' => self::PRIORITY_HIGH,
     ];
 
     protected $casts = [

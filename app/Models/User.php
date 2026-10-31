@@ -13,6 +13,7 @@ use Illuminate\Notifications\Notifiable;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\URL;
+use Illuminate\Support\Str;
 
 class User extends Authenticatable implements MustVerifyEmail
 {
@@ -160,6 +161,7 @@ class User extends Authenticatable implements MustVerifyEmail
     protected $hidden = [
         'password',
         'remember_token',
+        'email_verification_token',
     ];
 
     /**
@@ -316,6 +318,39 @@ class User extends Authenticatable implements MustVerifyEmail
     }
 
     /**
+     * Mint the ONE live confirmation link for this account.
+     *
+     * Each call makes a fresh random token, stores only its SHA-256 in
+     * users.email_verification_token (replacing the previous one, which is what
+     * kills every older link), and returns the 60-minute signed URL carrying
+     * the token. HandlesEmailVerification::verifyEmail() spends the token with
+     * a single atomic UPDATE, so a link works exactly once.
+     *
+     * `flow` (Pick-Up or Dine-In) and `token` are part of the signed query, so
+     * editing either breaks the signature. See App\Support\VerificationFlow.
+     */
+    public function issueEmailVerificationUrl(string $flow = \App\Support\VerificationFlow::PICKUP): string
+    {
+        $token = Str::random(40);
+        $hash = hash('sha256', $token);
+
+        static::whereKey($this->getKey())->update(['email_verification_token' => $hash]);
+        $this->setAttribute('email_verification_token', $hash);
+        $this->syncOriginalAttribute('email_verification_token');
+
+        return URL::temporarySignedRoute(
+            'customer.email-verification.verify',
+            now()->addMinutes(60),
+            [
+                'id' => $this->getKey(),
+                'hash' => sha1($this->getEmailForVerification()),
+                'flow' => \App\Support\VerificationFlow::normalize($flow),
+                'token' => $token,
+            ]
+        );
+    }
+
+    /**
      * Overrides the MustVerifyEmailTrait default (which notifies via the
      * stock Illuminate\Auth\Notifications\VerifyEmail, generic English copy,
      * no brand). Sends the same branded Mailable style as PasswordResetCode,
@@ -334,17 +369,7 @@ class User extends Authenticatable implements MustVerifyEmail
     public function sendEmailVerificationNotification(string $flow = \App\Support\VerificationFlow::PICKUP): void
     {
         try {
-            // `flow` (Pick-Up or Dine-In) is part of the signed query, so
-            // editing it breaks the signature. See App\Support\VerificationFlow.
-            $url = URL::temporarySignedRoute(
-                'customer.email-verification.verify',
-                now()->addMinutes(60),
-                [
-                    'id' => $this->getKey(),
-                    'hash' => sha1($this->getEmailForVerification()),
-                    'flow' => \App\Support\VerificationFlow::normalize($flow),
-                ]
-            );
+            $url = $this->issueEmailVerificationUrl($flow);
 
             Mail::to($this->email)->send(new VerifyEmailMail($this, $url));
         } catch (\Throwable $e) {

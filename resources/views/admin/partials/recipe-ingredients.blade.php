@@ -46,6 +46,15 @@
                        $blockId as the item id, exactly as before. A size recipe
                        passes its own (Menu Item Sizes, Phase 1). Every other
                        caller passes neither and renders byte-for-byte as before.
+    $priorityUrlFor   Optional Closure(row): string — where the row's High/Low pill
+                       saves (Defect Report 6). Same defaulting as $deleteUrlFor.
+
+    PRIORITY LEVEL. The pill on a saved row saves right away. On a draft row (Add
+    mode) there is no row to save yet, so it switches the hidden
+    ingredients[i][priority] input that goes up with the rest of the item.
+    STOCK REMAINING is the shelf figure for the row's own inventory row, which is
+    the item's branch (a recipe row must belong to it), with
+    Inventory::formatQuantity() so a count unit reads as a whole number.
 
     STYLING: every class here (form-label-custom, form-control-custom,
     btn-primary-custom) is defined globally in admin/layout.blade.php, and
@@ -74,6 +83,10 @@
     $qtyAttribute = $qtyAttribute ?? 'quantity_used';
     $deleteUrlFor = $deleteUrlFor
         ?? fn ($row) => route('admin.menu-items.ingredients.delete', [$blockId, $row->id]);
+    $priorityUrlFor = $priorityUrlFor
+        ?? fn ($row) => route('admin.menu-items.ingredients.priority', [$blockId, $row->id]);
+
+    $recipeAllLow = $recipe->isNotEmpty() && $recipe->every(fn ($row) => $row->isLow());
 @endphp
 
 <div class="recipe-empty-notice" id="recipe-empty-{{ $blockId }}" style="background:#fff8e1; color:#6B4E00; font-weight:500; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.74rem; margin-bottom:0.5rem; {{ $recipeEmpty ? '' : 'display:none;' }}">
@@ -86,6 +99,8 @@
         <tr style="text-align:left; color:#374151; font-size:0.72rem; font-weight:600;">
             <th style="padding:0.3rem 0.4rem;">Ingredient</th>
             <th style="padding:0.3rem 0.4rem;">Quantity</th>
+            <th style="padding:0.3rem 0.4rem;">Priority Level</th>
+            <th style="padding:0.3rem 0.4rem;">Stock Remaining</th>
             <th style="padding:0.3rem 0.4rem; text-align:right;"></th>
         </tr>
     </thead>
@@ -100,6 +115,16 @@
             <td style="padding:0.35rem 0.4rem;">{{ $row->inventory->item_name ?? '(removed)' }}</td>
             <td style="padding:0.35rem 0.4rem;">
                 {{ rtrim(rtrim(number_format($row->{$qtyAttribute}, 3), '0'), '.') }} {{ $row->inventory->unit ?? '' }}
+            </td>
+            <td style="padding:0.35rem 0.4rem;">
+                <button type="button" class="recipe-priority-pill is-{{ $row->isLow() ? 'low' : 'high' }}" data-url="{{ $priorityUrlFor($row) }}" data-priority="{{ $row->isLow() ? 'low' : 'high' }}" title="Click to switch between High and Low">{{ $row->isLow() ? 'Low' : 'High' }}</button>
+            </td>
+            <td style="padding:0.35rem 0.4rem;">
+                @if($row->inventory)
+                <span class="recipe-stock recipe-stock-{{ $row->inventory->stockLevel() }}">{{ \App\Models\Inventory::formatQuantity($row->inventory->quantity) }} {{ $row->inventory->unit }}</span>
+                @else
+                —
+                @endif
             </td>
             <td style="padding:0.35rem 0.4rem; text-align:right;">
                 <button type="button" class="recipe-ing-delete-btn" data-url="{{ $deleteUrlFor($row) }}" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
@@ -121,6 +146,18 @@
             <td style="padding:0.35rem 0.4rem;">
                 {{ rtrim(rtrim(number_format((float) ($draftRow['quantity_used'] ?? 0), 3), '0'), '.') }} {{ $draftInv->unit ?? '' }}
             </td>
+            @php $draftPriority = ($draftRow['priority'] ?? 'high') === 'low' ? 'low' : 'high'; @endphp
+            <td style="padding:0.35rem 0.4rem;">
+                <button type="button" class="recipe-priority-pill is-{{ $draftPriority }}" data-draft="1" data-priority="{{ $draftPriority }}" title="Click to switch between High and Low">{{ ucfirst($draftPriority) }}</button>
+                <input type="hidden" name="ingredients[{{ $i }}][priority]" value="{{ $draftPriority }}">
+            </td>
+            <td style="padding:0.35rem 0.4rem;">
+                @if($draftInv)
+                <span class="recipe-stock recipe-stock-{{ $draftInv->stockLevel() }}">{{ \App\Models\Inventory::formatQuantity($draftInv->quantity) }} {{ $draftInv->unit }}</span>
+                @else
+                —
+                @endif
+            </td>
             <td style="padding:0.35rem 0.4rem; text-align:right;">
                 <button type="button" class="recipe-ing-delete-btn" data-draft="1" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
                     <i class="bi bi-trash3"></i>
@@ -132,6 +169,11 @@
         @endforeach
     </tbody>
 </table>
+</div>
+
+{{-- Not a refusal: the owner may mean it. But it is worth saying once. --}}
+<div class="recipe-all-low-notice" id="recipe-all-low-{{ $blockId }}" style="background:#fff8e1; color:#6B4E00; font-weight:500; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.72rem; margin-bottom:0.5rem; {{ $recipeAllLow ? '' : 'display:none;' }}">
+    <i class="bi bi-exclamation-triangle"></i> Every ingredient here is Low, so this item will never show Low Stock or Out of Stock. Mark the essential ones High.
 </div>
 
 <div class="recipe-ing-error" id="recipe-error-{{ $blockId }}" style="display:none; color:#C0392B; background:#fdecea; border-radius:6px; padding:0.4rem 0.6rem; font-size:0.72rem; margin-bottom:0.5rem;"></div>

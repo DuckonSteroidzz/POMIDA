@@ -236,7 +236,8 @@ class AnalyticsService
         $inventoryIds = [];
 
         foreach ($menuItems as $menuItem) {
-            $needs = $deduction->requirementsForLine($menuItem, 1, []);
+            // HIGH lines only: a LOW ingredient never makes an item out of stock.
+            $needs = $deduction->requirementsForLine($menuItem, 1, [], highOnly: true);
             if (empty($needs)) {
                 continue;
             }

@@ -224,6 +224,20 @@ class CsrfProtectionTest extends TestCase
             return;
         }
 
+        // The password-reset steps are refused the same way (Defect Report 6,
+        // bootstrap/app.php): back to the same step with a fresh token. Nothing
+        // was issued. PasswordResetKeepsGoingTest proves a stale token on the
+        // last step changes no password.
+        $resetSteps = ['/customer/forgot-password', '/customer/new-password', '/customer/verification', '/admin/forgot-password'];
+
+        if (in_array($uri, $resetSteps, true)) {
+            $this->assertSame(302, $response->getStatusCode(), "{$method} {$uri} with no CSRF token neither 419'd nor redirected — got HTTP " . $response->getStatusCode());
+            $response->assertRedirect($uri);
+            $this->assertDatabaseMissing('password_reset_tokens', ['email' => 'x@example.com']);
+
+            return;
+        }
+
         $this->assertSame(
             419,
             $response->getStatusCode(),

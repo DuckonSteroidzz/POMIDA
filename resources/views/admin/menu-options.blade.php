@@ -1951,6 +1951,17 @@
 
 @push('scripts')
 
+@include('admin.partials.quantity-step')
+<script>
+// Add-on ingredient quantity: whole numbers for count units (pc, can, ...),
+// up to 3 decimals for measured ones. Server re-checks it either way.
+document.addEventListener('change', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('pchy-ing-select')) return;
+    var form = e.target.closest('form');
+    var opt = e.target.options[e.target.selectedIndex];
+    if (form) pomidaApplyQuantityStep(form.querySelector('input[name="quantity_used"]'), opt ? opt.dataset.unit : '', true);
+});
+</script>
 <script>
 // The "Viewing:" bar (owner only). The lists here are rendered by the server,
 // so a change is a reload of this page on the chosen branch — ?branch= makes

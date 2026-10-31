@@ -63,6 +63,25 @@
         }
         .option-input:checked + .option-chip-label .option-tick i { opacity: 1; }
 
+        /* Remove Ingredients: the same chip. A separate class so it can never be
+           counted by the running total, which adds up .option-input. */
+        .removal-input:checked + .option-chip-label {
+            border-color: #F4845F;
+            background-color: #FDE8DE;
+            box-shadow: 0 0 0 3px rgb(244 132 95 / .18);
+        }
+        .removal-input:focus-visible + .option-chip-label {
+            box-shadow: 0 0 0 3px rgb(244 132 95 / .35);
+        }
+        .removal-input:checked + .option-chip-label .option-tick {
+            background-color: #C0392B;
+            border-color: #C0392B;
+            color: #fff;
+        }
+        .removal-input:checked + .option-chip-label .option-tick i { opacity: 1; }
+        .removal-input:disabled + .option-chip-label { cursor: not-allowed; background-color: #FAF6F3; }
+        .removal-input:disabled + .option-chip-label .option-tick { opacity: .4; }
+
         /* Size picker (Menu Item Sizes): the same chip, as a radio. */
         .size-input:checked + .option-chip-label {
             border-color: #F4845F;
@@ -374,6 +393,61 @@
                     </section>
                     @endif
 
+                    {{-- Remove Ingredients (Defect Report 6) --}}
+                    {{--
+                        One checkbox per LOW line of the recipe being ordered. A
+                        sized item has one list per size, and the list on show
+                        follows the size radios. A HIGH ingredient is never here,
+                        and addToCart() refuses one regardless. The price does not
+                        change. A line the shelf cannot cover for the chosen
+                        quantity reads "Not available today" and cannot be ticked:
+                        data-servings is what the script below compares with the
+                        quantity. Checkout has the final word, under the lock.
+                    --}}
+                    @php
+                        $removalGroups = collect($removableIngredients ?? [])->filter(fn ($rows) => count($rows) > 0);
+                        $openRemovalGroup = $itemIsSized ? ($selectedSize['id'] ?? null) : 'base';
+                    @endphp
+                    @if($removalGroups->isNotEmpty())
+                    <section class="card-surface p-4 sm:p-6" id="removeIngredientsCard" @if(! $removalGroups->has($openRemovalGroup)) hidden @endif>
+                        <div class="mb-2 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3">
+                            <div class="min-w-0">
+                                <h2 class="font-display text-lg font-bold text-peach-deep">Remove Ingredients</h2>
+                                <p class="text-xs text-peach-deep/50">Included by default</p>
+                            </div>
+                            <span class="shrink-0 rounded-full border border-peach-soft px-3 py-1 text-xs font-bold text-peach-red">Optional</span>
+                        </div>
+                        <p class="mb-4 text-sm text-peach-deep/70">Choose ingredients you don't want included in your order.</p>
+
+                        @foreach($removalGroups as $groupKey => $removalRows)
+                        @php $groupIsOpen = (string) $groupKey === (string) $openRemovalGroup; @endphp
+                        <div class="grid gap-2.5 sm:grid-cols-2" data-removal-group="{{ $groupKey }}" @if(! $groupIsOpen) hidden @endif>
+                            @foreach($removalRows as $removal)
+                            <div class="min-w-0" data-removal-row data-servings="{{ $removal['servings'] }}">
+                                <input type="checkbox" name="removed_ingredients[]" value="{{ $removal['inventory_id'] }}"
+                                    id="remove{{ $groupKey }}-{{ $removal['inventory_id'] }}"
+                                    class="removal-input sr-only"
+                                    @disabled(! $groupIsOpen || ! $removal['available'])>
+                                <label for="remove{{ $groupKey }}-{{ $removal['inventory_id'] }}" class="option-chip option-chip-label">
+                                    <span class="option-tick grid h-5 w-5 shrink-0 place-items-center rounded-md border border-peach-soft bg-peach-cream text-[0.8125rem] transition">
+                                        <i class="bi bi-check-lg opacity-0 transition"></i>
+                                    </span>
+                                    <span class="min-w-0 flex-1">
+                                        <span class="block text-sm font-semibold text-peach-deep" data-removal-on @if(! $removal['available']) hidden @endif>Remove {{ $removal['name'] }}</span>
+                                        <span class="block text-sm font-semibold text-peach-deep/60" data-removal-off @if($removal['available']) hidden @endif>
+                                            {{ $removal['name'] }}
+                                            <span class="block text-[0.8125rem] font-black uppercase tracking-wide text-peach-red">Not available today</span>
+                                            <span class="block text-xs font-medium text-peach-deep/60">It will not be included in your order.</span>
+                                        </span>
+                                    </span>
+                                </label>
+                            </div>
+                            @endforeach
+                        </div>
+                        @endforeach
+                    </section>
+                    @endif
+
                     {{-- Desktop actions + running total --}}
                     <section class="card-surface hidden p-4 sm:p-6 md:block">
                         <div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-4">
@@ -512,7 +586,38 @@
             });
         }
 
+        // Remove Ingredients: show the chosen size's list, and turn a line the
+        // shelf cannot cover for this quantity into "Not available today".
+        function refreshRemovalRows() {
+            const card = document.getElementById('removeIngredientsCard');
+            if (!card) return;
+
+            const chosenSize = document.querySelector('.size-input:checked');
+            const openGroup = chosenSize ? chosenSize.value : (document.querySelector('.size-input') ? '' : 'base');
+            let hasOpenGroup = false;
+
+            card.querySelectorAll('[data-removal-group]').forEach(function (group) {
+                const isOpen = group.dataset.removalGroup === openGroup;
+                group.hidden = !isOpen;
+                hasOpenGroup = hasOpenGroup || isOpen;
+
+                group.querySelectorAll('[data-removal-row]').forEach(function (row) {
+                    const covered = parseInt(row.dataset.servings, 10) >= quantity;
+                    const input = row.querySelector('.removal-input');
+
+                    input.disabled = !isOpen || !covered;
+                    if (!covered || !isOpen) input.checked = false;
+
+                    row.querySelector('[data-removal-on]').hidden = !covered;
+                    row.querySelector('[data-removal-off]').hidden = covered;
+                });
+            });
+
+            card.hidden = !hasOpenGroup;
+        }
+
         function updateTotal() {
+            refreshRemovalRows();
             let unitTotal = BASE_PRICE;
             document.querySelectorAll('.option-input:checked').forEach(cb => {
                 unitTotal += parseFloat(cb.dataset.price || 0) || 0;

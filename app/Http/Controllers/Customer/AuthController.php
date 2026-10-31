@@ -958,7 +958,23 @@ private function switchBranch($branchId): void
         $itemIsSized = $item->hasSizes();
         $sizeChoices = $itemIsSized ? $item->sizeChoices($reserved) : [];
 
-        return view('customer.item-details', compact('item', 'availableOptions', 'reserved', 'sizeChoices', 'itemIsSized'));
+        /*
+         * The "Remove Ingredients" card (Defect Report 6): the LOW lines of the
+         * recipe the customer is looking at. A sized item has one list per size,
+         * since each size has its own recipe, keyed by size id; an unsized item
+         * has one list under 'base'. HIGH lines are never in here.
+         */
+        $removableIngredients = [];
+
+        if ($itemIsSized) {
+            foreach ($sizeChoices as $choice) {
+                $removableIngredients[$choice['id']] = $item->removableIngredients($reserved, $choice['size']);
+            }
+        } else {
+            $removableIngredients['base'] = $item->removableIngredients($reserved);
+        }
+
+        return view('customer.item-details', compact('item', 'availableOptions', 'reserved', 'sizeChoices', 'itemIsSized', 'removableIngredients'));
     }
 
     public function showItems($id)
@@ -1228,6 +1244,10 @@ private function switchBranch($branchId): void
                 // Menu Item Sizes (Phase 2). Required for a sized item — see
                 // the size block below; a scalar integer or nothing.
                 'size_id' => 'nullable|integer',
+                // Inventory ids of LOW ingredients to leave out. Which ones this
+                // item actually allows is checked below, once the size is known.
+                'removed_ingredients' => 'nullable|array',
+                'removed_ingredients.*' => 'integer',
             ]);
 
             $selectedBranchId = session('branch_id');
@@ -1292,6 +1312,22 @@ private function switchBranch($branchId): void
                 );
             }
 
+            /*
+             * Only LOW ingredients of THIS item and THIS size can be left out.
+             * A HIGH ingredient, or another item's, is refused however the
+             * request was built, and nothing reaches the cart.
+             */
+            $removedIngredients = collect($request->input('removed_ingredients', []))
+                ->map(fn ($id) => (int) $id)
+                ->unique()
+                ->sort()
+                ->values()
+                ->all();
+
+            if ($refusal = $item->removalRefusal($removedIngredients, $size)) {
+                return redirect()->back()->with('error', $refusal);
+            }
+
             $cart = session()->get('cart', []);
 
             $itemId = $request->input('item_id');
@@ -1349,6 +1385,12 @@ private function switchBranch($branchId): void
             if (!empty($selectedOptions)) {
                 sort($selectedOptions);
                 $cartKey = $cartKey . '_' . implode('_', $selectedOptions);
+            }
+
+            // Different removals are a different order line ("26_r41-42"). A
+            // line that removes nothing keeps the key it always had.
+            if (!empty($removedIngredients)) {
+                $cartKey = $cartKey . '_r' . implode('-', $removedIngredients);
             }
 
             $menuItem = \App\Models\MenuItem::findOrFail($itemId);
@@ -1421,6 +1463,10 @@ private function switchBranch($branchId): void
                     $cart[$cartKey]['size_id'] = (int) $size->id;
                     $cart[$cartKey]['size_name'] = $size->name;
                 }
+
+                if (!empty($removedIngredients)) {
+                    $cart[$cartKey]['removed_ingredients'] = $removedIngredients;
+                }
             }
 
             session()->put('cart', $cart);
@@ -1445,7 +1491,6 @@ private function switchBranch($branchId): void
      */
     $priced = \App\Support\CartPricing::price($cart);
     $total = $priced['subtotal'];
-    $cart = \App\Support\CartPricing::displayCart($priced['lines']);
     $cartRepriced = $priced['repriced'];
     $cartHasUnavailableItem = $priced['missing'];
 
@@ -1454,6 +1499,19 @@ private function switchBranch($branchId): void
     // and the disabled Place Order button; checkout re-checks server-side
     // regardless.
     $reserved = app(\App\Services\InventoryDeductionService::class)->committedQuantities();
+
+    // What each line goes out without (Defect Report 6): what the customer
+    // removed, plus any LOW ingredient the shelf cannot cover. Checkout settles
+    // this again under the lock; the customer is told here first.
+    $cart = \App\Support\CartPricing::displayCart(
+        $priced['lines'],
+        app(\App\Services\InventoryDeductionService::class)->cartRemovalLabels(
+            $priced['lines'],
+            session('branch_id') ? (int) session('branch_id') : null,
+            $reserved
+        )
+    );
+    $cartHasRemovalIssue = $priced['removal_problem'];
 
     // Menu Item Sizes (Phase 2): sized lines, and lines CartPricing could not
     // price by size, are judged separately below — per cart line, since
@@ -1601,7 +1659,7 @@ private function switchBranch($branchId): void
     // otherwise left $sessionOrderType undefined and 500'd the page (regression
     // from 9348f22, "Add Take Out flag for Dine-In orders"). Same expression and
     // default the summary block uses.
-    $sessionOrderType = session('order_type', Auth::check() ? 'pick_up' : 'dine_in');
+    $sessionOrderType = session('order_type', Auth::guard('customer')->check() ? 'pick_up' : 'dine_in');
 
     $discountCards = collect();
 
@@ -1648,6 +1706,7 @@ private function switchBranch($branchId): void
         'outOfStockCartKeys',
         'sizeIssueByCartKey',
         'cartHasSizeIssue',
+        'cartHasRemovalIssue',
         'sessionOrderType'
     ));
 }
@@ -1808,12 +1867,20 @@ private function switchBranch($branchId): void
         if ($request->expectsJson()) {
             $priced = \App\Support\CartPricing::price($cart);
 
+            // A bigger quantity can outrun a LOW ingredient (and a smaller one
+            // can bring it back), so the line's note travels with the figures.
+            $removalLabels = app(\App\Services\InventoryDeductionService::class)->cartRemovalLabels(
+                $priced['lines'],
+                session('branch_id') ? (int) session('branch_id') : null
+            );
+
             $lines = [];
             foreach ($priced['lines'] as $line) {
                 $lines[(string) $line['cart_key']] = [
                     'quantity'   => $line['quantity'],
                     'unit_price' => $line['unit_price'],
                     'subtotal'   => $line['subtotal'],
+                    'removal_labels' => $removalLabels[(string) $line['cart_key']] ?? [],
                 ];
             }
 
@@ -2074,11 +2141,9 @@ private function switchBranch($branchId): void
 
     public function logout(Request $request)
     {
-        // Logout only the customer guard
-        Auth::guard('customer')->logout();
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        // Only the customer side. Staff signed in on the same browser stay
+        // signed in. See App\Support\SessionSide.
+        \App\Support\SessionSide::end($request, \App\Support\SessionSide::CUSTOMER);
 
         return redirect()->route('home')
             ->with('success', 'You have been logged out.');
@@ -2091,12 +2156,14 @@ private function switchBranch($branchId): void
      * Dine-In, or a guest holding only a table_session_token.
      *
      * Deliberately NOT a client-side-only redirect. Logging out the guard (when
-     * one is signed in) and then invalidating the whole session — not just
-     * forgetting order_type/table_number — is what makes this a real session
-     * end rather than a cookie the browser could still replay: the old session
-     * id is discarded, a guest's table_session_token goes with it (so it cannot
-     * be used to keep pinging table-activity after the prompt fired), and the
-     * CSRF token is regenerated for whatever loads next.
+     * one is signed in) and then removing the whole customer side of the session
+     * — not just forgetting order_type/table_number — is what makes this a real
+     * session end rather than a cookie the browser could still replay: the old
+     * session id is discarded, a guest's table_session_token goes with it (so it
+     * cannot be used to keep pinging table-activity after the prompt fired), and
+     * the CSRF token is regenerated for whatever loads next. Staff signed in on
+     * the same browser are not idle because a customer tab was: see
+     * App\Support\SessionSide.
      *
      * No branching on order_type/guard here on purpose — "am I logged in" is
      * the only fact that changes what has to happen, and that already reads
@@ -2104,12 +2171,7 @@ private function switchBranch($branchId): void
      */
     public function idleLogout(Request $request)
     {
-        if (Auth::guard('customer')->check()) {
-            Auth::guard('customer')->logout();
-        }
-
-        $request->session()->invalidate();
-        $request->session()->regenerateToken();
+        \App\Support\SessionSide::end($request, \App\Support\SessionSide::CUSTOMER);
 
         return response()->json(['redirect' => route('home')]);
     }
