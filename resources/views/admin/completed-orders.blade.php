@@ -184,7 +184,7 @@
                         @endphp
                         {{ $coLabel }}
                         <span class="co-muted" style="display:block; font-size:0.7rem;">
-                            {{ $coStatus === 'paid' ? 'Paid' : ucfirst(str_replace('_', ' ', $coStatus ?: 'unpaid')) }}
+                            {{ $order->paymentStatusLabel() }}
                         </span>
                     </td>
                     <td data-label="Status" class="co-ta-center">

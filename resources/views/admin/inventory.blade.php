@@ -601,6 +601,7 @@
         </div>
     </div>
 </div>
+    @include('admin.partials.inventory-in-use-modal')
 @endif
 
 @endsection
@@ -933,7 +934,16 @@
          above and not this one. --}}
     @if($isAdmin)
 
+    // Ingredients a recipe still uses, by inventory id: {name, names[]}. The
+    // server refuses these on submit as well (InventoryUsage); this just says
+    // so before the "Yes, delete" step instead of after it.
+    var ivInUse = @json($inUseForJs);
+
     function confirmDelete(id) {
+        if (ivInUse[id]) {
+            showInventoryInUse(ivInUse[id].name, ivInUse[id].names);
+            return;
+        }
         document.getElementById('deleteForm').action = `/admin/inventory/${id}`;
         document.getElementById('deleteModal').style.display = 'flex';
     }

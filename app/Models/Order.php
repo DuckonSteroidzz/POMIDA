@@ -284,6 +284,48 @@ class Order extends Model
         };
     }
 
+    /**
+     * The words every screen and export uses for an order's payment state.
+     *
+     * This is the SINGLE source of truth for payment-status text — the admin
+     * Active Orders card and its detail modal, Completed Orders (screen, print
+     * and CSV) and the customer's GCash payment page. Do not re-derive it.
+     *
+     * The one rule that is not a plain relabel: a CANCELLED order whose money
+     * never moved (stored 'pending', empty, or 'unpaid') reads "Cancelled",
+     * not "Pending" — nothing is pending on a dead order. Anything that
+     * records real money or a staff decision keeps its own words on a
+     * cancelled order too: 'paid', 'awaiting_verification' (the customer says
+     * they paid), 'rejected', 'refund_pending' ("Refund owed") and 'refunded'.
+     *
+     * Display only. The stored payment_status is never rewritten, so old and
+     * new cancelled orders read the same and nothing that filters on the
+     * column (refund band, spin gate, GCash flow) can be affected.
+     */
+    public static function paymentStatusText(?string $paymentStatus, ?string $orderStatus): string
+    {
+        $raw = strtolower(trim((string) $paymentStatus));
+
+        if ($raw === 'paid') {
+            return 'Paid';
+        }
+
+        if ($raw === 'refund_pending') {
+            return 'Refund owed';
+        }
+
+        if (strtolower((string) $orderStatus) === 'cancelled' && in_array($raw, ['', 'pending', 'unpaid'], true)) {
+            return 'Cancelled';
+        }
+
+        return ucfirst(str_replace('_', ' ', $raw ?: 'unpaid'));
+    }
+
+    public function paymentStatusLabel(): string
+    {
+        return self::paymentStatusText($this->payment_status, $this->status);
+    }
+
     /** orders.discount_type of an order discounted by a voucher-type loyalty reward. */
     public const DISCOUNT_TYPE_REWARD = 'reward';
 

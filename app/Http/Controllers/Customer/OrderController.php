@@ -1386,6 +1386,18 @@ public function showGcashPayment(int $id)
             ]);
     }
 
+    // A cancelled order is never payable, whatever its payment state: the page
+    // says so (no QR, no "I Have Paid") and links back to Orders. The view
+    // itself checks the status, so even a refund_pending order lands here
+    // rather than being bounced to Orders without a word.
+    if ($order->status === 'cancelled') {
+        return view('customer.gcash-payment', [
+            'order' => $order,
+            'gcashQrSetting' => null,
+            'gcashPhoneSetting' => null,
+        ]);
+    }
+
     // Only the initial payment state should show the QR.
     if (!in_array($order->payment_status, ['pending', 'awaiting_verification'])) {
         return redirect()
@@ -1426,7 +1438,9 @@ public function markGcashAsPaid(int $id)
             ]);
     }
 
-    if ($order->payment_status !== 'pending') {
+    // Cancelled orders cannot be "paid" — the page explains why. Without this
+    // a stale tab could push a dead order into the staff verification queue.
+    if ($order->status === 'cancelled' || $order->payment_status !== 'pending') {
         return redirect()
             ->route('customer.gcash-payment', $order->id);
     }

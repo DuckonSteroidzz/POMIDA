@@ -159,6 +159,34 @@
     {{-- ================= MAIN ================= --}}
     <main class="paper-bg mx-auto w-full max-w-5xl px-4 pb-28 pt-6 sm:px-6 sm:pt-8">
 
+    {{-- A cancelled order is never payable: no QR, no "I Have Paid" — just the
+         fact and the way back. (The controller also refuses the pay action.) --}}
+    @if($order->status === 'cancelled')
+
+        <section class="rise rise-1 card-surface-lg mx-auto max-w-md p-5 text-center sm:p-6" data-testid="gcash-order-cancelled">
+
+            <span class="mx-auto grid h-14 w-14 place-items-center rounded-full bg-peach-soft text-2xl text-peach-red">
+                <i class="bi bi-x-circle"></i>
+            </span>
+
+            <h1 class="mt-4 font-display text-xl font-black tracking-tight text-peach-deep">
+                This order was cancelled.
+            </h1>
+
+            <p class="mt-2 text-sm leading-relaxed text-peach-deep/55">
+                Order #{{ $order->order_number }} can no longer be paid.
+            </p>
+
+            <a href="{{ route('customer.orders') }}"
+               class="mt-5 inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-3.5 text-sm font-bold text-white transition hover:bg-peach-deep active:scale-[0.99]">
+                <i class="bi bi-receipt"></i>
+                Back to Orders
+            </a>
+
+        </section>
+
+    @else
+
         {{-- Page heading --}}
         <div class="rise rise-1 mx-auto mb-6 max-w-2xl text-center">
 
@@ -575,7 +603,7 @@
                             <p class="mt-2 text-sm leading-relaxed text-peach-deep/55">
                                 Your current payment status is
                                 <strong>
-                                    {{ ucfirst(str_replace('_', ' ', $order->payment_status)) }}
+                                    {{ $order->paymentStatusLabel() }}
                                 </strong>.
                             </p>
 
@@ -588,6 +616,8 @@
             </aside>
 
         </div>
+
+    @endif
 
     </main>
 
@@ -748,7 +778,7 @@
             }
 
             // Only poll while the order is awaiting verification.
-            @if($order->payment_status === 'awaiting_verification')
+            @if($order->payment_status === 'awaiting_verification' && $order->status !== 'cancelled')
                 PomidaPollChain({
                     schedule: [3000, 5000, 10000, 15000],
                     run: checkPaymentStatus

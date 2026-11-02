@@ -375,21 +375,13 @@
                 </td>
                 {{-- Cost + Gross Profit come from App\Services\MenuItemCosting, which
                      sums quantity_used x unit_cost over the item's recipe. When the item
-                     has no recipe at all the number is the typed-in guess, and it is
-                     badged as such so the owner can tell a real figure from an estimate.
-                     The badge reuses the same pill shape as the Branch column beside it
-                     and the amber warning colours already used by the "All Branches is
-                     for viewing only" notice at the top of this page. --}}
+                     has no recipe at all the number is the typed-in guess; the Status
+                     column beside it already says "No Recipe Set", so the cost carries
+                     no badge of its own. --}}
                 @php $c = $costing[$item->id] ?? null; @endphp
                 <td data-label="Cost" style="font-weight: 600;">
                     @if($c)
                     ₱{{ number_format($c['cost'], 2) }}
-                    @if($c['is_fallback'])
-                    <span style="background:#fff3cd;color:#856404;padding:0.15rem 0.5rem;border-radius:10px;font-size:0.7rem;font-weight:600;margin-left:0.35rem;white-space:nowrap;"
-                          title="No recipe set — this is the manually typed cost, not a computed one.">
-                        No recipe
-                    </span>
-                    @endif
                     @else
                     -
                     @endif

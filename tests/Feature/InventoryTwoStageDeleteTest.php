@@ -285,11 +285,12 @@ class InventoryTwoStageDeleteTest extends TestCase
     }
 
     /**
-     * Recipe links stay CASCADE, unchanged existing policy from before this
-     * pass (see forceDeleteInventory()'s docblock) — but the admin must be
-     * told, not surprised.
+     * Nov 2026: an ingredient any recipe still uses can no longer be
+     * permanently deleted (it used to cascade the recipe lines away with a
+     * warning). The recipe line must survive and the row must stay put. The
+     * full matrix lives in InventoryInUseDeleteBlockTest.
      */
-    public function test_permanent_delete_of_an_item_still_in_a_recipe_removes_the_link_and_says_so(): void
+    public function test_permanent_delete_of_an_item_still_in_a_recipe_is_blocked(): void
     {
         $item = $this->makeItem();
         $menuItem = MenuItem::create([
@@ -304,14 +305,17 @@ class InventoryTwoStageDeleteTest extends TestCase
             'quantity_used' => 1,
         ]);
 
-        $this->actingAs($this->admin(), 'admin')->delete('/admin/inventory/' . $item->id);
+        // Archived directly: the Delete button is blocked for a used item too,
+        // which is exactly how an already-archived-and-used row can exist.
+        $item->archive();
 
         $response = $this->actingAs($this->admin(), 'admin')
             ->delete(route('admin.inventory.force-delete', $item->id));
 
-        $response->assertSessionHasNoErrors();
-        $this->assertStringContainsString('recipe link', session('success'));
-        $this->assertSame(0, MenuItemIngredient::where('menu_item_id', $menuItem->id)->count());
+        $response->assertSessionHas('inventory_in_use');
+        $this->assertStringContainsString($menuItem->name, session('inventory_in_use')['message']);
+        $this->assertNotNull(Inventory::find($item->id), 'the row must still exist');
+        $this->assertSame(1, MenuItemIngredient::where('menu_item_id', $menuItem->id)->count());
     }
 
     // ══════════ the central risk: archiving must not break a live recipe ══════════
@@ -340,7 +344,10 @@ class InventoryTwoStageDeleteTest extends TestCase
             'quantity_used' => 3,
         ]);
 
-        $this->actingAs($this->admin(), 'admin')->delete('/admin/inventory/' . $item->id);
+        // Archived through the model: the Delete button now refuses an item a
+        // recipe uses (Nov 2026), but rows archived before that still exist
+        // and must keep deducting.
+        $item->archive();
         $this->assertTrue($item->fresh()->isArchived());
 
         $service = app(InventoryDeductionService::class);

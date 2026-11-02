@@ -318,13 +318,19 @@ class Notification extends Model
      * If nobody reads this, the customer is simply out of pocket, which is why
      * the wording names the action instead of just reporting the event.
      */
-    public static function refundPending(Order $order): self
+    public static function refundPending(Order $order, string $cancelledBy = 'customer'): self
     {
+        $byStaff = $cancelledBy === 'staff';
+
         return self::forStaff(
             $order,
             'refund_pending',
-            'Refund needed — customer cancelled a paid order',
-            'A customer cancelled order #' . $order->order_number . ' after marking it paid via GCash (₱' .
+            $byStaff
+                ? 'Refund needed — staff cancelled a paid order'
+                : 'Refund needed — customer cancelled a paid order',
+            ($byStaff
+                ? 'Staff cancelled order #' . $order->order_number . ' after the customer marked it paid via GCash (₱'
+                : 'A customer cancelled order #' . $order->order_number . ' after marking it paid via GCash (₱') .
             number_format((float) $order->total, 2) . '). Send the refund manually, then mark it refunded.'
         );
     }

@@ -1085,9 +1085,7 @@
                         } }}"
 
 
-                        data-payment-status="{{ strtolower((string) ($order->payment_status ?? '')) === 'paid'
-                            ? 'Paid'
-                            : ucfirst(str_replace('_', ' ', strtolower((string) ($order->payment_status ?: 'unpaid')))) }}"
+                        data-payment-status="{{ $order->paymentStatusLabel() }}"
 
 
                         data-items='@json($fullOrderItems)'
@@ -1271,7 +1269,7 @@
                     font-size:0.62rem;
                     font-weight:800;
                 ">
-                    {{ ucfirst($paymentStatus ?: 'Unpaid') }}
+                    {{ $order->paymentStatusLabel() }}
                 </span>
             @endif
         </div>

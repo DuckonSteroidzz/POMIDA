@@ -200,7 +200,8 @@ class CompletedOrdersCsvExportTest extends TestCase
         $this->assertSame('Pickup', $row['Type']);
         $this->assertSame('-', $row['Table']);
         $this->assertSame('Cancelled', $row['Status']);
-        $this->assertSame('Pending', $row['Payment Status']);
+        // Nothing was paid on a dead order, so it reads Cancelled, not Pending.
+        $this->assertSame('Cancelled', $row['Payment Status']);
     }
 
     public function test_pwd_senior_ids_and_names_are_never_exported(): void

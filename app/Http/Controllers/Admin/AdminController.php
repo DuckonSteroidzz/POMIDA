@@ -4465,8 +4465,6 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 };
 
                 $method = strtolower((string) ($order->payment_method ?? 'cash'));
-                $paymentStatus = strtolower((string) ($order->payment_status ?? ''));
-
                 $items = $order->items->map(function ($item) use ($optionNames) {
                     $options = ($optionNames[$item->id] ?? collect())
                         ->map(fn ($o) => '+ ' . $o->option_name)
@@ -4492,7 +4490,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                     number_format((float) $order->discount_amount, 2, '.', ''),
                     number_format((float) $order->total, 2, '.', ''),
                     $cell(match ($method) { 'gcash' => 'GCash', 'cash' => 'Cash', default => ucfirst($method) }),
-                    $cell($paymentStatus === '' ? 'Unpaid' : ucfirst(str_replace('_', ' ', $paymentStatus))),
+                    $cell($order->paymentStatusLabel()),
                     $cell(ucfirst((string) $order->status)),
                     $order->reward_code ? \App\Support\RewardCode::display($order->reward_code) : '',
                 ]);
@@ -4906,18 +4904,40 @@ public function markOrderRefunded(int $id)
             return $stop;
         }
 
+        // Same rule as the customer's own cancel (OrderController::
+        // cancelCustomerOrder): a GCash order the customer already marked paid
+        // may have real money in flight and there is no merchant API to
+        // reverse it, so it lands in Refunds Owed instead of settling as a
+        // plain cancellation that quietly never gets refunded.
+        $needsRefund = $order->payment_method === 'gcash'
+            && $order->payment_status === 'awaiting_verification';
+
         $order->status = 'cancelled';
         // Matches OrderController::cancelCustomerOrder(), which has always
         // stamped this. The staff path silently left it NULL.
         $order->cancelled_at = now();
+
+        if ($needsRefund) {
+            $order->payment_status = 'refund_pending';
+            $order->cancellation_reason = 'Cancelled by staff after the customer marked it paid via GCash. '
+                . 'Refund must be sent manually.';
+        }
+
         $order->save();
 
         \App\Models\Notification::orderStatusChanged($order, 'cancelled');
+
+        if ($needsRefund) {
+            // After the save, as on the customer path: never raise a refund
+            // for an order that failed to cancel.
+            \App\Models\Notification::refundPending($order, 'staff');
+        }
 
         return redirect()->route('admin.home')
             ->with(
                 'success',
                 'Order #' . $order->order_number . ' cancelled.'
+                . ($needsRefund ? ' It is now under Refunds Owed — send the GCash refund, then mark it refunded.' : '')
             );
     }
 
@@ -4988,9 +5008,19 @@ public function markOrderRefunded(int $id)
         // always compute so the count is never stale on this page.
         $deletedInventoryCount = \App\Models\Inventory::onlyArchived()->count();
 
+        // Which rows a recipe still uses, so the Delete button can open the
+        // "still in use" pop-up straight away. The server re-checks on submit.
+        $inUseForJs = [];
+        foreach (\App\Services\InventoryUsage::usedByMany($inventory->pluck('id')) as $inventoryId => $names) {
+            $inUseForJs[$inventoryId] = [
+                'name'  => $inventory->firstWhere('id', $inventoryId)?->item_name,
+                'names' => $names,
+            ];
+        }
+
         return view(
             'admin.inventory',
-            compact('inventory', 'categories', 'stockMovements', 'deletedInventoryCount')
+            compact('inventory', 'categories', 'stockMovements', 'deletedInventoryCount', 'inUseForJs')
         );
     }
 
@@ -5458,6 +5488,12 @@ public function markOrderRefunded(int $id)
     {
         $item = \App\Models\Inventory::notArchived()->findOrFail($id);
 
+        // Server-side half of the "still in a recipe" block; the pop-up on
+        // the page is only the friendly front. See App\Services\InventoryUsage.
+        if ($blocked = $this->refuseIfIngredientInUse($item, 'admin.inventory')) {
+            return $blocked;
+        }
+
         $item->archive();
 
         return redirect()->route('admin.inventory')
@@ -5466,6 +5502,26 @@ public function markOrderRefunded(int $id)
                 'Inventory item "' . $item->item_name . '" was moved to Deleted Items. '
                 . 'Restore it any time, or permanently delete it from there.'
             );
+    }
+
+    /**
+     * Refuse to archive / permanently delete an ingredient any recipe still
+     * uses (menu item, size or add-on). Returns the redirect to send, or null
+     * when nothing uses it. The pop-up wording rides in the session as
+     * `inventory_in_use` so both Inventory and Archive can show it as a modal.
+     */
+    private function refuseIfIngredientInUse(\App\Models\Inventory $item, string $routeName): ?\Illuminate\Http\RedirectResponse
+    {
+        $usedBy = \App\Services\InventoryUsage::usedBy($item->id);
+
+        if ($usedBy === []) {
+            return null;
+        }
+
+        return redirect()->route($routeName)->with('inventory_in_use', [
+            'name'    => $item->item_name,
+            'message' => \App\Services\InventoryUsage::blockedMessage($usedBy),
+        ]);
     }
 
     /**
@@ -5489,15 +5545,17 @@ public function markOrderRefunded(int $id)
          * the success message afterward. Mirrors the two checks
          * forceDeleteInventory() itself makes.
          */
-        $recipeCounts = [];
         $movementCounts = [];
         foreach ($deletedItems as $item) {
-            $recipeCounts[$item->id] = \App\Models\MenuItemIngredient::where('inventory_id', $item->id)->count()
-                + \App\Models\MenuOptionIngredient::where('inventory_id', $item->id)->count();
             $movementCounts[$item->id] = \App\Models\StockMovement::where('inventory_id', $item->id)->count();
         }
 
-        return view('admin.inventory-deleted', compact('deletedItems', 'recipeCounts', 'movementCounts'));
+        // Nov 2026: an archived ingredient a recipe still uses cannot be
+        // permanently deleted — see InventoryUsage. The names are embedded so
+        // the page can show the pop-up (and the row's notice) without a trip.
+        $usedBy = \App\Services\InventoryUsage::usedByMany($deletedItems->pluck('id'));
+
+        return view('admin.inventory-deleted', compact('deletedItems', 'usedBy', 'movementCounts'));
     }
 
     /** Bring an archived item back to the normal Inventory list. */
@@ -5554,6 +5612,14 @@ public function markOrderRefunded(int $id)
         if (!$item) {
             return redirect()->route('admin.inventory.deleted')
                 ->withErrors(['error' => 'That item is not in Deleted Items — it may have been restored or permanently deleted already.']);
+        }
+
+        // Nov 2026: no longer "warn, then cascade away the recipe lines" — an
+        // ingredient any recipe still uses cannot be permanently deleted until
+        // it is removed from them (this is also the case for items archived
+        // BEFORE the Delete block existed).
+        if ($blocked = $this->refuseIfIngredientInUse($item, 'admin.inventory.deleted')) {
+            return $blocked;
         }
 
         $recipeLinks = \App\Models\MenuItemIngredient::where('inventory_id', $id)->count()

@@ -112,7 +112,16 @@
              rows on screen after an ingredient is added or removed in Edit
              mode, the same way it already does from draft rows in Add mode. --}}
         <tr style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}" data-unit-cost="{{ $row->inventory->unit_cost ?? 0 }}" data-qty="{{ $row->{$qtyAttribute} }}">
-            <td style="padding:0.35rem 0.4rem;">{{ $row->inventory->item_name ?? '(removed)' }}</td>
+            <td style="padding:0.35rem 0.4rem;">
+                {{ $row->inventory->item_name ?? '(removed)' }}
+                {{-- Archived before deleting a used ingredient was blocked: it still
+                     deducts, so the owner has to swap it for a live one. Display only. --}}
+                @if($row->inventory && $row->inventory->isArchived())
+                <span class="recipe-archived-warn" data-testid="recipe-archived-warning" style="display:block; margin-top:0.15rem; background:#fdecea; color:#C0392B; font-size:0.68rem; font-weight:700; padding:0.15rem 0.4rem; border-radius:6px; width:fit-content;">
+                    <i class="bi bi-exclamation-triangle-fill"></i> Archived ingredient — replace it
+                </span>
+                @endif
+            </td>
             <td style="padding:0.35rem 0.4rem;">
                 {{ rtrim(rtrim(number_format($row->{$qtyAttribute}, 3), '0'), '.') }} {{ $row->inventory->unit ?? '' }}
             </td>
@@ -211,8 +220,5 @@
 <div style="border-top:1px solid #f0f0f0; margin-top:0.6rem; padding-top:0.45rem; font-size:0.78rem; color:#1F2937;">
     <strong>Cost from recipe:</strong>
     <span class="recipe-cost-total" id="recipe-cost-{{ $blockId }}" style="font-weight:700;">₱{{ number_format($costLine['cost'] ?? 0, 2) }}</span>
-    @if($costLine['is_fallback'] ?? false)
-        <span style="background:#fff3cd;color:#856404;padding:0.1rem 0.45rem;border-radius:10px;font-size:0.65rem;font-weight:600;margin-left:0.3rem;">No recipe</span>
-    @endif
     <span class="recipe-profit" id="recipe-profit-{{ $blockId }}" style="color:#4B5563; font-size:0.7rem; font-weight:600;"></span>
 </div>

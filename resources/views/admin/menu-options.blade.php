@@ -844,6 +844,7 @@
                                     'name' => $ing->inventory->item_name ?? 'Deleted item',
                                     'quantity_used' => rtrim(rtrim(number_format((float) $ing->quantity_used, 3), '0'), '.'),
                                     'unit' => $ing->inventory->unit ?? '',
+                                    'archived' => (bool) $ing->inventory?->isArchived(),
                                     'branch_id' => $ingBranchId !== null ? (int) $ingBranchId : null,
                                     'branch_name' => $ingBranchId !== null
                                         ? ($branches[$ingBranchId]->name ?? ('Branch #' . $ingBranchId))
@@ -2746,6 +2747,17 @@ window.pcBranchSelectHandler = function (value) {
         name.className = 'pchy-ing-name';
         name.textContent = ing.name;
         row.appendChild(name);
+
+        // Archived before deleting a used ingredient was blocked: it still
+        // deducts, so the owner has to swap it. Display only.
+        if (ing.archived) {
+            const warn = document.createElement('span');
+            warn.className = 'pchy-ing-archived';
+            warn.dataset.testid = 'recipe-archived-warning';
+            warn.style.cssText = 'background:#fdecea;color:#C0392B;font-size:0.68rem;font-weight:700;padding:0.1rem 0.4rem;border-radius:6px;white-space:nowrap;';
+            warn.textContent = 'Archived ingredient — replace it';
+            row.appendChild(warn);
+        }
 
         if (ing.branch_name) {
             const branch = document.createElement('span');

@@ -82,7 +82,7 @@
 
             @foreach($deletedItems as $item)
                 @php
-                    $recipeLinks = $recipeCounts[$item->id] ?? 0;
+                    $inUse = $usedBy[$item->id] ?? [];
                     $movementCount = $movementCounts[$item->id] ?? 0;
                 @endphp
                 <div class="pchy-row">
@@ -98,18 +98,20 @@
                             &middot; {{ \App\Models\Inventory::formatQuantity($item->quantity) }} {{ $item->unit }}
                             @if($item->branch) &middot; {{ $item->branch->name }} @endif
                         </p>
-                        @if($recipeLinks > 0 || $movementCount > 0)
+                        @if($inUse)
+                            {{-- Archived BEFORE the delete block existed, or put back into a
+                                 recipe since: it still deducts, so it cannot be permanently
+                                 deleted until it is taken out of these. Nothing is changed here. --}}
+                            <p class="pchy-row-warn" data-testid="archived-in-use">
+                                <i class="bi bi-exclamation-triangle-fill"></i>
+                                Archived ingredient still used by: {{ implode(', ', $inUse) }}.
+                                Replace it in those recipes before permanently deleting it.
+                            </p>
+                        @endif
+                        @if($movementCount > 0)
                             <p class="pchy-row-warn">
                                 <i class="bi bi-exclamation-triangle-fill"></i>
-                                Permanently deleting this will
-                                @if($recipeLinks > 0)
-                                    remove it from {{ $recipeLinks }} {{ \Illuminate\Support\Str::plural('recipe', $recipeLinks) }}
-                                @endif
-                                @if($recipeLinks > 0 && $movementCount > 0) and @endif
-                                @if($movementCount > 0)
-                                    keep {{ $movementCount }} past stock {{ \Illuminate\Support\Str::plural('movement', $movementCount) }} in the log with no live item behind them
-                                @endif
-                                .
+                                Permanently deleting this will keep {{ $movementCount }} past stock {{ \Illuminate\Support\Str::plural('movement', $movementCount) }} in the log with no live item behind them.
                             </p>
                         @endif
                     </div>
@@ -128,7 +130,11 @@
 
                         <form action="{{ route('admin.inventory.force-delete', $item->id) }}"
                             method="POST"
+                            @if($inUse)
+                            onsubmit="showInventoryInUse(@js($item->item_name), @js($inUse)); return false;"
+                            @else
                             onsubmit="return confirm('Permanently delete {{ addslashes($item->item_name) }}? This cannot be undone.')"
+                            @endif
                             style="margin:0;">
                             @csrf
                             @method('DELETE')
@@ -143,5 +149,7 @@
     @endif
 
 </div>
+
+@include('admin.partials.inventory-in-use-modal')
 
 @endsection

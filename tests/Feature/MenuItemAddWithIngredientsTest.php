@@ -801,7 +801,8 @@ class MenuItemAddWithIngredientsTest extends TestCase
         $html = $this->asAdminInBranch()->get('/admin/menu-items')->getContent();
 
         $guessRow = $this->rowFor($html, 'MAWI Guessed Item');
-        $this->assertStringContainsString('No recipe', $guessRow);
+        $this->assertStringNotContainsString('No recipe', $guessRow, 'the badge beside the cost is gone');
+        $this->assertStringContainsString('No Recipe Set', $guessRow, 'the Status column still says it');
         $this->assertStringNotContainsString('Estimate', $guessRow, 'the old ambiguous label is gone');
         $this->assertStringContainsString('₱21.00', $guessRow);
 

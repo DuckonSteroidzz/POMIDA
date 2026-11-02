@@ -143,7 +143,7 @@
                         @if($order->discount_amount > 0)-₱{{ number_format($order->discount_amount, 2) }}@else—@endif
                     </td>
                     <td class="co-ta-right co-num co-total">₱{{ number_format($order->total, 2) }}</td>
-                    <td class="co-ta-center">{{ $coLabel }} ({{ $coStatus === 'paid' ? 'Paid' : ucfirst(str_replace('_', ' ', $coStatus ?: 'unpaid')) }})</td>
+                    <td class="co-ta-center">{{ $coLabel }} ({{ $order->paymentStatusLabel() }})</td>
                     <td class="co-ta-center">{{ $statusLabel }}</td>
                     <td class="co-ta-center">
                         {{-- Blade's @else regex requires a non-word character right

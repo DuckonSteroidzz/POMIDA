@@ -372,9 +372,9 @@ class MenuItemRecipeCostTest extends TestCase
         $row = $this->rowFor($page->getContent(), 'MIRC Screen Guess');
         $this->assertStringContainsString('₱33.50', $row);
         $this->assertStringContainsString('₱46.50', $row, '80 - 33.50');
-        // The badge that tells a guess from a real figure at a glance.
-        $this->assertStringContainsString('No recipe', $row);
-        $this->assertStringContainsString('No recipe set', $row);
+        // The Status column says it; the cost itself carries no badge.
+        $this->assertStringContainsString('No Recipe Set', $row);
+        $this->assertStringNotContainsString('No recipe', $row, 'no yellow badge beside the cost');
     }
 
     public function test_the_menu_items_page_still_lists_every_item_for_the_branch(): void
