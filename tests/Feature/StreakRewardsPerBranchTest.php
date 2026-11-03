@@ -851,9 +851,16 @@ class StreakRewardsPerBranchTest extends TestCase
         $this->assertStringContainsString('Collect 5 stamps to receive a Free SRB Dine In Cake.', $html);
         $this->assertSame(1, substr_count($html, 'data-streak-day="'));
 
-        // No branch picked yet: a prompt to choose one, no calendar or card.
+        // No branch picked in this session (just logged in): the branch of their
+        // last order, not a blank page. QA, 2 Nov 2026: "my streak was gone".
         // (The test session carries over between requests: clear it.)
         $html = $this->actingAs($user, 'customer')->withSession(['branch_id' => null, 'order_type' => null, 'table_number' => null])
+            ->get(route('customer.account'))->assertOk()->getContent();
+        $this->assertStringContainsString('data-testid="streak-calendar" data-branch="3"', $html);
+        $this->assertStringNotContainsString('data-testid="streak-choose-branch"', $html);
+
+        // Nothing to go on at all: a prompt to choose one, no calendar or card.
+        $html = $this->actingAs($this->customer(), 'customer')->withSession(['branch_id' => null, 'order_type' => null, 'table_number' => null])
             ->get(route('customer.account'))->assertOk()->getContent();
         $this->assertStringContainsString('data-testid="streak-choose-branch"', $html);
         $this->assertStringNotContainsString('data-testid="streak-calendar"', $html);

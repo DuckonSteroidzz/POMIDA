@@ -322,6 +322,8 @@
     Scan the QR code above using the GCash app.
 </p>
 
+@include('customer.partials.gcash-proof-upload')
+
                         </div>
 
                     @else
@@ -553,6 +555,7 @@
                                     @csrf
 
                                     <button
+                                        id="gcashPaidButton"
                                         type="submit"
                                         class="inline-flex w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-peach-red px-5 py-3.5 text-sm font-bold text-white transition hover:bg-peach-deep active:scale-[0.99]"
                                     >
@@ -703,6 +706,11 @@
                 }
 
                 const isApproved = type === 'approved';
+
+                // Staff have decided, so the screenshot can no longer change.
+                if (window.endGcashProofUpload) {
+                    window.endGcashProofUpload();
+                }
 
                 box.style.display = 'block';
 

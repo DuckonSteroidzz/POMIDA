@@ -58,10 +58,10 @@
 
         {{-- $milestones above is empty while the owner's Streak Calendar
              switch is off. The stamp card is per branch: this line is the
-             branch the customer is ordering from, shown while that branch's
-             card is on (both switches). --}}
-        @php $benefitBranch = \App\Services\FreeDesserts::sessionBranch(); @endphp
-        @if($benefitBranch && \App\Services\FreeDesserts::active($benefitBranch->id))
+             branch whose cards are showing, shown while that branch's card is
+             on (both switches) and has a reward to promise. --}}
+        @php $benefitBranch = $streakBranch ?? null; @endphp
+        @if($benefitBranch && ($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false))
         @php
             $benefitReward = \App\Services\StreakRewardSettings::current($benefitBranch->id)['description'];
             // "a Free Chocolate Cake" for an item reward, "a reward: 20% off" for a voucher.

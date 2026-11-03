@@ -172,6 +172,7 @@ class User extends Authenticatable implements MustVerifyEmail
         'verified_at' => 'datetime',
         'is_active' => 'boolean',
         'bonus_points' => 'integer',
+        'rewards_branch_id' => 'integer',
         'password' => 'hashed',  // Auto-encrypt yung password
     ];
 

@@ -31,6 +31,9 @@ class VouchersStampCardWidthTest extends TestCase
         $this->clearStreakRewardSettings();
         Setting::where('key', Setting::STREAK_CALENDAR_ENABLED)->delete();
         Cache::flush();
+
+        // With no reward chosen the page shows the "isn't available" card, not this one.
+        $this->chooseRewardItem($this->plainRewardItem());
     }
 
     private function customer(): User

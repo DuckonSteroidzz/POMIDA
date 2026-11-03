@@ -266,6 +266,9 @@
     .menu-stock-red { background: #f8d7da; color: #721c24; }
     .menu-stock-grey { background: #e5e7eb; color: #374151; }
     .menu-stock-left { margin-left: 0.35rem; font-size: 0.7rem; font-weight: 600; color: #4B5563; white-space: nowrap; }
+    /* "· limited by Egg (2 left)" is a sentence, so it may wrap on a narrow Status cell. */
+    .menu-stock-limit { white-space: normal; }
+    .menu-stock-note { margin: 0 0 0.6rem; font-size: 0.75rem; color: #4B5563; }
 
     @media (max-width: 768px) {
         .size-enable-row > div, .size-price-field { flex: 1 1 100%; }
@@ -276,6 +279,8 @@
     }
 </style>
 <div class="content-card" style="overflow-x: auto;">
+    {{-- QA Nov 2: what the Status badge means, using the live threshold. --}}
+    <p class="menu-stock-note" id="menuStockNote"><strong>Low Stock</strong> means {{ (int) config('inventory.low_stock_threshold', 3) }} or fewer orders can still be made. The ingredient named beside it is the one running out first.</p>
     <table class="table-custom" id="menuTable">
         <thead>
             <tr>
@@ -439,7 +444,15 @@
                 <td data-label="Status">
                     @if($st)
                     <span class="menu-stock-badge menu-stock-{{ $st['tone'] }}" data-stock-state="{{ $st['state'] }}">{{ $st['label'] }}</span>
-                    @if($st['remaining'] !== null)
+                    {{-- Which ingredient holds the item back (QA Nov 2), named
+                         next to the verdict: "limited by Egg (2 left)" for Low,
+                         just "Egg" for Out. Display only — MenuItem::stockLimiter(). --}}
+                    @php $lim = $st['limited_by'] ?? null; @endphp
+                    @if($lim && $st['state'] === 'low_stock')
+                    <span class="menu-stock-left menu-stock-limit">· limited by {{ $lim['name'] }}{{ isset($lim['size']) ? ' (' . $lim['size'] . ')' : '' }} ({{ $lim['left'] }} left)</span>
+                    @elseif($lim && $st['state'] === 'out_of_stock')
+                    <span class="menu-stock-left menu-stock-limit">· {{ $lim['name'] }}{{ isset($lim['size']) ? ' (' . $lim['size'] . ')' : '' }}</span>
+                    @elseif($st['remaining'] !== null)
                     <span class="menu-stock-left">{{ $st['remaining'] }} left</span>
                     @endif
                     @else
@@ -902,6 +915,7 @@
      manager-only endpoints in the page source. --}}
 @if($canManageMenu)
 @include('admin.partials.quantity-step')
+@include('admin.partials.recipe-quantity-guard')
 <script>
     // Both Add and Edit share this one modal. openAddModal()/openEditModal()
     // decide which state it is in: title, submit label, form action/method,
@@ -1078,7 +1092,7 @@
     // no data-url means Add (a row is appended client-side, carrying hidden
     // ingredients[i][...] inputs, saved with the rest of the item in one POST).
 
-    // Show the chosen ingredient's unit next to the "Quantity Used" label so the
+    // Show the chosen ingredient's unit next to the "Quantity used per order" label so the
     // admin knows what they are typing in. No stock text or badges — the entry
     // row stays clean.
     document.addEventListener('change', function (e) {
@@ -1195,6 +1209,7 @@
         if (!tbody) return;
         var isSizeBlock = String(blockId).indexOf('size-') === 0;
         syncAllLowNotice(blockId);
+        pomidaRefreshCanMake(tbody);
 
         var total = 0;
         var filled = 0;
@@ -1240,6 +1255,8 @@
         pill.textContent = priority === 'low' ? 'Low' : 'High';
         pill.classList.toggle('is-low', priority === 'low');
         pill.classList.toggle('is-high', priority !== 'low');
+        // A LOW line never limits the item, so flipping one moves the highlight.
+        if (typeof pomidaRefreshCanMake === 'function') pomidaRefreshCanMake(pill.closest('tbody'));
     }
 
     function syncAllLowNotice(blockId) {
@@ -1264,8 +1281,20 @@
         badge.dataset.stockState = status.state;
         badge.textContent = status.label;
 
+        // The text beside the badge: the limiting ingredient when the server
+        // names one (QA Nov 2), else the plain "N left", else nothing.
+        var lim = status.limited_by || null;
+        var text = null;
+        if (lim && status.state === 'low_stock') {
+            text = '· limited by ' + lim.name + (lim.size ? ' (' + lim.size + ')' : '') + ' (' + lim.left + ' left)';
+        } else if (lim && status.state === 'out_of_stock') {
+            text = '· ' + lim.name + (lim.size ? ' (' + lim.size + ')' : '');
+        } else if (status.remaining !== null) {
+            text = status.remaining + ' left';
+        }
+
         var left = cell.querySelector('.menu-stock-left');
-        if (status.remaining === null) {
+        if (text === null) {
             if (left) left.remove();
         } else {
             if (!left) {
@@ -1273,7 +1302,8 @@
                 left.className = 'menu-stock-left';
                 cell.appendChild(left);
             }
-            left.textContent = status.remaining + ' left';
+            left.classList.toggle('menu-stock-limit', !!lim);
+            left.textContent = text;
         }
     }
 
@@ -1439,6 +1469,16 @@
             return;
         }
 
+        // QA Nov 2: a recipe line is what ONE order uses. If it is more than the
+        // stock on the shelf, or unusually large for its unit, say so and let
+        // the owner keep it — it is often stock typed into the wrong place.
+        var guardOpt = select.options[select.selectedIndex];
+        var guardName = ((guardOpt && guardOpt.dataset.name) || 'this ingredient').trim();
+        if (!pomidaRecipeQuantityConfirm(guardName, pickedUnit, qtyInput.value, guardOpt ? guardOpt.dataset.stock : 0)) {
+            qtyInput.focus();
+            return;
+        }
+
         recipeIngredientClearError(blockId);
 
         function resetEntryRow() {
@@ -1465,11 +1505,14 @@
             row.style.borderTop = '1px solid #f0f0f0';
             row.dataset.draftRow = idx;
             row.dataset.unitCost = opt.dataset.cost || '0';
+            row.dataset.qty = qtyInput.value;
+            row.dataset.stock = opt.dataset.stock || '0';
             row.innerHTML =
                 '<td style="padding:0.35rem 0.4rem;"></td>' +
                 '<td style="padding:0.35rem 0.4rem;"></td>' +
                 '<td style="padding:0.35rem 0.4rem;"><button type="button" class="recipe-priority-pill is-high" data-draft="1" data-priority="high" title="Click to switch between High and Low">High</button></td>' +
                 '<td style="padding:0.35rem 0.4rem;"><span class="recipe-stock"></span></td>' +
+                '<td style="padding:0.35rem 0.4rem;" class="recipe-canmake"></td>' +
                 '<td style="padding:0.35rem 0.4rem; text-align:right;">' +
                 '<button type="button" class="recipe-ing-delete-btn" data-draft="1" ' +
                 'style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">' +
@@ -1559,11 +1602,13 @@
                 if (ing.inventory_id) row.dataset.inventoryId = ing.inventory_id;
                 row.dataset.unitCost = editUnitCost;
                 row.dataset.qty = editQty;
+                row.dataset.stock = editOpt && editOpt.dataset.stock ? editOpt.dataset.stock : '0';
                 row.innerHTML =
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
                     '<td style="padding:0.35rem 0.4rem;"></td>' +
                     '<td style="padding:0.35rem 0.4rem;"><button type="button" class="recipe-priority-pill" title="Click to switch between High and Low"></button></td>' +
                     '<td style="padding:0.35rem 0.4rem;"><span class="recipe-stock"></span></td>' +
+                    '<td style="padding:0.35rem 0.4rem;" class="recipe-canmake"></td>' +
                     '<td style="padding:0.35rem 0.4rem; text-align:right;">' +
                     '<button type="button" class="recipe-ing-delete-btn" ' +
                     'style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">' +

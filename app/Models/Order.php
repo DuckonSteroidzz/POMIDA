@@ -124,8 +124,13 @@ class Order extends Model
         'cancelled_at',
     ];
 
+    // Deliberately not in $fillable either: only App\Services\GcashProof sets it.
+    protected $hidden = ['gcash_proof_path'];
+
     protected $casts = [
         'is_takeout' => 'boolean',
+        'rating_prompt_dismissed_at' => 'datetime',
+        'gcash_proof_uploaded_at' => 'datetime',
 
         'subtotal' => 'decimal:2',
         'discount_amount' => 'decimal:2',
@@ -324,6 +329,26 @@ class Order extends Model
     public function paymentStatusLabel(): string
     {
         return self::paymentStatusText($this->payment_status, $this->status);
+    }
+
+    /** Has the customer attached a GCash payment screenshot? See App\Services\GcashProof. */
+    public function hasGcashProof(): bool
+    {
+        return (string) $this->gcash_proof_path !== '';
+    }
+
+    /**
+     * Where the screenshot is served from, or null when there is none. The URL
+     * names the order, never the file. `v` changes when the picture does, so a
+     * replaced one is not shown from an image element's memory of the last.
+     */
+    public function gcashProofUrl(): ?string
+    {
+        if (! $this->hasGcashProof()) {
+            return null;
+        }
+
+        return route('gcash-proof.show', ['order' => $this->id, 'v' => $this->gcash_proof_uploaded_at?->timestamp]);
     }
 
     /** orders.discount_type of an order discounted by a voucher-type loyalty reward. */

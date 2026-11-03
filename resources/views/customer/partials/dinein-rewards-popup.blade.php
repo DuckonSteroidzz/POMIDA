@@ -327,7 +327,7 @@
 
         // Every other overlay the menu page can put on screen.
         var OTHERS = [
-            'spinPromptModal', 'orderStatusNotice', 'discountVerificationNotice',
+            'spinPromptModal', 'orderCompletedPopup', 'orderStatusNotice', 'discountVerificationNotice',
             'ratingModal', 'dessertRatingModal', 'welcomePopup', 'menuAdPopup',
             'freeDessertPrompt', 'idleTimeoutModal', 'tableChangeNotice', 'tableChangeConfirm'
         ];

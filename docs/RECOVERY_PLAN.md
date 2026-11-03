@@ -28,6 +28,7 @@ reconstruct anything below.
 |---|---|---|---|---|
 | 1 | **The database** `pomida_db` | MySQL | No | Orders, order lines, inventory, stock movements, menu, customers, vouchers, ratings, settings. Everything the café earns, and everything the analytics read. |
 | 2 | **Storage-disk uploads** `storage/app/public/` | `discount_ids/` (PWD & Senior ID scans), `settings/gcash/` (the GCash QR customers scan to pay) | No | Not in git. Lose the GCash QR and GCash payment stops working; lose the ID scans and every PWD/Senior discount loses its supporting document. |
+| 2a | **GCash payment screenshots** `storage/app/gcash_proofs/` | Private, on the `local` disk, so outside `storage/app/public/`: back this folder up separately | No | Not in git. Lose them and staff lose the customer's proof of payment on past GCash orders. The payment itself is unaffected. |
 | 3 | **Public uploads** `public/uploads/` | `menu-items/`, `categories/`, `ads/`, `ids/` | No | Every menu photo, category tile and ad banner. Rows in `menu_items.image` point at these paths — restoring the database without them leaves a menu of broken images. |
 | 4 | **`.env`** | Project root | No | `APP_KEY`, database credentials, SMTP credentials. **Backed up separately and secured — see §3.3.** |
 

@@ -133,6 +133,8 @@
 
     .pchy-ing{margin-top:.85rem;padding:.8rem;background:#fff;border:1px dashed rgba(244,132,95,.42);border-radius:11px}
     .pchy-ing-hd{display:flex;align-items:center;gap:.4rem;flex-wrap:wrap;margin:0 0 .55rem;font-size:.74rem;font-weight:700;text-transform:uppercase;letter-spacing:.04em;color:var(--p5)}
+    .pchy-ing-help{margin:.45rem 0 0;font-size:.72rem;color:#7a6860}
+    .pchy-ing-can{display:block;font-size:.66rem;font-weight:600;color:#7a6860}
     .pchy-ing-note{text-transform:none;letter-spacing:0;font-weight:500;color:#9a837b;font-size:.7rem}
     .pchy-ing-list{display:flex;flex-direction:column;gap:.3rem;margin-bottom:.55rem}
     .pchy-ing-row{display:grid;grid-template-columns:minmax(0,1fr) auto auto auto;align-items:center;gap:.5rem;background:#fffaf6;border:1px solid rgba(246,180,155,.4);border-radius:9px;padding:.4rem .55rem}
@@ -844,6 +846,8 @@
                                     'name' => $ing->inventory->item_name ?? 'Deleted item',
                                     'quantity_used' => rtrim(rtrim(number_format((float) $ing->quantity_used, 3), '0'), '.'),
                                     'unit' => $ing->inventory->unit ?? '',
+                                    // Raw stock, for the row's "can make" figure (QA Nov 2).
+                                    'stock' => $ing->inventory ? (float) $ing->inventory->quantity : null,
                                     'archived' => (bool) $ing->inventory?->isArchived(),
                                     'branch_id' => $ingBranchId !== null ? (int) $ingBranchId : null,
                                     'branch_name' => $ingBranchId !== null
@@ -1912,7 +1916,7 @@
                                     @endphp
                                     <optgroup label="{{ $invGroupLabel }}">
                                         @foreach($invRows as $inv)
-                                            <option value="{{ $inv->id }}" data-unit="{{ $inv->unit }}">
+                                            <option value="{{ $inv->id }}" data-unit="{{ $inv->unit }}" data-stock="{{ $inv->quantity }}">
                                                 {{ $inv->item_name }} ({{ $inv->unit }})
                                             </option>
                                         @endforeach
@@ -1924,7 +1928,9 @@
                             <input type="number"
                                    name="quantity_used"
                                    class="pchy-in pchy-ing-qty-in"
-                                   aria-label="Quantity used"
+                                   aria-label="Quantity used per order"
+                                   placeholder="Per order"
+                                   title="Quantity used per order"
                                    step="0.001"
                                    min="0.001"
                                    required>
@@ -1935,6 +1941,8 @@
                             </button>
 
                         </form>
+
+                        <p class="pchy-ing-help"><strong>Quantity used per order.</strong> How much ONE order uses. To add stock, go to Inventory and use Stock In.</p>
 
                     </div>
 
@@ -1953,6 +1961,7 @@
 @push('scripts')
 
 @include('admin.partials.quantity-step')
+@include('admin.partials.recipe-quantity-guard')
 <script>
 // Add-on ingredient quantity: whole numbers for count units (pc, can, ...),
 // up to 3 decimals for measured ones. Server re-checks it either way.
@@ -2768,7 +2777,16 @@ window.pcBranchSelectHandler = function (value) {
 
         const qty = document.createElement('span');
         qty.className = 'pchy-ing-qty';
-        qty.textContent = ing.quantity_used + (ing.unit ? ' ' + ing.unit : '');
+        qty.textContent = ing.quantity_used + (ing.unit ? ' ' + ing.unit : '') + ' per order';
+        // How many orders the stock covers (QA Nov 2) — the same floor(stock /
+        // per-order amount) the Menu Items recipe editor shows.
+        const canMake = pomidaCanMake(ing.stock, ing.quantity_used);
+        if (canMake !== null) {
+            const can = document.createElement('span');
+            can.className = 'pchy-ing-can';
+            can.textContent = 'can make ' + canMake + (canMake === 1 ? ' order' : ' orders');
+            qty.appendChild(can);
+        }
         row.appendChild(qty);
 
         if (ing.can_remove === false) {
@@ -2906,6 +2924,19 @@ window.pcBranchSelectHandler = function (value) {
         }
 
         optIngClearError();
+
+        // QA Nov 2: more than the stock, or unusually large for its unit, is
+        // probably stock typed into the wrong place. Say so; the owner can keep it.
+        const pickedOpt = form.querySelector('.pchy-ing-select').selectedOptions[0];
+        if (pickedOpt && !pomidaRecipeQuantityConfirm(
+            (pickedOpt.textContent || 'this ingredient').replace(/\s*\([^)]*\)\s*$/, '').trim(),
+            pickedOpt.dataset.unit || '',
+            form.querySelector('input[name="quantity_used"]').value,
+            pickedOpt.dataset.stock
+        )) {
+            form.querySelector('input[name="quantity_used"]').focus();
+            return;
+        }
 
         const submitBtn = form.querySelector('button[type="submit"]');
         if (submitBtn) submitBtn.disabled = true;

@@ -129,7 +129,7 @@ class AdminController extends Controller
             'current_password.required' => 'Please enter your current password.',
             'password.required'  => 'Please enter a new password.',
             'password.confirmed' => 'The new password and its confirmation do not match.',
-            'password.different' => 'The new password must be different from your current one.',
+            'password.different' => \App\Support\PasswordPolicy::SAME_AS_CURRENT,
         ]);
 
         if (!\Illuminate\Support\Facades\Hash::check($request->input('current_password'), $me->password)) {
@@ -2186,6 +2186,7 @@ public function addOptionIngredient(Request $request, int $menuOption)
                 'name' => $inventory->item_name,
                 'quantity_used' => rtrim(rtrim(number_format((float) $ingredient->quantity_used, 3), '0'), '.'),
                 'unit' => $inventory->unit,
+                'stock' => (float) $inventory->quantity,
                 // Additive keys (branch pass): an option is global but each
                 // link points at ONE branch's inventory, so the row the page
                 // appends has to say which — branch_name for the label,
@@ -8347,6 +8348,13 @@ public function markOrderRefunded(int $id)
             'password.required'  => 'Please enter a new password.',
             'password.confirmed' => 'The new password and its confirmation do not match.',
         ]);
+
+        // The person setting this does not know the old password, so only an
+        // exact repeat of the stored one is refused (QA 2026-11-02). Nothing is
+        // written, so the staff member is not signed out for a no-op.
+        if (\App\Support\PasswordPolicy::isCurrentFor($user, (string) $request->input('password'))) {
+            return back()->withErrors(['password' => \App\Support\PasswordPolicy::SAME_AS_STORED]);
+        }
 
         /*
          * forceFill because `password` is a guarded-by-convention field here;

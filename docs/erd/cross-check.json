@@ -1,6 +1,6 @@
 {
-  "generated": "2026-10-31",
-  "database": "pomida_db_testing",
+  "generated": "2026-11-03",
+  "database": "pomida_db",
   "server": "10.4.32-MariaDB",
   "tables_in_database": 45,
   "application_tables": 37,
@@ -14,18 +14,18 @@
     "password_reset_tokens",
     "sessions"
   ],
-  "columns_total": 466,
-  "columns_application": 424,
-  "foreign_keys_in_database": 73,
-  "foreign_keys_drawn_solid": 73,
+  "columns_total": 470,
+  "columns_application": 428,
+  "foreign_keys_in_database": 74,
+  "foreign_keys_drawn_solid": 74,
   "model_only_drawn_dotted": 0,
   "entities_in_full_erd": 37,
   "tables_missing_from_erd": [],
   "entities_not_in_database": [],
   "fks_without_a_solid_line": [],
   "module_diagram_tables_sum": 37,
-  "module_diagram_lines_sum": 73,
-  "rendered_svg_relationship_paths": 73,
+  "module_diagram_lines_sum": 74,
+  "rendered_svg_relationship_paths": 74,
   "model_only_relationships": [],
   "dead_model_relationships": [],
   "fks_without_model_relation": [
@@ -36,7 +36,8 @@
     "notifications.user_id->users",
     "table_access_codes.branch_id->branches",
     "table_access_codes.issued_by->users",
-    "user_vouchers.issued_by->users"
+    "user_vouchers.issued_by->users",
+    "users.rewards_branch_id->branches"
   ],
   "model_relationship_methods_inspected": 88
 }

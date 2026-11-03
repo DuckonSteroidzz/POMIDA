@@ -173,15 +173,20 @@
              box — the same path as typing it — and is offered only when the
              customer is ordering from the reward's branch ($rewardBranch);
              otherwise the card says where to use it. The "You earned a
-             reward!" pop-up lands on #rewards. --}}
-        @php $loyaltyRewards = $loyaltyRewards ?? collect(); @endphp
-        @if($loyaltyRewards->isNotEmpty() || ($freeDessert['enabled'] ?? false))
+             reward!" pop-up lands on #rewards. This section and the stamp card
+             below show at every branch, the same way; only the owner's master
+             switch ($streakOn) removes them. --}}
+        @php
+            $loyaltyRewards = $loyaltyRewards ?? collect();
+            $stampsReady = ($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false);
+        @endphp
+        @if($loyaltyRewards->isNotEmpty() || $streakOn)
         <section id="rewards" class="rise rise-2 mb-6 scroll-mt-24" aria-labelledby="rewardsTitle" data-testid="loyalty-rewards">
             <h2 id="rewardsTitle" class="mb-3 font-display text-xl font-black tracking-tight text-peach-deep">My rewards</h2>
 
             @if($loyaltyRewards->isEmpty())
                 <p class="card-surface p-4 text-sm font-medium text-peach-deep/70" data-testid="loyalty-rewards-empty">
-                    No rewards yet. Fill your stamp card below to earn one.
+                    No rewards yet.{{ $stampsReady ? ' Fill your stamp card below to earn one.' : '' }}
                 </p>
             @else
                 <ul class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" role="list">
@@ -286,10 +291,22 @@
         </section>
         @endif
 
-        {{-- The stamp card: the same partial as the Account page. --}}
-        @if($freeDessert['enabled'] ?? false)
-        <div class="rise rise-2 mb-5">
-            @include('customer.partials.free-dessert-stamp-card', ['rewardListHere' => true, 'fillWidth' => true])
+        {{-- The stamp card: the same partial and the same branch as the Account
+             page, with the switch to see each branch's card. --}}
+        @if($streakOn)
+        <div id="stamp-card-branch" class="rise rise-2 mb-5 flex scroll-mt-24 flex-col gap-3">
+            @include('customer.partials.card-branch-picker', [
+                'returnTo' => 'vouchers',
+                'pickerClass' => 'card-surface w-full p-4',
+                'pickerLabel' => 'Stamp card for:',
+            ])
+            @if($cardBranch)
+                @include('customer.partials.free-dessert-stamp-card', ['rewardListHere' => true, 'fillWidth' => true])
+            @else
+                <p class="card-surface w-full p-4 text-sm font-medium text-peach-deep/70" data-testid="streak-choose-branch">
+                    Choose a branch to see your stamps.
+                </p>
+            @endif
         </div>
         @endif
 

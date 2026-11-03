@@ -50,6 +50,16 @@ Route::get('/discount-id/{order}', [\App\Http\Controllers\DiscountIdController::
     ->middleware('throttle:customer-discount-lookup')
     ->name('discount-id.show');
 
+/*
+| The customer's GCash payment screenshot, on the same terms and for the same
+| reason as above: both the customer and staff reach it, and only
+| App\Services\GcashProof can say whether THIS visitor has a claim to THIS order.
+*/
+Route::get('/gcash-proof/{order}', [\App\Http\Controllers\GcashProofController::class, 'show'])
+    ->whereNumber('order')
+    ->middleware('throttle:gcash-proof-view')
+    ->name('gcash-proof.show');
+
 
 /*
 |--------------------------------------------------------------------------
@@ -331,6 +341,24 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
         ])
         ->name('gcash-payment.paid');
 
+    // The optional payment screenshot. Both are the owner's only, and only until
+    // staff decide; see App\Services\GcashProof.
+    Route::post('/gcash-payment/{id}/proof', [\App\Http\Controllers\GcashProofController::class, 'store'])
+        ->whereNumber('id')
+        ->middleware([
+            'throttle.friendly:Please wait a moment before attaching another screenshot.',
+            'throttle:gcash-proof',
+        ])
+        ->name('gcash-payment.proof.store');
+
+    Route::delete('/gcash-payment/{id}/proof', [\App\Http\Controllers\GcashProofController::class, 'destroy'])
+        ->whereNumber('id')
+        ->middleware([
+            'throttle.friendly:Please wait a moment before changing your screenshot again.',
+            'throttle:gcash-proof',
+        ])
+        ->name('gcash-payment.proof.destroy');
+
     Route::get('/gcash-payment/{id}/status', [OrderController::class, 'gcashPaymentStatus'])
         ->whereNumber('id')
         ->name('gcash-payment.status');
@@ -375,14 +403,21 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
         ->middleware(['throttle.friendly', 'throttle:order-rating'])
         ->name('orders.rating');
 
-    // Lets the order-completed popup show an existing rating instead of an
-    // empty control when it is reopened. Same ID-enumeration exposure as the
-    // POST above; a higher ceiling because this is read-only and may
-    // legitimately be polled a few times as the popup opens.
+    // The rating on record for an order. The shared Order Completed pop-up no
+    // longer needs it (rated orders are simply not asked about); no customer
+    // page calls this now. Same ID-enumeration exposure as the POST above; a
+    // higher ceiling because this is read-only.
     Route::get('/orders/{id}/rating', [OrderController::class, 'orderRating'])
         ->whereNumber('id')
         ->middleware(['throttle.friendly', 'throttle:order-rating-read'])
         ->name('orders.rating.show');
+
+    // "Not now" on the shared Order Completed pop-up: stop asking about this
+    // order. Same ID-enumeration exposure and same bucket as the rating POST.
+    Route::post('/orders/{id}/rating-prompt/dismiss', [OrderController::class, 'dismissRatingPrompt'])
+        ->whereNumber('id')
+        ->middleware(['throttle.friendly', 'throttle:order-rating'])
+        ->name('orders.rating-prompt.dismiss');
 
     // The free dessert's OWN rating + comment (Oct 2026), separate from the
     // meal rating above. Same ownership rule and the same throttle bucket as
@@ -518,6 +553,12 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
         ->whereNumber('reward')
         ->middleware(['throttle.friendly', 'throttle:apply-voucher'])
         ->name('rewards.use');
+
+    // The switch on the Account page and Vouchers & Rewards: whose streak and
+    // stamp card to show. Saves it on the account, nothing else.
+    Route::post('/rewards-branch', [AuthController::class, 'chooseRewardsBranch'])
+        ->middleware('throttle:customer-rewards-branch')
+        ->name('rewards-branch');
 
 
     // ══════════ BRANCH ══════════

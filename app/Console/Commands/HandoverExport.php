@@ -328,6 +328,7 @@ class HandoverExport extends Command
            - `uploads/public/uploads/`        → `public/uploads/`
            - `uploads/storage/app/public/`     → `storage/app/public/`
            - `uploads/storage/app/discount_ids/` → `storage/app/discount_ids/`
+           - `uploads/storage/app/gcash_proofs/` → `storage/app/gcash_proofs/`
 
         6. **Link storage.**
            ```

@@ -192,6 +192,10 @@
      it subscribes to PomidaLive below, and so do the pages that watch an order. --}}
 @include('customer.partials.live-poller')
 
+{{-- The one Order Completed pop-up. Here because every customer page with an
+     order to rate carries this bell, so no page can be left without it. --}}
+@include('customer.partials.order-completed-popup')
+
 @once
 <script>
 (function () {

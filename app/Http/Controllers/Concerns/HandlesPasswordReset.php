@@ -14,6 +14,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Validation\ValidationException;
 
 /**
  * Shared "forgot password" logic for the customer and admin/staff portals.
@@ -336,6 +337,17 @@ trait HandlesPasswordReset
             return redirect()
                 ->route($this->resetRoutePrefix() . '.forgot-password')
                 ->withErrors(['email' => 'That account is no longer available. Please start again.']);
+        }
+
+        // QA 2026-11-02: the reset used to accept the password the account
+        // already had. Refused like any other rule failure, so it ends nothing:
+        // the code row, the verified step and the session are all left alone.
+        // RateLimitServiceProvider::resetPasswordStep() counts it in the same
+        // separate bucket as the policy failures above.
+        if (\App\Support\PasswordPolicy::isCurrentFor($user, (string) $request->input('password'))) {
+            throw ValidationException::withMessages([
+                'password' => \App\Support\PasswordPolicy::SAME_AS_CURRENT,
+            ]);
         }
 
         // The User model casts `password` to "hashed", so assigning the plain

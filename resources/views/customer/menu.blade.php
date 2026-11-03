@@ -754,25 +754,27 @@
      and the menu ad waits for it. See App\Support\FreeDessertPrompt. --}}
 @include('customer.partials.free-dessert-prompt')
 
-{{-- ================= ORDER STATUS NOTIFICATION ================= --}}
+{{-- ================= ORDER CANCELLED NOTIFICATION =================
+     Cancelled only. A completed order gets the one shared pop-up, with its
+     rating: customer/partials/order-completed-popup. --}}
 <div id="orderStatusNotice"
      style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:316px;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;padding:22px 20px 20px;text-align:center;box-shadow:0 18px 45px rgba(59,35,32,0.22);">
         <div id="orderStatusIcon"
-             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#E4F2EA;color:#2E7D5B;font-size:22px;">
-            <i class="bi bi-check-circle"></i>
+             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#FDE8DE;color:#C0392B;font-size:22px;">
+            <i class="bi bi-x-circle"></i>
         </div>
         <h3 id="orderStatusTitle"
-            style="margin:0 0 9px;color:#2E7D5B;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
-            Order Completed
+            style="margin:0 0 9px;color:#C0392B;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
+            Order Cancelled
         </h3>
         <p id="orderStatusMessage"
            style="max-width:275px;margin:0 auto;color:#8A6A61;font-size:13px;line-height:1.5;">
-            Your order has been completed.
+            Your order has been cancelled.
         </p>
         <div style="display:flex;gap:8px;margin-top:16px;">
             <button type="button" onclick="closeOrderStatusNotice()"
-                    style="flex:1;height:36px;border-radius:999px;background:#2E7D5B;color:#fff;border:1px solid #2E7D5B;font-size:13px;font-weight:700;cursor:pointer;">
+                    style="flex:1;height:36px;border-radius:999px;background:#C0392B;color:#fff;border:1px solid #C0392B;font-size:13px;font-weight:700;cursor:pointer;">
                 OK
             </button>
         </div>
@@ -811,38 +813,19 @@
         if (overlay) overlay.style.display = 'none';
     };
 
-    function showOrderStatusNotice(status, orderNumber, orderId) {
+    function showOrderCancelledNotice(orderNumber, orderId) {
         const overlay = document.getElementById('orderStatusNotice');
-        const icon = document.getElementById('orderStatusIcon');
-        const title = document.getElementById('orderStatusTitle');
         const message = document.getElementById('orderStatusMessage');
 
         if (!overlay) return;
 
-        if (status === 'completed') {
-            icon.style.background = '#E4F2EA';
-            icon.style.color = '#2E7D5B';
-            icon.innerHTML = '<i class="bi bi-check-circle"></i>';
-            title.style.color = '#2E7D5B';
-            title.textContent = 'Order Completed';
-            message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
-                'has been completed. Thank you for ordering from Peachy!';
-        } else if (status === 'cancelled') {
-            icon.style.background = '#FDE8DE';
-            icon.style.color = '#C0392B';
-            icon.innerHTML = '<i class="bi bi-x-circle"></i>';
-            title.style.color = '#C0392B';
-            title.textContent = 'Order Cancelled';
-            // Neutral wording — this fires for a staff cancellation AND for
-            // the customer's own Cancel Order tap on the Orders page. See the
-            // matching note in orders.blade.php's showOrderStatusNotice().
-            message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
-                'has been cancelled.';
-        } else {
-            return;
-        }
+        // Neutral wording — this fires for a staff cancellation AND for
+        // the customer's own Cancel Order tap on the Orders page. See the
+        // matching note in orders.blade.php's showOrderCancelledNotice().
+        message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
+            'has been cancelled.';
 
-        if (orderId) markNotified(orderId, status);
+        if (orderId) markNotified(orderId, 'cancelled');
         overlay.style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
@@ -885,10 +868,11 @@
             window.PomidaFreeDessertPrompt.orderCompleted(data.order_id);
         }
 
+        if (data.status === 'cancelled' && !alreadyNotified(data.order_id, data.status)) {
+            showOrderCancelledNotice(data.order_number, data.order_id);
+        }
+
         if (data.status === 'completed' || data.status === 'cancelled') {
-            if (!alreadyNotified(data.order_id, data.status)) {
-                showOrderStatusNotice(data.status, data.order_number, data.order_id);
-            }
             // Finished: nothing more will change, so stop asking about it.
             trackedOrderId = null;
         }

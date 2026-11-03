@@ -92,7 +92,7 @@ class LivePollingTest extends TestCase
     {
         [$json, $sql] = $this->liveWithSql();
 
-        $this->assertSame(['unread' => 0, 'latest_id' => 0, 'orders' => [], 'session_order_id' => null, 'active' => false], $json);
+        $this->assertSame(['unread' => 0, 'latest_id' => 0, 'orders' => [], 'session_order_id' => null, 'active' => false, 'completed_popups' => []], $json);
 
         foreach ($sql as $statement) {
             $this->assertStringNotContainsString('from `orders`', $statement);
@@ -115,12 +115,14 @@ class LivePollingTest extends TestCase
         $this->assertCount(1, $json['orders'], 'the requested order and the session order are the same one');
         $this->assertSame('pending', $json['orders'][0]['status']);
 
-        // ONE orders query + ONE notifications query. (Before: the bell alone
+        // TWO orders queries + ONE notifications query. (Before: the bell alone
         // ran two notification queries, plus a separate order endpoint or two.)
+        // The second orders query is the Order Completed pop-up's queue (QA, Nov 2
+        // 2026): it has to answer on every page, whatever that page is watching.
         // Count statements whose PRIMARY table is X (a guest's notifications query
         // also mentions `orders` inside an EXISTS subquery; that is not a second query).
         $touching = fn (string $table) => count(array_filter($sql, fn ($s) => preg_match('/^select .*? from `(\w+)`/', $s, $m) === 1 && $m[1] === $table));
-        $this->assertSame(1, $touching('orders'));
+        $this->assertSame(2, $touching('orders'));
         $this->assertSame(1, $touching('notifications'));
     }
 

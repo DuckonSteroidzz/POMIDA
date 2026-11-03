@@ -10,7 +10,8 @@
     menu exactly as it was.
 
     SEQUENCING against the other modals on this page (all fixed overlays):
-        orderStatusNotice  z 10000   a completed-order notice
+        orderCompletedPopup z 10000  the shared completed-order pop-up
+        orderStatusNotice  z 10000   a cancelled-order notice
         welcomePopup       z 10001   the one-shot welcome, self-removes at 6s
         idleTimeoutModal   z 10002   "Are you still there?" after 10 minutes
         menuAdPopup        z  9990   this one — beneath all three
@@ -94,7 +95,7 @@
 
         // Let the welcome popup, any order notice and the reward
         // pop-up finish first, and the Dine-In rewards pop-up if it is up.
-        if (shown('welcomePopup') || shown('orderStatusNotice') || shown('freeDessertPrompt') || shown('dineInRewardsPopup')) {
+        if (shown('welcomePopup') || shown('orderCompletedPopup') || shown('orderStatusNotice') || shown('freeDessertPrompt') || shown('dineInRewardsPopup')) {
             waited += POLL_MS;
             if (waited >= GIVE_UP_MS) { close(); return; }
             setTimeout(attempt, POLL_MS);

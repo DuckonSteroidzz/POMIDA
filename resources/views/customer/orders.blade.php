@@ -800,7 +800,7 @@
                                     {{ $orderRating->rating }}/5
                                 </span>
                                 @else
-                                <span class="inline-flex items-center gap-1.5 text-xs font-medium text-peach-deep/60" data-testid="meal-not-rated">
+                                <span class="inline-flex items-center gap-1.5 text-xs font-medium text-peach-deep/60" data-testid="meal-not-rated" data-meal-state="{{ $order->id }}">
                                     <span class="h-1.5 w-1.5 shrink-0 rounded-full bg-peach" aria-hidden="true"></span> Not rated yet
                                 </span>
                                 @endif
@@ -821,6 +821,7 @@
                                 <button type="button"
                                     class="inline-flex min-h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-[10px] border border-transparent bg-peach px-3.5 text-sm font-bold text-white transition hover:bg-peach-red"
                                     data-testid="rate-meal-btn"
+                                    data-rate-meal="{{ $order->id }}"
                                     onclick="openRatingModal({{ $order->id }}, @js($order->order_number))">
                                     <i class="bi bi-star-fill" aria-hidden="true"></i> Rate meal
                                 </button>
@@ -1111,6 +1112,22 @@
 
     let lastDiscountStatus = null;
     let discountDecisionCompleted = false;
+
+    // The shared Order Completed pop-up just saved a rating: this page's History
+    // row must stop offering "Rate meal" for that order.
+    document.addEventListener('pomida:order-rated', function (event) {
+        const orderId = event.detail.orderId;
+        const rating = Number(event.detail.rating);
+
+        document.querySelector('[data-rate-meal="' + orderId + '"]')?.remove();
+
+        const state = document.querySelector('[data-meal-state="' + orderId + '"]');
+        if (state) {
+            state.className = 'inline-flex items-center gap-1.5 text-xs font-semibold text-green-700';
+            state.setAttribute('data-testid', 'meal-rated');
+            state.textContent = '★'.repeat(rating) + ' ' + rating + '/5';
+        }
+    });
 
     function showDiscountVerification(status, orderNumber, orderId) {
         // Hard stop: once the customer has chosen Continue Transaction,
@@ -1490,68 +1507,25 @@
     </div>
 </div>
 
-{{-- ================= ORDER STATUS NOTIFICATION ================= --}}
+{{-- ================= ORDER CANCELLED NOTIFICATION =================
+     Cancelled only. A completed order gets the one shared pop-up, with its
+     rating: customer/partials/order-completed-popup. --}}
 <div id="orderStatusNotice"
      style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(59,35,32,0.55);align-items:center;justify-content:center;padding:1rem;">
     <div style="width:100%;max-width:316px;background:#FFFDF9;border:1px solid #F2DDD4;border-radius:16px;padding:22px 20px 20px;text-align:center;box-shadow:0 18px 45px rgba(59,35,32,0.22);">
         <div id="orderStatusIcon"
-             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#E4F2EA;color:#2E7D5B;font-size:22px;">
-            <i class="bi bi-check-circle"></i>
+             style="width:46px;height:46px;margin:0 auto 14px;border-radius:50%;display:grid;place-items:center;background:#FDE8DE;color:#C0392B;font-size:22px;">
+            <i class="bi bi-x-circle"></i>
         </div>
         <h3 id="orderStatusTitle"
-            style="margin:0 0 9px;color:#2E7D5B;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
-            Order Completed
+            style="margin:0 0 9px;color:#C0392B;font-family:'Fraunces',Georgia,serif;font-size:22px;line-height:1.2;font-weight:700;">
+            Order Cancelled
         </h3>
         <p id="orderStatusMessage"
            style="max-width:275px;margin:0 auto;color:#8A6A61;font-size:13px;line-height:1.5;">
-            Your order has been completed.
+            Your order has been cancelled.
         </p>
-            {{-- In-place rating. The customer can rate right here without
-                 going to Order History, and this is the only rating entry a
-                 guest has, since guests have no Order History list at all.
-                 It posts to the same endpoint the Order History modal uses. --}}
-            <div id="popupRatingBlock" style="display:none;margin-top:16px;padding-top:14px;border-top:1px solid #F2DDD4;">
-                <p id="popupRatingPrompt" style="margin:0 0 8px;color:#6B4038;font-size:13px;font-weight:700;">
-                    How was your meal?
-                </p>
-
-                <div id="popupRatingStars" style="display:flex;justify-content:center;gap:5px;">
-                    @for($i = 1; $i <= 5; $i++)
-                        <button type="button"
-                                class="popup-rating-star"
-                                data-value="{{ $i }}"
-                                aria-label="{{ $i }} out of 5"
-                                style="width:34px;height:34px;border:1px solid #ead8d2;background:#fff;border-radius:9px;cursor:pointer;font-size:16px;line-height:1;padding:0;opacity:.45;">
-                            ⭐
-                        </button>
-                    @endfor
-                </div>
-
-                <button type="button"
-                        id="popupRatingSubmit"
-                        onclick="submitPopupRating()"
-                        disabled
-                        style="width:100%;margin-top:10px;height:34px;border:0;border-radius:999px;background:#C0392B;color:#fff;font-size:13px;font-weight:700;cursor:pointer;opacity:.5;">
-                    Submit Rating
-                </button>
-
-                <p id="popupRatingMessage" style="margin:8px 0 0;font-size:13px;font-weight:700;line-height:1.4;"></p>
-            </div>
-
-            <div id="completedOrderActions" style="display:none;gap:8px;margin-top:16px;">
-                <a id="viewCompletedReceipt"
-                   href="#"
-                   style="flex:1;height:36px;display:inline-flex;align-items:center;justify-content:center;gap:6px;border-radius:999px;background:#2E7D5B;color:#fff;border:1px solid #2E7D5B;font-size:13px;font-weight:700;text-decoration:none;">
-                    <i class="bi bi-receipt"></i> View Receipt
-                </a>
-                <button type="button"
-                        onclick="closeOrderStatusNotice()"
-                        style="flex:0 0 auto;height:36px;padding:0 15px;border-radius:999px;background:#fff;color:#8B1A1A;border:1px solid #F2DDD4;font-size:13px;font-weight:700;cursor:pointer;">
-                    Close
-                </button>
-            </div>
-
-            <div id="cancelledOrderActions" style="display:none;margin-top:16px;">
+            <div id="cancelledOrderActions" style="margin-top:16px;">
                 <button type="button"
                         onclick="closeOrderStatusNotice()"
                         style="width:100%;height:36px;border-radius:999px;background:#C0392B;color:#fff;border:1px solid #C0392B;font-size:13px;font-weight:700;cursor:pointer;">
@@ -1607,269 +1581,47 @@
         } catch (e) {}
     }
 
-    /* ================= IN-PLACE RATING IN THE COMPLETED POPUP =================
-     *
-     * Posts to the same route as the Order History modal
-     * (POST /customer/orders/{id}/rating). All of "may this be rated, and by
-     * whom" is decided server-side by CustomerOrderAccess, so this control
-     * cannot grant a rating the other entry point would refuse.
-     */
-    let popupRatingOrderId = null;
-    let popupRatingValue = 0;
-
-    function popupRatingEls() {
-        return {
-            block: document.getElementById('popupRatingBlock'),
-            prompt: document.getElementById('popupRatingPrompt'),
-            submit: document.getElementById('popupRatingSubmit'),
-            message: document.getElementById('popupRatingMessage'),
-        };
-    }
-
-    function paintPopupStars(value) {
-        document.querySelectorAll('.popup-rating-star').forEach(function (star) {
-            const on = Number(star.dataset.value) <= value;
-            star.style.opacity = on ? '1' : '.45';
-            star.style.borderColor = on ? '#C0392B' : '#ead8d2';
-            star.style.background = on ? '#FDE8DE' : '#fff';
-        });
-    }
-
-    function setPopupRating(value) {
-        popupRatingValue = value;
-        paintPopupStars(value);
-
-        const els = popupRatingEls();
-        if (els.submit) {
-            els.submit.disabled = false;
-            els.submit.style.opacity = '1';
-        }
-    }
-
-    /** Replace the control with the rating that is already on record. */
-    function showPopupRatingAsRated(value) {
-        const els = popupRatingEls();
-        if (!els.block) return;
-
-        popupRatingValue = value;
-        paintPopupStars(value);
-
-        document.querySelectorAll('.popup-rating-star').forEach(function (star) {
-            star.disabled = true;
-            star.style.cursor = 'default';
-        });
-
-        if (els.prompt) els.prompt.textContent = 'You rated this meal';
-        if (els.submit) els.submit.style.display = 'none';
-        if (els.message) {
-            els.message.textContent = value + ' / 5 — thanks for the feedback!';
-            els.message.style.color = '#2E7D5B';
-        }
-
-        els.block.style.display = 'block';
-    }
-
-    function resetPopupRatingControl() {
-        const els = popupRatingEls();
-        if (!els.block) return;
-
-        popupRatingValue = 0;
-        paintPopupStars(0);
-
-        document.querySelectorAll('.popup-rating-star').forEach(function (star) {
-            star.disabled = false;
-            star.style.cursor = 'pointer';
-        });
-
-        if (els.prompt) els.prompt.textContent = 'How was your meal?';
-        if (els.submit) {
-            els.submit.style.display = '';
-            els.submit.disabled = true;
-            els.submit.style.opacity = '.5';
-            els.submit.textContent = 'Submit Rating';
-        }
-        if (els.message) els.message.textContent = '';
-    }
-
-    /**
-     * Ask the server whether this order already carries a rating, then show
-     * either the live control or the recorded rating. Asking rather than
-     * assuming is what makes reopening the popup behave correctly.
-     */
-    async function preparePopupRating(orderId) {
-        const els = popupRatingEls();
-        if (!els.block || !orderId) return;
-
-        popupRatingOrderId = orderId;
-        resetPopupRatingControl();
-        els.block.style.display = 'none';
-
-        try {
-            const res = await fetch(
-                '{{ url('/customer/orders') }}/' + encodeURIComponent(orderId) + '/rating',
-                {
-                    headers: { 'Accept': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-                    credentials: 'same-origin',
-                    cache: 'no-store'
-                }
-            );
-
-            if (!res.ok) return;
-
-            const data = await res.json();
-
-            if (data.rated) {
-                showPopupRatingAsRated(data.rating);
-            } else {
-                els.block.style.display = 'block';
-            }
-        } catch (e) {
-            // Offline or blocked: leave the control hidden rather than
-            // offering a rating that cannot be submitted.
-        }
-    }
-
-    document.addEventListener('click', function (event) {
-        const star = event.target.closest('.popup-rating-star');
-        if (star && !star.disabled) {
-            setPopupRating(Number(star.dataset.value));
-        }
-    });
-
-    window.submitPopupRating = async function () {
-        const els = popupRatingEls();
-
-        if (!popupRatingOrderId || popupRatingValue < 1) return;
-
-        els.submit.disabled = true;
-        els.submit.textContent = 'Saving…';
-        els.message.textContent = '';
-
-        try {
-            const res = await fetch(
-                '{{ url('/customer/orders') }}/' + encodeURIComponent(popupRatingOrderId) + '/rating',
-                {
-                    method: 'POST',
-                    headers: {
-                        'Accept': 'application/json',
-                        'Content-Type': 'application/json',
-                        'X-Requested-With': 'XMLHttpRequest',
-                        'X-CSRF-TOKEN': '{{ csrf_token() }}'
-                    },
-                    credentials: 'same-origin',
-                    body: JSON.stringify({ rating: popupRatingValue, rating_type: 'stars' })
-                }
-            );
-
-            const data = await res.json().catch(function () { return {}; });
-
-            if (res.ok && data.ok) {
-                showPopupRatingAsRated(data.rating);
-                return;
-            }
-
-            // Already rated elsewhere (for example via Order History in another
-            // tab): show the rating on record instead of an error.
-            if (data.rated && data.rating) {
-                showPopupRatingAsRated(data.rating);
-                return;
-            }
-
-            els.message.textContent = data.message || 'Sorry, that rating could not be saved.';
-            els.message.style.color = '#B3261E';
-            els.submit.disabled = false;
-            els.submit.textContent = 'Submit Rating';
-        } catch (e) {
-            els.message.textContent = 'Sorry, that rating could not be saved.';
-            els.message.style.color = '#B3261E';
-            els.submit.disabled = false;
-            els.submit.textContent = 'Submit Rating';
-        }
-    };
-
     window.closeOrderStatusNotice = function () {
         const overlay = document.getElementById('orderStatusNotice');
         if (overlay) overlay.style.display = 'none';
         document.body.style.overflow = '';
-
-        // Keep the guest on the Orders page. A completed order now has a
-        // dedicated View Receipt action, so the customer can open/print it
-        // without needing an account.
     };
 
-    function showOrderStatusNotice(status, orderNumber, orderId) {
+    function showOrderCancelledNotice(orderNumber, orderId) {
         const overlay = document.getElementById('orderStatusNotice');
-        const icon = document.getElementById('orderStatusIcon');
-        const title = document.getElementById('orderStatusTitle');
         const message = document.getElementById('orderStatusMessage');
-        const completedActions = document.getElementById('completedOrderActions');
-        const cancelledActions = document.getElementById('cancelledOrderActions');
-        const receiptLink = document.getElementById('viewCompletedReceipt');
 
         if (!overlay) return;
 
-        if (completedActions) completedActions.style.display = 'none';
-        if (cancelledActions) cancelledActions.style.display = 'none';
+        // Not "...cancelled by staff" — this popup fires for BOTH a
+        // staff cancellation and the customer's own Cancel Order tap
+        // (reported live: a customer who had just cancelled their own
+        // order read this and thought staff had done it instead, since
+        // nothing here said otherwise). Neutral wording is accurate
+        // either way.
+        message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
+            'has been cancelled.';
 
-        const ratingBlock = document.getElementById('popupRatingBlock');
-        if (ratingBlock) ratingBlock.style.display = 'none';
+        /*
+         * Let the customer read the cancellation message before the card
+         * goes. Only THIS order's card is removed — an earlier version
+         * wiped the entire #statusTab and stopped the poll outright, on
+         * the unstated assumption that a visitor could only ever have one
+         * order, which deleted a second still-live order's card and
+         * silently froze its tracker.
+         *
+         * The removal itself now lives in removeFinishedOrderCard(), so
+         * completed and cancelled orders leave the tab by exactly the
+         * same route, and so removal no longer depends on this popup
+         * being shown at all — this popup is deduped in localStorage, and
+         * an order's card must not stay in Current Order merely because
+         * the customer has seen its notification once before.
+         */
+        setTimeout(function () {
+            removeFinishedOrderCard(orderId);
+        }, 1800);
 
-        if (status === 'completed') {
-            icon.style.background = '#E4F2EA';
-            icon.style.color = '#2E7D5B';
-            icon.innerHTML = '<i class="bi bi-check-circle"></i>';
-            title.style.color = '#2E7D5B';
-            title.textContent = 'Order Completed';
-            message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
-                'has been completed. Your receipt is ready.';
-
-            if (receiptLink && orderId) {
-                receiptLink.href = '{{ url('/customer/receipt') }}/' + encodeURIComponent(orderId);
-            }
-            if (completedActions) completedActions.style.display = 'flex';
-
-            // Show the star control (or the rating already on record) for the
-            // order that just completed.
-            preparePopupRating(orderId);
-        } else if (status === 'cancelled') {
-            icon.style.background = '#FDE8DE';
-            icon.style.color = '#C0392B';
-            icon.innerHTML = '<i class="bi bi-x-circle"></i>';
-            title.style.color = '#C0392B';
-            title.textContent = 'Order Cancelled';
-            // Not "...cancelled by staff" — this popup fires for BOTH a
-            // staff cancellation and the customer's own Cancel Order tap
-            // (reported live: a customer who had just cancelled their own
-            // order read this and thought staff had done it instead, since
-            // nothing here said otherwise). Neutral wording is accurate
-            // either way.
-            message.textContent = 'Order ' + (orderNumber ? '#' + orderNumber + ' ' : '') +
-                'has been cancelled.';
-            if (cancelledActions) cancelledActions.style.display = 'block';
-
-            /*
-             * Let the customer read the cancellation message before the card
-             * goes. Only THIS order's card is removed — an earlier version
-             * wiped the entire #statusTab and stopped the poll outright, on
-             * the unstated assumption that a visitor could only ever have one
-             * order, which deleted a second still-live order's card and
-             * silently froze its tracker.
-             *
-             * The removal itself now lives in removeFinishedOrderCard(), so
-             * completed and cancelled orders leave the tab by exactly the
-             * same route, and so removal no longer depends on this popup
-             * being shown at all — this popup is deduped in localStorage, and
-             * an order's card must not stay in Current Order merely because
-             * the customer has seen its notification once before.
-             */
-            setTimeout(function () {
-                removeFinishedOrderCard(orderId);
-            }, 1800);
-        } else {
-            return;
-        }
-
-        if (orderId) markNotified(orderId, status);
+        if (orderId) markNotified(orderId, 'cancelled');
         overlay.style.display = 'flex';
         document.body.style.overflow = 'hidden';
     }
@@ -1881,7 +1633,7 @@
      * Take a finished order's card out of the Current Order tab.
      *
      * THE BUG THIS FIXES (2026-09-02). Card removal used to live INSIDE
-     * showOrderStatusNotice(), and only inside its `cancelled` branch — the
+     * the popup function, and only inside its `cancelled` branch — the
      * `completed` branch showed the popup and prepared the rating control but
      * never touched the card. Worse, that popup is fired only when
      * `!alreadyNotified(...)`, a localStorage dedupe, so whether a completed
@@ -2241,9 +1993,8 @@
                 document.body.style.overflow = '';
             }
 
-            if ((data.status === 'completed' || data.status === 'cancelled') &&
-                !alreadyNotified(data.order_id, data.status)) {
-                showOrderStatusNotice(data.status, data.order_number, data.order_id);
+            if (data.status === 'cancelled' && !alreadyNotified(data.order_id, data.status)) {
+                showOrderCancelledNotice(data.order_number, data.order_id);
             }
 
         // Finished: nothing more will change for this order.
@@ -2253,16 +2004,15 @@
     }
 
     // handleAllOrders: the former pollAllOrderStatuses() body — keeps every
-    // card's own tracker live and fires the completion popup for whichever
+    // card's own tracker live and fires the cancelled notice for whichever
     // order it belongs to. See customerOrdersStatus() for why the ids come
     // from the page and not from a status filter.
     function handleAllOrders(orders) {
         orders.forEach(function (order) {
             updateOrderProgress(order.order_id, order.status, order.type);
 
-            if ((order.status === 'completed' || order.status === 'cancelled') &&
-                !alreadyNotified(order.order_id, order.status)) {
-                showOrderStatusNotice(order.status, order.order_number, order.order_id);
+            if (order.status === 'cancelled' && !alreadyNotified(order.order_id, order.status)) {
+                showOrderCancelledNotice(order.order_number, order.order_id);
             }
 
             // Finished (and its one-time popup is out): stop asking about it.

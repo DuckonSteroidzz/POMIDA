@@ -186,6 +186,18 @@
                 {{-- Profile card with the Points / Streak / Stamps chips --}}
                 @include('customer.partials.account-header')
 
+                {{-- Whose streak and stamps those chips and the Overview cards
+                     are. Above the tabs, because it must stay outside the one
+                     big account form below (see the partial). --}}
+                @if($streakOn)
+                    @include('customer.partials.card-branch-picker', [
+                        'cardBranch' => $streakBranch,
+                        'returnTo' => 'account',
+                        'pickerClass' => 'acct-card p-3.5 sm:px-5 sm:py-4',
+                        'pickerLabel' => 'Streak and stamps for:',
+                    ])
+                @endif
+
                 <nav id="acct-tabs" class="acct-tabs" role="tablist" aria-label="Account sections"
                     data-testid="account-tabs"
                     data-start-tab="{{ $startTab }}" data-start-forced="{{ $startForced ? '1' : '0' }}"
@@ -218,41 +230,42 @@
                      the Reward Stamp Card stacked (5 of 12); one column under
                      761px (the tester's updated reference). Read-only figures
                      and links only, no fields. The calendar and stamp card are
-                     PER BRANCH — the branch the customer is ordering from
-                     ($streakBranch). $streak is null and the stamp card renders
-                     nothing while the owner's master switch or that branch's
-                     own switch is off; with no branch picked yet, a short card
-                     asks them to choose one. The Bonus points card is not per
-                     branch and is always there. --}}
+                     PER BRANCH — $streakBranch, FreeDesserts::cardBranch() — and
+                     every branch has this same layout: where a branch has no
+                     calendar (its own switch is off) or no stamp card (off, or
+                     no reward chosen), a clear card takes its place. With no
+                     branch known at all, a short card asks them to choose one.
+                     Only the owner's master switch removes the lot. The Bonus
+                     points card is not per branch and is always there. --}}
                 <section class="acct-panel flex flex-col gap-5" role="tabpanel" id="p-overview" data-tab="overview" aria-labelledby="t-overview" @if($startTab !== 'overview') hidden @endif>
-                    @php $stampsOn = $freeDessert['enabled'] ?? false; @endphp
                     <div class="grid grid-cols-12 gap-5">
                         @if($streak)
                             @include('customer.partials.streak-calendar')
+                        @elseif($streakOn && $streakBranch)
+                            @include('customer.partials.streak-unavailable')
+                        @elseif($streakOn)
+                            <section class="acct-card col-span-12 min-w-0 p-4 sm:p-[22px] min-[761px]:col-span-7" data-testid="streak-choose-branch">
+                                <div class="flex flex-wrap items-center gap-3">
+                                    <span class="acct-icon text-lg" aria-hidden="true">
+                                        <i class="bi bi-shop"></i>
+                                    </span>
+                                    <p class="min-w-0 flex-1 basis-40 text-sm text-peach-deep/70">
+                                        Choose a branch to see your streak and stamps.
+                                    </p>
+                                    <a href="{{ route('customer.menu') }}"
+                                        class="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-peach-red px-4 py-2 text-sm font-bold text-white no-underline transition hover:bg-peach-deep max-sm:w-full max-sm:justify-center">
+                                        Choose a branch <i class="bi bi-arrow-right" aria-hidden="true"></i>
+                                    </a>
+                                </div>
+                            </section>
                         @endif
-                        <div class="col-span-12 flex min-w-0 flex-col gap-3.5 {{ $streak ? 'min-[761px]:col-span-5' : '' }}">
+                        <div class="col-span-12 flex min-w-0 flex-col gap-3.5 {{ $streakOn ? 'min-[761px]:col-span-5' : '' }}">
                             @include('customer.partials.account-bonus-banner')
-                            @if($stampsOn)
-                                @include('customer.partials.free-dessert-stamp-card')
+                            @if($streakOn && $streakBranch)
+                                @include('customer.partials.free-dessert-stamp-card', ['cardBranch' => $streakBranch])
                             @endif
                         </div>
                     </div>
-                    @if(! $streak && ! $streakBranch && $streakOn)
-                        <section class="acct-card p-4 sm:p-[22px]" data-testid="streak-choose-branch">
-                            <div class="flex flex-wrap items-center gap-3">
-                                <span class="acct-icon text-lg" aria-hidden="true">
-                                    <i class="bi bi-shop"></i>
-                                </span>
-                                <p class="min-w-0 flex-1 basis-40 text-sm text-peach-deep/70">
-                                    Choose a branch to see your streak and stamps.
-                                </p>
-                                <a href="{{ route('customer.menu') }}"
-                                    class="inline-flex min-h-11 items-center gap-1.5 rounded-full bg-peach-red px-4 py-2 text-sm font-bold text-white no-underline transition hover:bg-peach-deep max-sm:w-full max-sm:justify-center">
-                                    Choose a branch <i class="bi bi-arrow-right" aria-hidden="true"></i>
-                                </a>
-                            </div>
-                        </section>
-                    @endif
                 </section>
 
                 {{-- ================= REWARDS ================= --}}

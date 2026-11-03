@@ -1248,6 +1248,12 @@ class OrderController extends Controller
                 GuestOrders::remember($order->id);
             }
 
+            // Where they last ordered is whose streak and stamp card they see
+            // next, after logging out too. See FreeDesserts::cardBranch().
+            if ($orderedBy = Auth::guard('customer')->user()) {
+                \App\Services\FreeDesserts::rememberBranch($orderedBy, (int) $order->branch_id);
+            }
+
             /*
              * Bind this order to the table occupancy the customer is holding.
              * Two things depend on it: the table is released automatically when
@@ -1957,8 +1963,8 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
     /**
      * The rating already stored for an order this visitor owns.
      *
-     * Lets the completed-order popup show "you rated this 4/5" when it is
-     * reopened, instead of offering an empty control that would be rejected.
+     * No customer page calls this since the shared Order Completed pop-up
+     * (rated orders are simply not asked about). See routes/web.php.
      */
     public function orderRating(Request $request, int $id)
     {
@@ -1968,6 +1974,27 @@ private function cancelResponse(Request $request, bool $ok, string $message, int
             'rated'  => $existing !== null,
             'rating' => $existing?->rating,
         ]);
+    }
+
+    /**
+     * "Not now" on the Order Completed pop-up. Only ever stops the pop-up asking;
+     * the order stays ratable from Order History.
+     */
+    public function dismissRatingPrompt(int $id)
+    {
+        $order = \App\Services\CustomerOrderAccess::resolveOwnedOrder($id);
+
+        if (!$order) {
+            return response()->json(['ok' => false, 'message' => 'That order could not be found.'], 404);
+        }
+
+        if ($order->status !== 'completed') {
+            return response()->json(['ok' => false, 'message' => 'This order is not completed yet.'], 422);
+        }
+
+        \App\Support\OrderCompletedPopup::dismiss($order);
+
+        return response()->json(['ok' => true]);
     }
 
     /** Rating requests arrive both as normal form posts and as fetch() calls. */

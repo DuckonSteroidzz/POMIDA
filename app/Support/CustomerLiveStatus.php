@@ -44,6 +44,10 @@ use Illuminate\Support\Facades\Auth;
  *    an order that finished before this page opened still gets its one-time
  *    "completed" popup, exactly as before.
  *
+ * Plus `completed_popups`: the completed orders still waiting for the shared
+ * Order Completed pop-up (App\Support\OrderCompletedPopup). Not tied to any
+ * order id the page asked about, because the customer may be on any page.
+ *
  * Ownership is resolved on the server only, exactly like the endpoints this
  * replaces: a client can narrow the answer to orders it owns, never widen it.
  */
@@ -102,6 +106,7 @@ final class CustomerLiveStatus
             'orders' => $orders->map(fn (Order $o) => array_merge(['has_order' => true], self::payload($o)))->all(),
             'session_order_id' => $orders->contains(fn (Order $o) => (int) $o->id === $sessionOrderId) ? $sessionOrderId : null,
             'active' => $active,
+            'completed_popups' => OrderCompletedPopup::queue($customerId),
         ]);
     }
 

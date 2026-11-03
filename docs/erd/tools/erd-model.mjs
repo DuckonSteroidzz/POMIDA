@@ -120,6 +120,7 @@ export const LABELS = {
   'user_vouchers.user_id': 'claims',
   'user_vouchers.voucher_id': 'is claimed as',
   'users.branch_id': 'employs',
+  'users.rewards_branch_id': 'keeps rewards card of',
   'vouchers.branch_id': 'scopes',
 };
 

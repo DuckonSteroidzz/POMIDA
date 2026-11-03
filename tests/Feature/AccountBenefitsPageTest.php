@@ -11,6 +11,7 @@ use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Feature\Concerns\ConfiguresStreakReward;
 use Tests\TestCase;
 
 /**
@@ -25,6 +26,7 @@ use Tests\TestCase;
 class AccountBenefitsPageTest extends TestCase
 {
     use DatabaseTransactions;
+    use ConfiguresStreakReward;
 
     private const NOW_UTC = '2026-10-15 04:00:00'; // 12:00 Manila
 
@@ -44,6 +46,11 @@ class AccountBenefitsPageTest extends TestCase
             // FreeDessertRewardTest; off here so these figures stay exact.
             'loyalty.free_dessert_visit_days'  => 0,
         ]);
+
+        // For the tests that turn it on: with no reward chosen the page shows
+        // the "isn't available" card, not the stamp card.
+        $this->clearStreakRewardSettings();
+        $this->chooseRewardItem($this->plainRewardItem());
     }
 
     private function customer(bool $verified = true): User

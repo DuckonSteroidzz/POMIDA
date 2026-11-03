@@ -4,8 +4,10 @@
     a free dessert). Registered customers only.
 
     $freeDessert comes from App\Services\FreeDesserts::summaryFor(), via
-    AuthController::showAccount() and ::showVouchers(), for ONE branch — the
-    one the customer is ordering from — and the card is labeled with it. One
+    AuthController::showAccount() and ::showVouchers(), for ONE branch —
+    FreeDesserts::cardBranch(), $cardBranch here — and the card is labeled with
+    it. A branch whose card is off or not set up gets
+    partials/stamp-card-unavailable in the same place. One
     stamp per shop day with a completed order at that branch (any days, not in
     a row; several orders on one day are one stamp). Every X stamps (that
     branch's App\Services\StreakRewardSettings) earn one reward — what it is
@@ -26,7 +28,9 @@
     minmax(0,1fr) grid so nothing pushes the page sideways at 360px. More
     than FreeDesserts::MAX_STAMPS_SHOWN stamps get the progress bar instead.
 --}}
-@if($freeDessert['enabled'] ?? false)
+@if(! (($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false)))
+    @include('customer.partials.stamp-card-unavailable', ['fillWidth' => $fillWidth ?? false])
+@else
 @php
     $perReward = $freeDessert['visit_days'];
     $stamps = $freeDessert['progress'];
@@ -40,7 +44,7 @@
     // Vouchers & Rewards stacks it with full-width blocks, so it fills the same
     // column and uses their padding; the Account page keeps its capped card.
     $fillWidth = $fillWidth ?? false;
-    $cardBranch = $freeDessert['branch_name'] ?? 'this branch';
+    $cardBranchName = $freeDessert['branch_name'] ?? 'this branch';
 @endphp
 <section id="free-dessert" class="scroll-mt-24 {{ $fillWidth ? 'card-surface w-full p-4 sm:p-5' : 'acct-card flex-1 p-4 sm:p-[22px]' }}" aria-labelledby="free-dessert-title" data-testid="free-dessert-card" data-branch="{{ $freeDessert['branch_id'] ?? '' }}">
     <div class="mb-4 flex {{ $fillWidth ? 'items-center' : 'items-start' }} gap-3">
@@ -50,19 +54,21 @@
         <div class="min-w-0">
             <h2 id="free-dessert-title" class="font-display text-lg font-bold {{ $fillWidth ? '' : 'leading-snug ' }}text-peach-deep">{{ $fillWidth ? 'Reward stamp card' : 'Reward Stamp Card' }}</h2>
             <p class="inline-flex items-center gap-1 {{ $fillWidth ? 'text-sm font-bold text-peach-red' : 'rounded-full border border-peach-soft bg-peach-soft/50 px-2 py-0.5 text-xs font-semibold text-peach-deep' }}" data-testid="free-dessert-branch">
-                <i class="bi bi-shop" aria-hidden="true"></i> {{ $cardBranch }}
+                <i class="bi bi-shop" aria-hidden="true"></i> {{ $cardBranchName }}
             </p>
             @if($fillWidth)
             <p class="text-sm text-peach-deep/60" data-testid="free-dessert-rule">
-                Collect {{ $perReward }} stamps for a reward{{ $rewardText ? ': ' . $rewardText : '' }}. 1 stamp per day you completed an order at {{ $cardBranch }}.
+                Collect {{ $perReward }} stamps for a reward{{ $rewardText ? ': ' . $rewardText : '' }}. 1 stamp per day you completed an order at {{ $cardBranchName }}.
             </p>
+            <p class="text-sm font-semibold text-peach-deep/80" data-testid="free-dessert-scope">Stamps here count only for orders at {{ $cardBranchName }}.</p>
             @endif
         </div>
     </div>
     @unless($fillWidth)
-        <p class="-mt-[7px] mb-3.5 ml-[52px] text-xs leading-normal text-peach-deep/70 max-[640px]:ml-0" data-testid="free-dessert-rule">
-            Earn 1 stamp per day when you complete at least one order at {{ $cardBranch }}. Collect {{ $perReward }} stamps to receive {{ $rewardPhrase }}. The days do not need to be consecutive.
+        <p class="-mt-[7px] mb-1 ml-[52px] text-xs leading-normal text-peach-deep/70 max-[640px]:ml-0" data-testid="free-dessert-rule">
+            Earn 1 stamp per day when you complete at least one order at {{ $cardBranchName }}. Collect {{ $perReward }} stamps to receive {{ $rewardPhrase }}. The days do not need to be consecutive.
         </p>
+        <p class="mb-3.5 ml-[52px] text-xs font-semibold leading-normal text-peach-deep/80 max-[640px]:ml-0" data-testid="free-dessert-scope">Stamps here count only for orders at {{ $cardBranchName }}.</p>
     @endunless
 
     @unless($freeDessert['qualifies'])
@@ -128,21 +134,12 @@
         @endif
     </div>
 
-    {{-- A full card that earned nothing yet, because the owner has not chosen
-         a reward: it is added at the next completed order after one is. --}}
-    @if(($freeDessert['waiting'] ?? 0) > 0)
-        <p class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-medium text-amber-800" data-testid="free-dessert-waiting">
-            <i class="bi bi-hourglass-split" aria-hidden="true"></i>
-            Your card is full! Your reward will be added to your account soon.
-        </p>
-    @endif
-
     {{-- Ready to use: the codes live on Vouchers & Rewards. --}}
     @if($readyCount > 0)
         <div class="flex flex-wrap items-center gap-3 rounded-2xl border border-green-200 bg-green-50 p-3" data-testid="free-dessert-available">
             <i class="bi bi-gift-fill text-lg text-green-700" aria-hidden="true"></i>
             <span class="min-w-0 flex-1 text-base font-bold text-peach-deep">
-                {{ $readyCount === 1 ? '1 reward ready to use' : $readyCount . ' rewards ready to use' }} at {{ $cardBranch }}
+                {{ $readyCount === 1 ? '1 reward ready to use' : $readyCount . ' rewards ready to use' }} at {{ $cardBranchName }}
             </span>
             @unless($rewardListHere)
                 <a href="{{ route('customer.vouchers') }}#rewards"

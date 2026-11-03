@@ -13,6 +13,7 @@ use App\Services\SpinWheel;
 use App\Services\VoucherClaims;
 use App\Support\GuestVoucherClaims;
 use App\Support\ShopDay;
+use App\Support\WheelPrizes;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -363,6 +364,12 @@ private function switchBranch($branchId): void
     }
 
     session()->put('branch_id', $branchId);
+
+    // Choosing a branch also chooses whose streak and stamp card to show, and
+    // the account keeps that past logout. See FreeDesserts::cardBranch().
+    if ($customer = Auth::guard('customer')->user()) {
+        \App\Services\FreeDesserts::rememberBranch($customer, (int) $branchId);
+    }
 }
 
     public function showDineInQr()
@@ -850,16 +857,17 @@ private function switchBranch($branchId): void
         // complete an order or when the email is verified.
         //
         // PER BRANCH: the calendar, the progress bar and the stamp card show
-        // the branch the customer is ordering from (the pickup branch they
-        // picked, or their Dine-In table's branch — session('branch_id')),
-        // counting only orders completed there. Null calendar while the
-        // owner's master switch or that branch's own switch is off. With no
-        // branch picked yet the page asks them to choose one instead.
+        // FreeDesserts::cardBranch() — the branch remembered on the account,
+        // so logging out and in never makes them look gone — counting only
+        // orders completed there. Null calendar while the owner's master
+        // switch or that branch's own switch is off. With no branch known at
+        // all the page asks them to choose one instead.
         //
         // The streak POINTS bonus stays company-wide: $streakOn is the master
         // switch only, and the calendar's bonus line counts every branch.
         $streakOn = \App\Models\Setting::streakCalendarEnabled();
-        $streakBranch = \App\Services\FreeDesserts::sessionBranch();
+        $streakBranch = \App\Services\FreeDesserts::cardBranch($customer);
+        $cardBranches = $streakOn ? \App\Services\FreeDesserts::cardBranchOptions($customer) : collect();
         $streak = $streakBranch && \App\Services\FreeDesserts::switchedOn($streakBranch->id)
             ? \App\Services\StreakCalendar::forAccountPage($customer, $request->query('month'), branchId: $streakBranch->id)
             : null;
@@ -892,7 +900,42 @@ private function switchBranch($branchId): void
             'spins_per_day'  => self::SPINS_PER_DAY,
         ];
 
-        return view('customer.account-settings', compact('streak', 'streakBranch', 'streakOn', 'recentAwards', 'loyalty', 'freeDessert'));
+        return view('customer.account-settings', compact('streak', 'streakBranch', 'cardBranches', 'streakOn', 'recentAwards', 'loyalty', 'freeDessert'));
+    }
+
+    /**
+     * The switch on the cards: show another branch's streak and stamp card.
+     *
+     * Saves the choice on the account and nothing else. It is deliberately not
+     * switchBranch(): looking at another branch's card must not move the branch
+     * being ordered from or empty the cart. No 'success' flash either, because
+     * the Account page reads that as "Save Changes was pressed" and reopens the
+     * tab that was saved.
+     *
+     * Only a branch cardBranchOptions() offers; anything else is a 404, the same
+     * answer for a closed branch as for one that does not exist.
+     */
+    public function chooseRewardsBranch(Request $request)
+    {
+        if (!Auth::guard('customer')->check()) {
+            return redirect()->route('customer.login');
+        }
+
+        /** @var \App\Models\User $customer */
+        $customer = Auth::guard('customer')->user();
+
+        $requested = $request->input('branch_id');
+        $branch = is_numeric($requested)
+            ? \App\Services\FreeDesserts::cardBranchOptions($customer)->firstWhere('id', (int) $requested)
+            : null;
+
+        abort_if($branch === null, 404);
+
+        \App\Services\FreeDesserts::rememberBranch($customer, $branch->id);
+
+        return $request->input('return_to') === 'vouchers'
+            ? redirect()->to(route('customer.vouchers') . '#stamp-card-branch')
+            : redirect()->to(route('customer.account') . '#overview');
     }
 
     public function showItem($id)
@@ -1116,6 +1159,15 @@ private function switchBranch($branchId): void
                     'current_password' => 'That is not your current password.',
                 ]);
             }
+        }
+
+        // QA 2026-11-02: a "new" password equal to the current one is no
+        // change. Checked after the current password is proven, so a wrong
+        // current password is still reported as wrong. Saves nothing.
+        if ($changingPassword && \App\Support\PasswordPolicy::isCurrentFor($user, $validated['password'])) {
+            return back()->withErrors([
+                'password' => \App\Support\PasswordPolicy::SAME_AS_CURRENT,
+            ]);
         }
 
         $user->name = $validated['name'];
@@ -2077,6 +2129,12 @@ private function switchBranch($branchId): void
                 // signed in to.
                 $adopted = GuestVoucherClaims::adoptInto($user->id);
 
+                // A branch picked or scanned in this browser just before signing
+                // in is the latest choice. With none, the account's own stays.
+                if ($branchId !== null) {
+                    \App\Services\FreeDesserts::rememberBranch($user, (int) $branchId);
+                }
+
                 if ($orderType === 'dine_in') {
                     session()->put('order_type', 'dine_in');
 
@@ -2413,21 +2471,27 @@ private function switchBranch($branchId): void
             })
             ->values();
 
-        // The stamp card of the branch the customer is ordering from, the
-        // same partial and data as the Account page
-        // (App\Services\FreeDesserts::summaryFor; hidden while that branch is
-        // off), and every loyalty reward with its code FROM EVERY BRANCH, each
-        // labeled with its branch — listed whatever the switches say, because
-        // a reward already earned can always be used (FreeDesserts::rewardsFor).
+        // The stamp card of FreeDesserts::cardBranch() — the branch remembered
+        // on the account, the same as the Account page, with the same switch
+        // and the same partial and data (FreeDesserts::summaryFor) — and every
+        // loyalty reward with its code FROM EVERY BRANCH, each labeled with its
+        // branch, listed whatever the switches say, because a reward already
+        // earned can always be used (FreeDesserts::rewardsFor).
+        //
+        // $rewardBranch is the branch being ordered from, which is a different
+        // question: it decides where "Use now" is offered.
         /** @var \App\Models\User $customer */
         $customer = Auth::guard('customer')->user();
         $rewardBranch = \App\Services\FreeDesserts::sessionBranch();
-        $freeDessert = \App\Services\FreeDesserts::summaryFor($customer, $rewardBranch?->id);
+        $streakOn = \App\Models\Setting::streakCalendarEnabled();
+        $cardBranch = \App\Services\FreeDesserts::cardBranch($customer);
+        $cardBranches = $streakOn ? \App\Services\FreeDesserts::cardBranchOptions($customer) : collect();
+        $freeDessert = \App\Services\FreeDesserts::summaryFor($customer, $cardBranch?->id);
         $loyaltyRewards = \App\Services\Loyalty::qualifies($customer)
             ? \App\Services\FreeDesserts::rewardsFor($customer)
             : collect();
 
-        return view('customer.vouchers', compact('userVouchers', 'freeDessert', 'loyaltyRewards', 'rewardBranch'));
+        return view('customer.vouchers', compact('userVouchers', 'freeDessert', 'loyaltyRewards', 'rewardBranch', 'streakOn', 'cardBranch', 'cardBranches'));
     }
 
     // ══════════ HELP REQUEST ══════════
@@ -2812,27 +2876,11 @@ private function switchBranch($branchId): void
 
     public function showGame()
     {
-        // Branch-aware Voucher/Ad listing (Phase 3 audit, Finding #5).
-        // NULL branch_id = global (valid/shown at every branch), the same
-        // convention menu_items/inventory already use and the one
-        // Voucher::branchErrorFor() already enforces at redemption time —
-        // see $this->scopeToCustomerBranch() for the read-side of that same
-        // rule. Before this fix neither query looked at branch_id at all, so
-        // a branch-3-only voucher's prize showed on the wheel legend (and
-        // could be WON, see winnableVoucherFor() below) for a customer at
-        // branch 1, and a branch-3-only ad played in every branch's carousel.
-        $vouchers = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
-            // Same expiry rule as redemption (valid through the expiry date,
-            // shop time). This used to compare with UTC end-of-day, which
-            // hid a voucher on its last valid day.
-            ->notExpired()
-            ->where(
-                'used_count',
-                '<',
-                \Illuminate\Support\Facades\DB::raw('max_uses')
-            ))
-            ->get();
-
+        // Branch-aware Ad listing (Phase 3 audit, Finding #5). NULL branch_id =
+        // global (shown at every branch), the same convention menu_items and
+        // inventory use; see $this->scopeToCustomerBranch(). Before this fix a
+        // branch-3-only ad played in every branch's carousel.
+        //
         // liveNow() is the shared active + starts_at + ends_at rule (the Menu
         // popup uses it too). This query used to skip starts_at, so an ad
         // scheduled for next week already played in the carousel.
@@ -2869,6 +2917,10 @@ private function switchBranch($branchId): void
             ? []
             : GuestVoucherClaims::forDisplay();
 
+        // "What you can win", with each prize's status for this visitor. The
+        // same rule the picker draws from: see App\Support\WheelPrizes.
+        $wheelPrizes = WheelPrizes::forVisitor($pointsBalance);
+
         // The wheel's segments come from the server so the odds live in one
         // place and can be tested — see WHEEL_SEGMENTS. The view shuffles them
         // for display only: addPoints() picks the segment and returns its
@@ -2876,7 +2928,7 @@ private function switchBranch($branchId): void
         $wheelSegments = self::WHEEL_SEGMENTS;
 
         return view('customer.game', compact(
-            'vouchers',
+            'wheelPrizes',
             'gameAds',
             'spinState',
             'pointsBalance',
@@ -2956,38 +3008,21 @@ private function switchBranch($branchId): void
      *
      * ONE definition, used by both the guest branch and the signed-in branch of
      * addPoints(), so the two can never drift into offering different prizes on
-     * the same points. Everything a wheel prize must be is here: active, a
-     * wheel voucher rather than a public promo (points_required > 0), affordable
-     * at this total, not expired, and not one the player already holds.
+     * the same points. Everything a wheel prize must be lives in
+     * App\Support\WheelPrizes, which the game page's list reads as well: this
+     * draws only from what that list would call "You can win this". The holding
+     * limit is checked by the callers, before they get here.
      *
      * @param  int[]  $excludeVoucherIds  vouchers this player has already won
      */
     private function winnableVoucherFor(int $totalPoints, array $excludeVoucherIds): ?\App\Models\Voucher
     {
-        // Branch-aware (Phase 3 audit, Finding #5): only a GLOBAL voucher or
-        // one scoped to THIS customer's own branch can be won — see
-        // showGame()'s comment and scopeToCustomerBranch() below. Before this
-        // fix a branch-3-only voucher could be spun and awarded to a
-        // customer at branch 1, live, with a valid claim code for a
-        // redemption Voucher::branchErrorFor() would then refuse at checkout
-        // — a prize that could be WON but never SPENT.
-        return $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
-            // The admin list's Wheel switch (Oct 2026): a voucher switched off
-            // the wheel is never a prize, whatever else it qualifies on.
-            ->where('on_wheel', true)
-            ->where('points_required', '>', 0)
-            ->where('points_required', '<=', $totalPoints)
-            ->notExpired()
-            // A prize that has already been claimed to its limit is not a prize.
-            // The redemption path refuses it (Voucher::availabilityErrorFor),
-            // so awarding one would hand the customer something dead on arrival.
-            ->where(function ($q) {
-                $q->where('max_uses', '<=', 0)
-                    ->orWhereColumn('used_count', '<', 'max_uses');
-            })
-            ->whereNotIn('id', $excludeVoucherIds ?: [0]))
-            ->inRandomOrder()
-            ->first();
+        return WheelPrizes::pick(WheelPrizes::evaluate(
+            $totalPoints,
+            $excludeVoucherIds,
+            0,
+            session('branch_id') ? (int) session('branch_id') : null
+        ));
     }
 
     /**
@@ -2997,8 +3032,7 @@ private function switchBranch($branchId): void
      * models — see Voucher::$fillable's own comment and
      * Voucher::branchErrorFor(), which already enforces the identical rule
      * at redemption time. This is the read side of that same rule for the
-     * Spin & Win prize picker (winnableVoucherFor()) and the game page's
-     * prize/ad listing (showGame()).
+     * game page's ad listing (showGame()).
      *
      * A customer with no branch selected yet (session('branch_id') is null)
      * sees only global rows — mirrors branchErrorFor()'s own "no branch
@@ -3230,6 +3264,7 @@ private function switchBranch($branchId): void
                         'valid_from'  => $claim->valid_from?->toDateString(),
                         'expires_at'  => ShopDay::formatExpiry($earnedVoucher->expires_at) ?: null,
                         'message'     => 'Valid now — use it on your next order.',
+                        'points_spent' => (int) $earnedVoucher->points_required,
                     ];
                 }
             }
@@ -3248,6 +3283,7 @@ private function switchBranch($branchId): void
                 // What an account would add (config/loyalty.php), shown under
                 // the spin result. Null when every bonus is switched off.
                 'signup_teaser' => \App\Services\Loyalty::guestTeaser(),
+                'prizes'        => WheelPrizes::forJson(WheelPrizes::forVisitor($totalPoints)),
             ], $this->spinResultState($spinNumber, $segment)));
         }
 
@@ -3284,10 +3320,9 @@ private function switchBranch($branchId): void
          * credited; nothing else happens here.
          */
 
-        // Check kung may 2 na vouchers ang user — hindi na pwede kumita pa
-        $existingVoucherCount = \App\Models\UserVoucher::where('user_id', $user->id)
-            ->where('is_used', false)
-            ->count();
+        // Check kung may 2 na vouchers ang user — hindi na pwede kumita pa.
+        // Only claims that can still be spent count: see WheelPrizes::spendable().
+        $existingVoucherCount = WheelPrizes::heldCount();
 
         $voucherData = null;
 
@@ -3395,23 +3430,16 @@ private function switchBranch($branchId): void
                     'valid_from'  => $validFrom,
                     'expires_at'  => ShopDay::formatExpiry($earnedVoucher->expires_at) ?: null,
                     'message'     => 'Valid now — use it on your next order.',
+                    'points_spent' => $cost,
                 ];
             }
         }
 
-        // Next voucher to earn. Branch-scoped (Branch parity audit B6,
-        // 2026-09-27) — the two other Voucher queries on this same page
-        // ($vouchers above and winnableVoucherFor()) already run through
-        // scopeToCustomerBranch(); this one didn't, so a branch-3-only
-        // voucher's description could be shown as the "next voucher" hint to
-        // a customer at branch 1, who could never actually earn or redeem it.
-        $nextVoucher = $this->scopeToCustomerBranch(\App\Models\Voucher::where('is_active', true)
-            // Only a voucher the wheel can actually award is worth aiming for.
-            ->where('on_wheel', true)
-            ->where('points_required', '>', $totalPoints)
-            ->notExpired())
-            ->orderBy('points_required', 'asc')
-            ->first();
+        // Next voucher to earn: only a prize more points alone would unlock, so
+        // the hint can never name one from another branch (audit B6), one already
+        // won, one sold out or one that has not started.
+        $prizes = WheelPrizes::forVisitor($totalPoints);
+        $nextVoucher = WheelPrizes::nextToEarn($prizes);
 
         return response()->json(array_merge([
             'success'        => true,
@@ -3422,6 +3450,7 @@ private function switchBranch($branchId): void
                 ? ($nextVoucher->points_required - $totalPoints)
                 : 0,
             'voucher_slots'  => 2 - $existingVoucherCount,
+            'prizes'         => WheelPrizes::forJson($prizes),
         ], $this->spinResultState($spinNumber, $segment)));
     }
 

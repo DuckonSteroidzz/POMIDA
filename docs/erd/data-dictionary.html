@@ -57,11 +57,11 @@ a{color:var(--accent)}
 <div class="navmod"><a class="navh" href="#m-marketing" style="border-left-color:#7c3aed">Marketing &amp; Loyalty</a><a class="navt" href="#t-vouchers" data-name="vouchers">vouchers</a><a class="navt" href="#t-user_vouchers" data-name="user_vouchers">user_vouchers</a><a class="navt" href="#t-ads" data-name="ads">ads</a><a class="navt" href="#t-games_played" data-name="games_played">games_played</a><a class="navt" href="#t-loyalty_awards" data-name="loyalty_awards">loyalty_awards</a><a class="navt" href="#t-free_dessert_rewards" data-name="free_dessert_rewards">free_dessert_rewards</a><a class="navt" href="#t-free_dessert_ratings" data-name="free_dessert_ratings">free_dessert_ratings</a><a class="navt" href="#t-order_ratings" data-name="order_ratings">order_ratings</a><a class="navt" href="#t-notifications" data-name="notifications">notifications</a><a class="navt" href="#t-settings" data-name="settings">settings</a></div><div class="navmod"><a class="navh" href="#appendix" style="border-left-color:#64748b">Appendix</a><a class="navt" href="#ap-framework">A. Framework tables</a><a class="navt" href="#ap-modelonly">B. Model-only relationships</a><a class="navt" href="#ap-dead">C. Dead model relationships</a><a class="navt" href="#ap-implicit">D. Implied links</a><a class="navt" href="#ap-nomodel">E. FKs without a model relation</a><a class="navt" href="#ap-rules">F. ON DELETE rules</a></div></nav>
 <main>
 <h1>POMIDA Database &mdash; Data Dictionary</h1>
-<p class="sub">Database <b>pomida_db_testing</b> (10.4.32-MariaDB) &middot; read from <code>information_schema</code> on <b>2026-10-31</b> &middot; feature/ingredient-priority @ b6368fc</p>
+<p class="sub">Database <b>pomida_db</b> (10.4.32-MariaDB) &middot; read from <code>information_schema</code> on <b>2026-11-03</b> &middot; main @ f262583</p>
 <div class="summary">
 <div><b>37</b><span>application tables</span></div>
-<div><b>424</b><span>columns in those tables</span></div>
-<div><b>73</b><span>database foreign keys</span></div>
+<div><b>428</b><span>columns in those tables</span></div>
+<div><b>74</b><span>database foreign keys</span></div>
 <div><b>0</b><span>model-only relationships (no FK)</span></div>
 <div><b>8</b><span>Laravel framework tables (appendix)</span></div>
 <div><b>45</b><span>tables in the database in total</span></div>
@@ -71,7 +71,7 @@ a{color:var(--accent)}
 <section class="tbl" id="t-users" data-name="users">
 <h3>users <span class="pill" style="background:#dbeafe;border-color:#2563eb">Users &amp; Branches</span></h3>
 <p class="purpose">All accounts: customers, staff, supervisors and the admin (role), with points, ID-card details and home branch.</p>
-<p class="meta">26 columns &middot; 1 foreign key &middot; engine InnoDB</p>
+<p class="meta">27 columns &middot; 2 foreign keys &middot; engine InnoDB</p>
 <div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
 <tbody>
 <tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
@@ -91,15 +91,16 @@ a{color:var(--accent)}
 <tr><td class="n">15</td><td><b>senior_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 <tr><td class="n">16</td><td><b>profile_image</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 <tr><td class="n">17</td><td><b>branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE RESTRICT</span></td></tr>
-<tr><td class="n">18</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
-<tr><td class="n">19</td><td><b>verification_code</b></td><td class="ty"><code>varchar(6)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
-<tr><td class="n">20</td><td><b>verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
-<tr><td class="n">21</td><td><b>email_verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
-<tr><td class="n">22</td><td><b>email_verification_token</b></td><td class="ty"><code>char(64)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
-<tr><td class="n">23</td><td><b>password</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
-<tr><td class="n">24</td><td><b>remember_token</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
-<tr><td class="n">25</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
-<tr><td class="n">26</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">18</td><td><b>rewards_branch_id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">YES</td><td class="c"><span class="k fk">FK</span></td><td><span class="dim">NULL</span></td><td>&rarr; <a href="#t-branches">branches</a>.id <span class="dim">ON DELETE SET NULL</span></td></tr>
+<tr><td class="n">19</td><td><b>is_active</b></td><td class="ty"><code>tinyint(1)</code></td><td class="c">NO</td><td class="c"></td><td><code>1</code></td><td></td></tr>
+<tr><td class="n">20</td><td><b>verification_code</b></td><td class="ty"><code>varchar(6)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">21</td><td><b>verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">22</td><td><b>email_verified_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">23</td><td><b>email_verification_token</b></td><td class="ty"><code>char(64)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">24</td><td><b>password</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">NO</td><td class="c"></td><td><span class="dim">&mdash;</span></td><td></td></tr>
+<tr><td class="n">25</td><td><b>remember_token</b></td><td class="ty"><code>varchar(100)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">26</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">27</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 </tbody></table></div>
 <ul class="notes"><li><b>Referenced by:</b> <a href="#t-admin_bootstrap">admin_bootstrap</a>.user_id, <a href="#t-admin_sign_ins">admin_sign_ins</a>.user_id, <a href="#t-discount_cards">discount_cards</a>.user_id, <a href="#t-discount_cards">discount_cards</a>.verified_by, <a href="#t-free_dessert_ratings">free_dessert_ratings</a>.user_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.user_id, <a href="#t-games_played">games_played</a>.user_id, <a href="#t-loyalty_awards">loyalty_awards</a>.user_id, <a href="#t-notifications">notifications</a>.user_id, <a href="#t-order_ratings">order_ratings</a>.user_id, <a href="#t-orders">orders</a>.processed_by, <a href="#t-orders">orders</a>.user_id, <a href="#t-restaurant_tables">restaurant_tables</a>.code_rotated_by, <a href="#t-stock_movements">stock_movements</a>.user_id, <a href="#t-table_access_codes">table_access_codes</a>.issued_by, <a href="#t-table_sessions">table_sessions</a>.opened_by, <a href="#t-table_sessions">table_sessions</a>.released_by, <a href="#t-user_vouchers">user_vouchers</a>.issued_by, <a href="#t-user_vouchers">user_vouchers</a>.user_id</li></ul>
 </section>
@@ -123,7 +124,7 @@ a{color:var(--accent)}
 <tr><td class="n">12</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 <tr><td class="n">13</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 </tbody></table></div>
-<ul class="notes"><li><b>Referenced by:</b> <a href="#t-ads">ads</a>.branch_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.branch_id, <a href="#t-help_requests">help_requests</a>.branch_id, <a href="#t-inventory">inventory</a>.branch_id, <a href="#t-menu_items">menu_items</a>.branch_id, <a href="#t-notifications">notifications</a>.branch_id, <a href="#t-orders">orders</a>.branch_id, <a href="#t-restaurant_tables">restaurant_tables</a>.branch_id, <a href="#t-settings">settings</a>.branch_id, <a href="#t-table_access_codes">table_access_codes</a>.branch_id, <a href="#t-table_sessions">table_sessions</a>.branch_id, <a href="#t-users">users</a>.branch_id, <a href="#t-vouchers">vouchers</a>.branch_id</li><li><b>Implied link (no FK, no model relation):</b> free_dessert_rewards.used_branch_id &harr; branches.id <span class="dim">&mdash; Branch where the reward was redeemed; plain column, no FK and no model relationship.</span></li></ul>
+<ul class="notes"><li><b>Referenced by:</b> <a href="#t-ads">ads</a>.branch_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.branch_id, <a href="#t-help_requests">help_requests</a>.branch_id, <a href="#t-inventory">inventory</a>.branch_id, <a href="#t-menu_items">menu_items</a>.branch_id, <a href="#t-notifications">notifications</a>.branch_id, <a href="#t-orders">orders</a>.branch_id, <a href="#t-restaurant_tables">restaurant_tables</a>.branch_id, <a href="#t-settings">settings</a>.branch_id, <a href="#t-table_access_codes">table_access_codes</a>.branch_id, <a href="#t-table_sessions">table_sessions</a>.branch_id, <a href="#t-users">users</a>.branch_id, <a href="#t-users">users</a>.rewards_branch_id, <a href="#t-vouchers">vouchers</a>.branch_id</li><li><b>Implied link (no FK, no model relation):</b> free_dessert_rewards.used_branch_id &harr; branches.id <span class="dim">&mdash; Branch where the reward was redeemed; plain column, no FK and no model relationship.</span></li></ul>
 </section>
 <section class="tbl" id="t-admin_bootstrap" data-name="admin_bootstrap">
 <h3>admin_bootstrap <span class="pill" style="background:#dbeafe;border-color:#2563eb">Users &amp; Branches</span></h3>
@@ -280,7 +281,7 @@ a{color:var(--accent)}
 <section class="tbl" id="t-orders" data-name="orders">
 <h3>orders <span class="pill" style="background:#dcfce7;border-color:#16a34a">Orders &amp; Payments</span></h3>
 <p class="purpose">Customer orders (Dine-In, Pick-Up, Walk-In): totals, discount, voucher / reward code, payment, status and timestamps.</p>
-<p class="meta">37 columns &middot; 5 foreign keys &middot; engine InnoDB</p>
+<p class="meta">40 columns &middot; 5 foreign keys &middot; engine InnoDB</p>
 <div class="scroll"><table class="cols"><thead><tr><th>#</th><th>Column</th><th>Type</th><th>Null</th><th>Key</th><th>Default</th><th>References</th></tr></thead>
 <tbody>
 <tr><td class="n">1</td><td><b>id</b></td><td class="ty"><code>bigint(20) unsigned</code></td><td class="c">NO</td><td class="c"><span class="k pk">PK</span></td><td><span class="dim">auto_increment</span></td><td></td></tr>
@@ -320,6 +321,9 @@ a{color:var(--accent)}
 <tr><td class="n">35</td><td><b>created_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 <tr><td class="n">36</td><td><b>updated_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 <tr><td class="n">37</td><td><b>spin_prompted_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">38</td><td><b>rating_prompt_dismissed_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">39</td><td><b>gcash_proof_path</b></td><td class="ty"><code>varchar(255)</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
+<tr><td class="n">40</td><td><b>gcash_proof_uploaded_at</b></td><td class="ty"><code>timestamp</code></td><td class="c">YES</td><td class="c"></td><td><span class="dim">NULL</span></td><td></td></tr>
 </tbody></table></div>
 <ul class="notes"><li><b>Referenced by:</b> <a href="#t-free_dessert_ratings">free_dessert_ratings</a>.order_id, <a href="#t-free_dessert_rewards">free_dessert_rewards</a>.order_id, <a href="#t-games_played">games_played</a>.order_id, <a href="#t-help_requests">help_requests</a>.order_id, <a href="#t-loyalty_awards">loyalty_awards</a>.order_id, <a href="#t-notifications">notifications</a>.order_id, <a href="#t-order_discount_beneficiaries">order_discount_beneficiaries</a>.order_id, <a href="#t-order_items">order_items</a>.order_id, <a href="#t-order_ratings">order_ratings</a>.order_id, <a href="#t-table_sessions">table_sessions</a>.order_id</li><li><b>Implied link (no FK, no model relation):</b> orders (branch_id, table_number) &harr; restaurant_tables (branch_id, table_number) <span class="dim">&mdash; A Dine-In order stores the table number as text, not the table id.</span></li><li><b>Implied link (no FK, no model relation):</b> stock_movements.reference_id &harr; orders.id <span class="dim">&mdash; Holds the order id when source = &quot;order&quot; (InventoryDeductionService); not a declared FK.</span></li></ul>
 </section>
@@ -841,10 +845,10 @@ a{color:var(--accent)}
 <h3 id="ap-implicit" style="font-family:inherit">D. Implied links (values match, but there is neither a foreign key nor a model relationship)</h3>
 <table><thead><tr><th>From</th><th>To</th><th>Note</th></tr></thead><tbody><tr><td>orders (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>A Dine-In order stores the table number as text, not the table id.</td></tr><tr><td>table_sessions (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>Same text match; table_sessions has no restaurant_tables FK.</td></tr><tr><td>help_requests (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>Same text match.</td></tr><tr><td>table_access_codes (branch_id, table_number)</td><td>restaurant_tables (branch_id, table_number)</td><td>Same text match.</td></tr><tr><td>free_dessert_rewards.used_branch_id</td><td>branches.id</td><td>Branch where the reward was redeemed; plain column, no FK and no model relationship.</td></tr><tr><td>stock_movements.reference_id</td><td>orders.id</td><td>Holds the order id when source = &quot;order&quot; (InventoryDeductionService); not a declared FK.</td></tr></tbody></table>
 <h3 id="ap-nomodel" style="font-family:inherit">E. Foreign keys that no model declares as a relationship (still real FKs, drawn solid)</h3>
-<table><thead><tr><th>child.column &rarr; parent</th></tr></thead><tbody><tr><td>admin_bootstrap.user_id-&gt;users</td></tr><tr><td>free_dessert_ratings.user_id-&gt;users</td></tr><tr><td>free_dessert_rewards.voucher_id-&gt;vouchers</td></tr><tr><td>notifications.branch_id-&gt;branches</td></tr><tr><td>notifications.user_id-&gt;users</td></tr><tr><td>table_access_codes.branch_id-&gt;branches</td></tr><tr><td>table_access_codes.issued_by-&gt;users</td></tr><tr><td>user_vouchers.issued_by-&gt;users</td></tr></tbody></table>
-<h3 id="ap-rules" style="font-family:inherit">F. ON DELETE rules used by the 73 foreign keys</h3>
-<table><thead><tr><th>Rule</th><th>Foreign keys</th></tr></thead><tbody><tr><td>CASCADE</td><td>37</td></tr><tr><td>RESTRICT</td><td>3</td></tr><tr><td>SET NULL</td><td>33</td></tr></tbody></table>
-<p class="dim">Every foreign key uses ON UPDATE RESTRICT. Counts above: 37 application + 8 framework = 45 tables; 424 application columns + 42 framework columns = 466.</p>
+<table><thead><tr><th>child.column &rarr; parent</th></tr></thead><tbody><tr><td>admin_bootstrap.user_id-&gt;users</td></tr><tr><td>free_dessert_ratings.user_id-&gt;users</td></tr><tr><td>free_dessert_rewards.voucher_id-&gt;vouchers</td></tr><tr><td>notifications.branch_id-&gt;branches</td></tr><tr><td>notifications.user_id-&gt;users</td></tr><tr><td>table_access_codes.branch_id-&gt;branches</td></tr><tr><td>table_access_codes.issued_by-&gt;users</td></tr><tr><td>user_vouchers.issued_by-&gt;users</td></tr><tr><td>users.rewards_branch_id-&gt;branches</td></tr></tbody></table>
+<h3 id="ap-rules" style="font-family:inherit">F. ON DELETE rules used by the 74 foreign keys</h3>
+<table><thead><tr><th>Rule</th><th>Foreign keys</th></tr></thead><tbody><tr><td>CASCADE</td><td>37</td></tr><tr><td>RESTRICT</td><td>3</td></tr><tr><td>SET NULL</td><td>34</td></tr></tbody></table>
+<p class="dim">Every foreign key uses ON UPDATE RESTRICT. Counts above: 37 application + 8 framework = 45 tables; 428 application columns + 42 framework columns = 470.</p>
 </div>
 </main>
 <script>

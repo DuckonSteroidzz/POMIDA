@@ -92,10 +92,10 @@ class GuestVoucherClaims
             ->get();
     }
 
-    /** Unused prizes this session is holding right now. */
+    /** Unused prizes this session is holding right now that can still be spent. */
     public static function unusedCount(): int
     {
-        return self::all()->where('is_used', false)->count();
+        return WheelPrizes::spendable(self::all());
     }
 
     /** Has this session already won a claim on the given voucher? */

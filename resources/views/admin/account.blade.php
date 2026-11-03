@@ -828,7 +828,7 @@
         if (!meetsPolicy(newPw.value)) {
             newMessage = POLICY;
         } else if (newPw.value === currentPw.value) {
-            newMessage = 'Your new password must be different from your current one.';
+            newMessage = 'Your new password must be different from your current password.';
         }
         ok = setError(newPw, errNew, newMessage) && ok;
         ok = setError(confirmPw, errConfirm,

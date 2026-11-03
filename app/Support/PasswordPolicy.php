@@ -33,6 +33,32 @@ final class PasswordPolicy
     public const MAX_LENGTH = 20;
 
     /**
+     * The one sentence for "you typed the password you already have", wherever
+     * somebody sets their OWN password (reset, Account Settings).
+     */
+    public const SAME_AS_CURRENT = 'Your new password must be different from your current password.';
+
+    /**
+     * The same sentence's counterpart for an owner or manager setting
+     * SOMEONE ELSE's password: that person's old password is not known to the
+     * one typing, so the only thing that can be said is that it is unchanged.
+     */
+    public const SAME_AS_STORED = 'That is already this account\'s password. Choose a different one.';
+
+    /**
+     * Whether $plain is the password this account already has. A hash check,
+     * so it works without anyone knowing the old password: the reset flow and
+     * the owner's Set Password both rely on that.
+     */
+    public static function isCurrentFor(?\App\Models\User $user, string $plain): bool
+    {
+        return $user !== null
+            && is_string($user->password)
+            && $user->password !== ''
+            && \Illuminate\Support\Facades\Hash::check($plain, $user->password);
+    }
+
+    /**
      * The rule object itself.
      */
     public static function rule(): Password

@@ -76,6 +76,20 @@ class Voucher extends Model
         return ShopDay::hasExpired($this->expires_at);
     }
 
+    /** Whether the shared start date (valid_from) has arrived. No date means it has. */
+    public function hasStarted(): bool
+    {
+        return ShopDay::hasStarted($this->valid_from);
+    }
+
+    /** SQL twin of hasStarted(). */
+    public function scopeStarted($query)
+    {
+        $column = $this->qualifyColumn('valid_from');
+
+        return $query->where(fn ($q) => $q->whereNull($column)->orWhere($column, '<=', ShopDay::todayString()));
+    }
+
     /** The query form of ! isExpired(), for listing vouchers that can still be used. */
     public function scopeNotExpired($query)
     {
@@ -229,15 +243,13 @@ class Voucher extends Model
      * max_uses cap is the SAME counter and is checked the same way, so this
      * path cannot be used to exceed a limit a wheel win would be bound by.
      *
-     * ONE CONDITION STRICTER THAN THE WHEEL, DELIBERATELY
-     * ---------------------------------------------------
-     * valid_from is also refused here. The wheel does not check it, because a
-     * wheel claim carries its OWN valid_from and the shared column is a launch
-     * date rather than a per-holder window (see the long note in
-     * availabilityErrorFor). But an admin handing a code to a customer standing
-     * at the counter should not be handing out something from a promotion that
-     * has not opened yet. Stricter is safe here; it can only ever refuse an
-     * issuance the wheel would have allowed, never permit one it would refuse.
+     * THE START DATE, THE SAME ON BOTH (QA, Nov 2 2026)
+     * -------------------------------------------------
+     * valid_from is also refused here, and the wheel now refuses it too (see
+     * App\Support\WheelPrizes): it used to award a prize a week before its
+     * start date, and the claim's own valid_from of today then made it spendable
+     * at once. Once won, the claim's own valid_from still decides when it can be
+     * spent (see the long note in availabilityErrorFor).
      */
     public function issuanceErrorFor(): ?string
     {
@@ -473,10 +485,10 @@ class Voucher extends Model
 
     /**
      * Is this voucher a Spin & Win prize right now? The same conditions as
-     * AuthController::winnableVoucherFor() (the picker) minus the two that
-     * depend on who is spinning: how many points they have, and what they
-     * already hold. Switched onto the wheel (on_wheel), active, a wheel
-     * voucher (points_required > 0), not expired, not used up.
+     * App\Support\WheelPrizes (the picker) minus the ones that depend on who
+     * is spinning: how many points they have, what they already hold, and
+     * where they are. Switched onto the wheel (on_wheel), active, a wheel
+     * voucher (points_required > 0), not expired, not used up, started.
      */
     public function isOnWheel(): bool
     {
@@ -484,7 +496,8 @@ class Voucher extends Model
             && $this->is_active
             && (int) $this->points_required > 0
             && ! $this->isExpired()
-            && ! $this->isUsedUp();
+            && ! $this->isUsedUp()
+            && $this->hasStarted();
     }
 
     /**
@@ -496,6 +509,10 @@ class Voucher extends Model
     {
         if (! $this->on_wheel || (int) $this->points_required <= 0 || $this->isOnWheel()) {
             return null;
+        }
+
+        if ($this->listStatus() === 'active' && ! $this->hasStarted()) {
+            return 'Paused: starts ' . $this->valid_from->format('M d, Y');
         }
 
         return match ($this->listStatus()) {
@@ -550,7 +567,8 @@ class Voucher extends Model
             ->where('is_active', true)
             ->where('points_required', '>', 0)
             ->notExpired()
-            ->notUsedUp();
+            ->notUsedUp()
+            ->started();
     }
 
     /** SQL twin of listStatus() === $status. An unknown word filters nothing. */

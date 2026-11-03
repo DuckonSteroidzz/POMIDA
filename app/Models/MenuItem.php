@@ -908,8 +908,9 @@ class MenuItem extends Model
      * "Out of Stock" / "Low Stock" mean "what a customer could still order".
      * Independent of is_available, the admin's manual switch (own column).
      *
-     * @return array{state: string, label: string, tone: string, remaining: ?int}
-     *   state is 'in_stock', 'low_stock', 'out_of_stock', 'no_recipe' or
+     * @return array{state: string, label: string, tone: string, remaining: ?int, limited_by: ?array}
+     *   limited_by names the ingredient behind a Low / Out of Stock verdict
+     *   (stockLimiter()), null otherwise. state is 'in_stock', 'low_stock', 'out_of_stock', 'no_recipe' or
      *   'unavailable' (a sized item whose sizes are all switched off).
      */
     public function stockStatus(?array $reserved = null): array
@@ -918,16 +919,113 @@ class MenuItem extends Model
 
         if ($card['unavailable']) {
             return match ($card['label']) {
-                'Out of Stock'  => ['state' => 'out_of_stock', 'label' => 'Out of Stock', 'tone' => 'red',  'remaining' => null],
-                'No Recipe Set' => ['state' => 'no_recipe',    'label' => 'No Recipe Set', 'tone' => 'grey', 'remaining' => null],
-                default         => ['state' => 'unavailable',  'label' => 'Unavailable',  'tone' => 'grey', 'remaining' => null],
+                'Out of Stock'  => ['state' => 'out_of_stock', 'label' => 'Out of Stock', 'tone' => 'red',  'remaining' => null, 'limited_by' => $this->stockLimiter($reserved, 'out_of_stock')],
+                'No Recipe Set' => ['state' => 'no_recipe',    'label' => 'No Recipe Set', 'tone' => 'grey', 'remaining' => null, 'limited_by' => null],
+                default         => ['state' => 'unavailable',  'label' => 'Unavailable',  'tone' => 'grey', 'remaining' => null, 'limited_by' => null],
             };
         }
 
         if ($card['low_stock']) {
-            return ['state' => 'low_stock', 'label' => 'Low Stock', 'tone' => 'amber', 'remaining' => $card['remaining']];
+            return ['state' => 'low_stock', 'label' => 'Low Stock', 'tone' => 'amber', 'remaining' => $card['remaining'], 'limited_by' => $this->stockLimiter($reserved, 'low_stock')];
         }
 
-        return ['state' => 'in_stock', 'label' => 'In Stock', 'tone' => 'green', 'remaining' => null];
+        return ['state' => 'in_stock', 'label' => 'In Stock', 'tone' => 'green', 'remaining' => null, 'limited_by' => null];
+    }
+
+    /*
+    |--------------------------------------------------------------------------
+    | WHICH INGREDIENT LIMITS THE ITEM (QA Nov 2) — display only
+    |--------------------------------------------------------------------------
+    |
+    | A read-only restatement of the walk servingsCoveredBy() already does: the
+    | HIGH line whose stock covers the fewest orders is the one holding the item
+    | back. It decides nothing — hasIngredientStock(), remainingServings() and
+    | the threshold are untouched, and this is only called AFTER they have
+    | produced the verdict, to name the culprit next to it.
+    */
+
+    /**
+     * The ingredient behind a Low / Out of Stock verdict, for the admin Status
+     * column: ['name' => 'Egg', 'left' => 2, 'unit' => 'pc'], `left` being the
+     * whole orders its stock can still cover (0 when it is why the item is
+     * out). Null when nothing is measurable. A sized item reports the size that
+     * decided the verdict (the one with the most orders left for Low, the
+     * first out-of-stock one for Out) and adds `size`.
+     *
+     * @return array{name: string, left: int, unit: string, size?: string}|null
+     */
+    public function stockLimiter(?array $reserved = null, string $state = 'low_stock'): ?array
+    {
+        if (! $this->hasSizes()) {
+            return $this->limiterFor($this->recipeIngredients, 'quantity_used', $reserved, true);
+        }
+
+        $pick = null;
+        foreach ($this->sizeChoices($reserved) as $choice) {
+            if ($state === 'out_of_stock') {
+                if ($choice['state'] === 'out_of_stock') {
+                    $pick = $choice;
+                    break;
+                }
+            } elseif ($choice['orderable'] && ($pick === null || ($choice['remaining'] ?? PHP_INT_MAX) > ($pick['remaining'] ?? PHP_INT_MAX))) {
+                $pick = $choice;
+            }
+        }
+
+        if ($pick === null) {
+            return null;
+        }
+
+        try {
+            $limiter = $this->limiterFor($this->sizeRecipe($pick['size']), 'quantity', $reserved, false);
+        } catch (MenuItemSizeUnavailableException) {
+            return null;
+        }
+
+        return $limiter === null ? null : $limiter + ['size' => $pick['name']];
+    }
+
+    /**
+     * The lowest-covering HIGH line of $recipe. LOW lines are skipped, exactly
+     * as the stock verdict skips them, and so is a line whose inventory row is
+     * gone. With $legacy, an item with no recipe lines falls back to its
+     * single-ingredient link the way hasIngredientStock() does.
+     */
+    private function limiterFor(iterable $recipe, string $quantityColumn, ?array $reserved, bool $legacy): ?array
+    {
+        $best = null;
+        $hadLines = false;
+
+        foreach ($recipe as $row) {
+            $hadLines = true;
+            $inv = $row->inventory;
+            if ($row->isLow() || ! $inv) {
+                continue;
+            }
+
+            $perOrder = (float) $row->{$quantityColumn};
+            $have = $this->freeQuantity($inv, $reserved);
+            $left = $have <= 0 ? 0 : ($perOrder > 0 ? (int) floor($have / $perOrder) : PHP_INT_MAX);
+
+            if ($best === null || $left < $best['left']) {
+                $best = ['name' => (string) $inv->item_name, 'left' => $left, 'unit' => (string) $inv->unit];
+            }
+        }
+
+        if ($best !== null && $best['left'] === PHP_INT_MAX) {
+            return null; // every line is zero-quantity: nothing is limiting
+        }
+
+        if ($best === null && $legacy && ! $hadLines && $this->inventory_item_id) {
+            $inv = $this->relationLoaded('inventoryItem') ? $this->inventoryItem : $this->inventoryItem()->first();
+            if ($inv) {
+                $per = (float) ($this->inventory_amount_used ?: 1);
+                $have = $this->freeQuantity($inv, $reserved);
+
+                return ['name' => (string) $inv->item_name, 'left' => $have <= 0 ? 0 : (int) floor($have / $per), 'unit' => (string) $inv->unit];
+            }
+        }
+
+        return $best;
     }
 }

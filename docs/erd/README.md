@@ -3,11 +3,9 @@
 Entity Relationship Diagrams and a data dictionary for the POMIDA database, **generated from the database itself**
 (nothing is hand-drawn).
 
-> **As of:** the local `pomida_db_testing` (MariaDB 10.4.32) on branch `feature/ingredient-priority` (`b6368fc`, which
-> adds migration `2026_10_31_100000_add_ingredient_priority_and_order_item_removed_ingredients`), read on 2026-10-31.
-> All 83 migrations were applied there. The local `pomida_db` has since had this migration applied too (83 of 83,
-> checked 2026-10-31), so both local databases are at the same migration level. The live site matches this ERD only after the leader has run
-> all migrations there.
+> **As of:** the local `pomida_db` (MariaDB 10.4.32) on `main` @ `f262583`, read on 2026-11-03. All 86 migrations were
+> applied there, the latest being `2026_11_03_000000_add_gcash_proof_to_orders`. The local `pomida_db_testing` is at the
+> same migration level. The live site matches this ERD only after the leader has run all migrations there.
 
 ## Files
 
@@ -15,7 +13,7 @@ Entity Relationship Diagrams and a data dictionary for the POMIDA database, **ge
 |---|---|
 | `POMIDA-ERD.pdf` | One PDF, 6 pages: Full ERD first, then one page per module. Every page has a title and the date. Vector, so zoom as far as you like. |
 | `data-dictionary.html` | Self-contained data dictionary (open in any browser): every table, one-line purpose, and a column table (name, type, null, key, default, references / ON DELETE). Grouped by module, with appendices. |
-| `png/*.png` | The same 6 diagrams as high-resolution PNGs (full ERD is 15000 x 11765 px). |
+| `png/*.png` | The same 6 diagrams as high-resolution PNGs (full ERD is 15000 x 10462 px). |
 | `svg/*.svg` | The same 6 diagrams as SVG. |
 | `mmd/*.mmd` | The Mermaid sources (paste into mermaid.live to edit). In the sources `decimal(10_2)` stands for `decimal(10,2)`; Mermaid cannot parse a comma inside a type, and the build restores the comma in the SVG text. |
 | `schema-snapshot.json` | Everything read from `information_schema`: tables, columns, indexes, foreign keys. |
@@ -50,10 +48,10 @@ Left out of the diagrams (Laravel framework tables, listed in the dictionary app
 | | |
 |---|---|
 | Tables in the database | 45 = **37 application** + 8 framework |
-| Columns | 466 = **424 in the application tables** + 42 framework |
-| Declared foreign keys | **73** (all single-column; all ON UPDATE RESTRICT) |
+| Columns | 470 = **428 in the application tables** + 42 framework |
+| Declared foreign keys | **74** (all single-column; all ON UPDATE RESTRICT) |
 | Model-only relationships (dotted) | **0** |
-| Lines in the full ERD | 73, all solid |
+| Lines in the full ERD | 74, all solid |
 | Eloquent relationship methods inspected | 88, on 33 models (62 distinct links) |
 
 ## Relationships that are not plain foreign keys
@@ -71,17 +69,17 @@ that do not exist and nothing called them, so they were removed from the models.
 `orders`, `table_sessions`, `help_requests` and `table_access_codes` all point at a table by `(branch_id, table_number)` text, not by `restaurant_tables.id`;
 `free_dessert_rewards.used_branch_id` (a branch id) and `stock_movements.reference_id` (an order id when `source = 'order'`) have no FK.
 
-**Real FKs that no model declares as a relationship (still drawn solid):** 8. They are listed in the dictionary appendix.
+**Real FKs that no model declares as a relationship (still drawn solid):** 9. They are listed in the dictionary appendix.
 
 ## Cross-check (automatic, in `tools/build.mjs`)
 
 * every one of the 37 application tables is an entity in the full ERD, and nothing else is;
-* every one of the 73 database FKs has a solid line between its child and parent table, and every model-only link (now none) is dotted;
-* the rendered full-ERD SVG contains exactly 73 relationship paths;
-* each of the 73 links is drawn in exactly one module diagram, and the module diagrams hold 37 tables between them;
+* every one of the 74 database FKs has a solid line between its child and parent table, and every model-only link (now none) is dotted;
+* the rendered full-ERD SVG contains exactly 74 relationship paths;
+* each of the 74 links is drawn in exactly one module diagram, and the module diagrams hold 37 tables between them;
 * `tools/check-render.mjs` loads each SVG in Chrome: no two text boxes overlap and nothing is cut off;
 * `tools/pdf-raster.mjs` re-reads the PDF with pdf.js: 6 pages, real selectable text, title and date on each page;
-* the dictionary has 37 table sections and 424 column rows (= the database), and no broken internal links.
+* the dictionary has 37 table sections and 428 column rows (= the database), and no broken internal links.
 
 ## Regenerating (after a migration changes the schema)
 

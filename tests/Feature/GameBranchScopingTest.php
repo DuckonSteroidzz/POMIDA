@@ -42,10 +42,14 @@ use Tests\TestCase;
  * ever written by this file.
  *
  * THE RULE — Voucher's and Ad's OWN existing convention, not a new one:
- *     branch_id NULL -> global. Shown/winnable at every branch.
- *     branch_id N    -> shown/winnable ONLY at branch N.
- * A visitor with no branch selected yet sees/wins only global rows —
- * mirrors Voucher::branchErrorFor()'s own "no branch known" handling.
+ *     branch_id NULL -> global. Winnable at every branch.
+ *     branch_id N    -> winnable ONLY at branch N.
+ * A visitor with no branch selected yet wins only global rows — mirrors
+ * Voucher::branchErrorFor()'s own "no branch known" handling.
+ *
+ * Since QA, Nov 2 2026 the game page LISTS a prize from another branch instead
+ * of hiding it, labelled "Not available at this branch". It still cannot be won
+ * there (the picker tests below are unchanged). See WheelPrizeStatusTest.
  *
  * Every row this file creates carries the GBSCOPE prefix and runs inside
  * DatabaseTransactions, so nothing survives the run in pomida_db_testing.
@@ -62,13 +66,8 @@ class GameBranchScopingTest extends TestCase
     // ══════════════════ fixtures ══════════════════
 
     /**
-     * max_uses is deliberately a real positive number, not the 0-means-
-     * unlimited convention winnableVoucherFor() itself understands —
-     * showGame()'s DISPLAY query (`used_count < max_uses`, unconditionally)
-     * predates this pass, is unrelated to branch scoping, and treats
-     * max_uses = 0 as "always fully used" regardless of branch. Using a real
-     * ceiling here keeps every test in this file about branch scoping, not
-     * about that unrelated existing quirk.
+     * max_uses is a real positive number so every test in this file is about
+     * branch scoping and nothing else.
      */
     private function voucher(?int $branchId, string $suffix, int $pointsRequired = 8): Voucher
     {
@@ -130,7 +129,7 @@ class GameBranchScopingTest extends TestCase
         $this->assertStringContainsString($voucher->description, $html);
     }
 
-    public function test_the_game_page_hides_a_different_branch_voucher(): void
+    public function test_the_game_page_says_a_different_branch_voucher_is_not_available_here(): void
     {
         $voucher = $this->voucher(self::FAR_BRANCH, 'FARV');
 
@@ -139,7 +138,9 @@ class GameBranchScopingTest extends TestCase
             ->assertOk()
             ->getContent();
 
-        $this->assertStringNotContainsString($voucher->description, $html);
+        $this->assertStringContainsString($voucher->description, $html);
+        $this->assertStringContainsString('Not available at this branch', $html);
+        $this->assertStringNotContainsString('You can win this', $html);
     }
 
     public function test_the_game_page_shows_a_global_voucher_at_any_branch(): void
@@ -156,15 +157,21 @@ class GameBranchScopingTest extends TestCase
         }
     }
 
-    public function test_a_branchless_visitor_only_sees_global_vouchers(): void
+    public function test_a_branchless_visitor_can_only_hope_for_global_vouchers(): void
     {
-        $global = $this->voucher(null, 'NOBR-GLOBAL');
-        $scoped = $this->voucher(self::HOME_BRANCH, 'NOBR-SCOPED');
+        $global = $this->voucher(null, 'NOBR-GLOBAL', 8);
+        $scoped = $this->voucher(self::HOME_BRANCH, 'NOBR-SCOPED', 8);
 
-        $html = $this->get('/customer/game')->assertOk()->getContent();
+        $html = $this->withSession(['branch_id' => null])->get('/customer/game')->assertOk()->getContent();
 
-        $this->assertStringContainsString($global->description, $html);
-        $this->assertStringNotContainsString($scoped->description, $html);
+        $this->assertMatchesRegularExpression(
+            '/' . preg_quote($global->description, '/') . '.*?data-prize-status>Need 8 more points</s',
+            $html
+        );
+        $this->assertMatchesRegularExpression(
+            '/' . preg_quote($scoped->description, '/') . '.*?data-prize-status>Not available at this branch</s',
+            $html
+        );
     }
 
     // ══════════════════ showGame() — the game-page ad carousel ══════════════════

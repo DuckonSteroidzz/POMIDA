@@ -109,6 +109,13 @@ class RateLimitServiceProvider extends ServiceProvider
      */
     public const PLACE_ORDER_PER_SESSION = 20;
     public const GCASH_PAID_PER_SESSION = 20;
+
+    /**
+     * Attaching a GCash screenshot decodes and re-encodes an image up to 5 MB,
+     * which is the most expensive thing a guest can ask for here. A person picks
+     * a file, and perhaps a better one: 10 a minute is more than anyone needs.
+     */
+    public const GCASH_PROOF_PER_SESSION = 10;
     public const RATING_POST_PER_SESSION = 20;
     public const RATING_GET_PER_SESSION = 60;
     public const VOUCHER_PER_SESSION = 15;
@@ -164,6 +171,14 @@ class RateLimitServiceProvider extends ServiceProvider
      */
     public const PLACE_ORDER_PER_IP = 120;
     public const GCASH_PAID_PER_IP = 120;
+    public const GCASH_PROOF_PER_IP = 60;
+
+    /**
+     * Reading a screenshot is one small file per pop-up or payment page. Same
+     * order of magnitude as the shared discount-ID lookup, doubled because the
+     * whole café and the counter can share one address.
+     */
+    public const GCASH_PROOF_VIEW_PER_IP = 120;
     public const RATING_POST_PER_IP = 120;
     public const RATING_GET_PER_IP = 300;
     public const VOUCHER_PER_IP = 60;
@@ -412,6 +427,13 @@ class RateLimitServiceProvider extends ServiceProvider
      */
     public const CUSTOMER_FREE_DESSERT_PROMPT_PER_IP = 120;
 
+    /**
+     * POST /customer/rewards-branch — which branch's card to show. One tap per
+     * branch a customer wants to compare, and it writes only their own account.
+     * 60 for the same shared-café-address reason, on its own counter.
+     */
+    public const CUSTOMER_REWARDS_BRANCH_PER_IP = 60;
+
     public function boot(): void
     {
         /*
@@ -476,6 +498,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-email-verify', self::CUSTOMER_EMAIL_VERIFY_PER_IP);
         $this->perIp('customer-email-verify-resend', self::CUSTOMER_EMAIL_VERIFY_RESEND_PER_IP);
         $this->perIp('customer-free-dessert-prompt', self::CUSTOMER_FREE_DESSERT_PROMPT_PER_IP);
+        $this->perIp('customer-rewards-branch', self::CUSTOMER_REWARDS_BRANCH_PER_IP);
 
         RateLimiter::for('customer-email-verify-request', function (Request $request) {
             $email = strtolower(trim((string) $request->input('email')));
@@ -490,6 +513,8 @@ class RateLimitServiceProvider extends ServiceProvider
 
         $this->pair('place-order', self::PLACE_ORDER_PER_SESSION, self::PLACE_ORDER_PER_IP);
         $this->pair('gcash-paid', self::GCASH_PAID_PER_SESSION, self::GCASH_PAID_PER_IP);
+        $this->pair('gcash-proof', self::GCASH_PROOF_PER_SESSION, self::GCASH_PROOF_PER_IP);
+        $this->perIp('gcash-proof-view', self::GCASH_PROOF_VIEW_PER_IP);
         $this->pair('order-rating', self::RATING_POST_PER_SESSION, self::RATING_POST_PER_IP);
         $this->pair('order-rating-read', self::RATING_GET_PER_SESSION, self::RATING_GET_PER_IP);
         $this->pair('apply-voucher', self::VOUCHER_PER_SESSION, self::VOUCHER_PER_IP);
@@ -521,12 +546,25 @@ class RateLimitServiceProvider extends ServiceProvider
     private function resetPasswordStep(string $name, string $sessionKey, int $perMinute): void
     {
         RateLimiter::for($name, function (Request $request) use ($name, $sessionKey, $perMinute) {
-            $isRuleFailure = $request->hasSession()
-                && $request->session()->get($sessionKey . '.email')
-                && $request->session()->get($sessionKey . '.verified')
-                && Validator::make($request->only('password', 'password_confirmation'), [
-                    'password' => PasswordPolicy::required(),
-                ])->fails();
+            $email = $request->hasSession() && $request->session()->get($sessionKey . '.verified')
+                ? $request->session()->get($sessionKey . '.email')
+                : null;
+
+            $isRuleFailure = $email
+                && (
+                    Validator::make($request->only('password', 'password_confirmation'), [
+                        'password' => PasswordPolicy::required(),
+                    ])->fails()
+                    // "Same as the current password" is a rule failure too
+                    // (QA 2026-11-02). Only reached once the policy passes,
+                    // and only for a verified session, so the hash check
+                    // is not a way to probe accounts.
+                    || (is_string($request->input('password'))
+                        && PasswordPolicy::isCurrentFor(
+                            \App\Models\User::whereRaw('LOWER(email) = ?', [strtolower(trim((string) $email))])->first(),
+                            $request->input('password')
+                        ))
+                );
 
             return $isRuleFailure
                 ? Limit::perMinute(self::RESET_PASSWORD_RULE_FAILURES_PER_IP)->by($name . '|rule-failure|ip:' . $request->ip())

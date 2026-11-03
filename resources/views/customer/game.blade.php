@@ -159,6 +159,28 @@
             color: #8B1A1A;
         }
 
+        .legend-note {
+            margin: 0 0 .85rem;
+            font-size: 0.875rem;
+            line-height: 1.4;
+            color: #5b4740;
+            text-align: center;
+        }
+
+        .legend-status {
+            display: inline-block;
+            margin-top: .35rem;
+            padding: .15rem .55rem;
+            border-radius: 999px;
+            background: #F5F0EC;
+            color: #5b4740;
+            font-size: 0.8125rem;
+            font-weight: 700;
+        }
+
+        .legend-status.is-winnable { background: #E4F2EA; color: #1f5c40; }
+        .legend-status.is-need_points { background: #FDE8DE; color: #8B1A1A; }
+
         .legend-empty {
             font-size: 0.875rem;
             color: #8A6A61;
@@ -183,7 +205,8 @@
                 margin-top: .25rem;
             }
 
-            .legend-title {
+            .legend-title,
+            .legend-note {
                 text-align: left;
             }
         }
@@ -552,9 +575,6 @@
             {{-- The one global switch row the owner's toggle flips and the spin
                  endpoint enforces — see Setting::gameEnabled(). --}}
             @if(\App\Models\Setting::gameEnabled())
-            {{-- Prizes only: points vouchers the owner left switched onto the
-                 wheel (vouchers.on_wheel), the same set the picker draws from. --}}
-            @php $gameVouchers = $vouchers->where('points_required', '>', 0)->where('on_wheel', true)->sortBy('points_required'); @endphp
             <div class="game-layout">
 
                 <div class="game-play">
@@ -597,14 +617,18 @@
 
                 <div class="game-legend">
                     <p class="legend-title">🏆 What you can win</p>
+                    <p class="legend-note" data-testid="points-rule">Points add up from every spin. When you have enough for a prize, your next spin wins it and takes those points. Each prize can be won once.</p>
                     <div class="legend-list">
                         <div class="legend-item">
                             <span class="legend-badge">Every spin</span>
                             <span class="legend-text"><strong>3, 5, or 8 points</strong> — or Try Again</span>
                         </div>
 
-                        @forelse($gameVouchers as $v)
-                        <div class="legend-item">
+                        {{-- Each prize's status for THIS customer comes from
+                             App\Support\WheelPrizes, the rule the picker uses. --}}
+                        @forelse($wheelPrizes as $prize)
+                        @php $v = $prize['voucher']; @endphp
+                        <div class="legend-item" data-prize-id="{{ $v->id }}">
                             <span class="legend-badge voucher">{{ $v->points_required }} pts</span>
                             <span class="legend-text">
                                 <strong>{{ $v->code }}</strong> —
@@ -612,6 +636,7 @@
                                 @if($v->description)
                                     <br><span style="color:#8A6A61;">{{ $v->description }}</span>
                                 @endif
+                                <br><span class="legend-status is-{{ $prize['status'] }}" data-prize-status>{{ $prize['label'] }}</span>
                             </span>
                         </div>
                         @empty
@@ -647,7 +672,10 @@
             <span id="voucherWinTiming" class="voucher-timing-badge" style="display:none;"></span>
             <p id="voucherWinDesc" style="font-size:0.875rem;color:#8A6A61;margin:0 0 .75rem;"></p>
             <div id="voucherWinCode" style="font-size:1.6563rem;font-weight:900;letter-spacing:2px;color:#C0392B;background:#FFF7F3;border:2px dashed #F4845F;border-radius:10px;padding:.6rem .5rem;margin:0 0 .6rem;word-break:break-all;"></div>
-            <p id="voucherWinNote" style="font-size:0.875rem;color:#8A6A61;margin:0 0 1rem;line-height:1.45;"></p>
+            <p id="voucherWinNote" style="font-size:0.875rem;color:#8A6A61;margin:0 0 .5rem;line-height:1.45;"></p>
+            {{-- Says plainly where the points went, so a falling balance is
+                 never a mystery. --}}
+            <p id="voucherWinPoints" style="font-size:0.875rem;font-weight:700;color:#8B1A1A;margin:0 0 1rem;line-height:1.45;"></p>
             <button type="button" id="voucherWinCopy" class="copy-btn" style="width:100%;margin:0 0 .5rem;"><i class="bi bi-clipboard"></i> Copy Code</button>
             <button type="button" onclick="document.getElementById('voucherWinModal').style.display='none'" style="background:none;border:0;color:#8A6A61;font-size:0.875rem;text-decoration:underline;cursor:pointer;">Close</button>
         </div>
@@ -682,6 +710,7 @@
            AuthController::addPoints(), and a spin the server refuses comes back
            422 with the corrected state below. */
         var spinState = @json($spinState);
+        var isSignedIn = @json(Auth::guard('customer')->check());
 
         function renderSpinState(s) {
             if (!s) return;
@@ -964,23 +993,31 @@
         function showResult(data, won) {
             renderSpinState(data);
             updatePointsDisplay(data);
+            renderPrizes(data.prizes);
 
-            if (won.type === 'points' && data.voucher) {
+            if (data.voucher) {
                 /* Won a voucher — the claim code is the whole point, so
                    it gets the dedicated centre modal, not a toast. A
                    guest win carries claim_code (the only way they can
                    ever redeem it); a signed-in win also gets one now so
-                   the prize can be handed to a Dine-In friend. */
-                var isGuestPrize = !!data.voucher.claim_code;
+                   the prize can be handed to a Dine-In friend.
+
+                   The server awards a prize on ANY spin once the balance
+                   covers it, Try Again included. This used to require a
+                   points segment, so landing on Try Again showed "Better luck
+                   next time" while the points were spent and the voucher was
+                   created without a word. */
                 var shownCode = data.voucher.claim_code || data.voucher.code;
 
                 showVoucherWinModal(
                     shownCode,
                     data.voucher.description || '',
-                    isGuestPrize
-                        ? 'You have no account, so this code is the only way to use this voucher. Type it into the voucher box in your cart. It works once.'
-                        : 'Type this 1-time code into the voucher box at checkout. It works once.',
-                    data.voucher.message || ''
+                    isSignedIn
+                        ? 'Saved in Vouchers & Rewards. Type this 1-time code into the voucher box at checkout. It works once.'
+                        : 'You have no account, so this code is the only way to use this voucher. Type it into the voucher box in your cart. It works once.',
+                    data.voucher.message || '',
+                    (won.type === 'points' ? '' : 'The wheel said Try Again, but your points were enough for this prize. ') +
+                        data.voucher.points_spent + ' points used. You now have ' + data.total_points + ' points.'
                 );
                 if (window.celebrateWin) window.celebrateWin();
 
@@ -1010,6 +1047,17 @@
             }
         }
 
+        /* Each prize's status line after a spin, as the server now sees it. */
+        function renderPrizes(prizes) {
+            (prizes || []).forEach(function (prize) {
+                var row = document.querySelector('[data-prize-id="' + prize.id + '"] [data-prize-status]');
+                if (row) {
+                    row.className = 'legend-status is-' + prize.status;
+                    row.textContent = prize.label;
+                }
+            });
+        }
+
         /* The win panel builds HTML from a server response, so anything from it
            is escaped before it goes in. */
         function esc(v) {
@@ -1019,10 +1067,11 @@
         }
 
         /* Voucher-win modal — the unique 1-time code, shown centre-screen. */
-        function showVoucherWinModal(code, desc, note, timingMessage) {
+        function showVoucherWinModal(code, desc, note, timingMessage, pointsLine) {
             document.getElementById('voucherWinCode').textContent = code || '';
             document.getElementById('voucherWinDesc').textContent = desc || '';
             document.getElementById('voucherWinNote').textContent = note || '';
+            document.getElementById('voucherWinPoints').textContent = pointsLine || '';
 
             var timing = document.getElementById('voucherWinTiming');
             if (timingMessage) {

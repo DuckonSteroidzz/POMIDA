@@ -2,6 +2,11 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
+use App\Models\Category;
+use App\Models\MenuItem;
+use App\Models\Order;
+use App\Models\OrderItem;
 use App\Models\User;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\TestCase;
@@ -95,10 +100,57 @@ class AdminTableScrollWrapperTest extends TestCase
     //             sold)" became "Menu Performance", with the money columns
     //             sourced from ProfitCalculationService rather than aggregated
     //             on the page — but not its markup, so the wrapper this suite
-    //             guards is the same one. ══════════
+    //             guards is the same one.
+    //
+    //             The page opens on the last 30 days and draws this table only
+    //             when that period has a completed order. These two tests used
+    //             to lean on the copied database's orders, which stop at
+    //             2026-09-07, so they began failing on the calendar alone once
+    //             those aged out. They now complete their own sale. ══════════
+
+    private function completedSaleToday(): void
+    {
+        $item = MenuItem::create([
+            'category_id'   => Category::create(['name' => 'Scroll Wrapper ' . uniqid(), 'is_active' => true])->id,
+            'branch_id'     => null,
+            'name'          => 'Scroll Wrapper Item ' . uniqid(),
+            'price'         => 100,
+            'cost'          => 0,
+            'is_available'  => true,
+            'display_order' => 0,
+        ]);
+
+        $order = Order::create([
+            'order_number'   => 'SCROLL-' . strtoupper(uniqid()),
+            'branch_id'      => Branch::create([
+                'name'      => 'Scroll Wrapper ' . uniqid(),
+                'code'      => 'SW' . strtoupper(substr(uniqid(), -7)),
+                'address'   => 'Scroll Wrapper address',
+                'is_active' => true,
+            ])->id,
+            'type'           => 'pick_up',
+            'status'         => 'completed',
+            'payment_method' => 'cash',
+            'payment_status' => 'paid',
+            'subtotal'       => 100,
+            'total'          => 100,
+            'completed_at'   => now(),
+        ]);
+
+        OrderItem::create([
+            'order_id'     => $order->id,
+            'menu_item_id' => $item->id,
+            'item_name'    => $item->name,
+            'item_price'   => 100,
+            'quantity'     => 1,
+            'subtotal'     => 100,
+        ]);
+    }
 
     public function test_analytics_menu_performance_table_is_wrapped_for_horizontal_scroll(): void
     {
+        $this->completedSaleToday();
+
         $html = $this->actingAs($this->admin(), 'admin')
             ->get('/admin/analytics')
             ->assertOk()
@@ -113,6 +165,8 @@ class AdminTableScrollWrapperTest extends TestCase
 
     public function test_analytics_menu_performance_table_has_its_expected_columns(): void
     {
+        $this->completedSaleToday();
+
         $html = $this->actingAs($this->admin(), 'admin')->get('/admin/analytics')->getContent();
 
         // Qty Sold survived the Phase 2d rename; the financial columns are new
@@ -121,6 +175,18 @@ class AdminTableScrollWrapperTest extends TestCase
         $this->assertStringContainsString('Menu Performance', $html);
         $this->assertStringContainsString('Gross Profit', $html);
         $this->assertStringContainsString('COGS', $html);
+    }
+
+    /** A period with no sales says so instead of drawing an empty table. */
+    public function test_analytics_menu_performance_says_so_when_the_period_has_no_sales(): void
+    {
+        $html = $this->actingAs($this->admin(), 'admin')
+            ->get('/admin/analytics?period=custom&date_from=2001-01-01&date_to=2001-01-31')
+            ->assertOk()
+            ->getContent();
+
+        $this->assertStringContainsString('No completed orders in this period yet.', $html);
+        $this->assertStringNotContainsString('Qty Sold', $html);
     }
 
     // ══════════ the recipe sub-tables ══════════

@@ -162,7 +162,7 @@
 
         // Every other overlay the Orders and Menu pages can put on screen.
         var OTHERS = [
-            'spinPromptModal', 'orderStatusNotice', 'discountVerificationNotice',
+            'spinPromptModal', 'orderCompletedPopup', 'orderStatusNotice', 'discountVerificationNotice',
             'ratingModal', 'dessertRatingModal', 'welcomePopup', 'menuAdPopup',
             'idleTimeoutModal', 'tableChangeNotice', 'tableChangeConfirm'
         ];

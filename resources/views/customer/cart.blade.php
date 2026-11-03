@@ -1574,7 +1574,9 @@
             var reapplied = Promise.resolve();
             if (savedVoucher && document.getElementById('voucherInput')) {
                 document.getElementById('voucherInput').value = savedVoucher;
-                reapplied = applyVoucher() || reapplied;
+                // A restore, not something the customer just did: if the code
+                // no longer works it is dropped quietly (see applyCode()).
+                reapplied = applyCode(savedVoucher, true) || reapplied;
             }
 
             reapplyRewardCodes(reapplied, savedVoucher);
@@ -1590,12 +1592,20 @@
         function reapplyRewardCodes(after, savedVoucher) {
             if (!document.getElementById('voucherInput')) return;
 
-            [localStorage.getItem('peachy_reward'), @json($applyRewardCode ?? null)]
-                .filter(function (code, i, all) {
-                    return !!code && all.indexOf(code) === i && !sameCode(code, savedVoucher);
-                })
-                .reduce(function (previous, code) {
-                    return previous.then(function () { return applyCode(code); });
+            // The stored reward is a restore (dropped quietly if it no longer
+            // works); the code "Use now" just sent is something the customer
+            // asked for a moment ago, so a refusal of THAT is still explained.
+            var stored = localStorage.getItem('peachy_reward');
+            var chosen = @json($applyRewardCode ?? null);
+            var queue = [];
+
+            if (stored && !sameCode(stored, chosen)) queue.push({ code: stored, restore: true });
+            if (chosen) queue.push({ code: chosen, restore: false });
+
+            queue
+                .filter(function (entry) { return !sameCode(entry.code, savedVoucher); })
+                .reduce(function (previous, entry) {
+                    return previous.then(function () { return applyCode(entry.code, entry.restore); });
                 }, after);
         }
 
@@ -1758,7 +1768,19 @@
             localStorage.removeItem('peachy_voucher');
         }
 
-        function applyCode(code) {
+        /**
+         * Asks the server about one code and paints the answer.
+         *
+         * `restore` is true when the PAGE is putting back a code the browser
+         * remembered (peachy_voucher / peachy_reward), false when the customer
+         * just typed it, pressed Apply, or tapped "Use now". QA 2026-11-02:
+         * a code used on an earlier order was re-checked on every cart load,
+         * refused, and the refusal painted "You have already used this
+         * voucher." under a box the customer had typed nothing into. An
+         * error answers something the customer just did; a restore that no
+         * longer works is simply dropped, with nothing said.
+         */
+        function applyCode(code, restore) {
             code = String(code || '').trim().toUpperCase();
             var isReward = looksLikeRewardCode(code);
             var field = document.getElementById('voucherInput');
@@ -1824,8 +1846,24 @@
                         // was holding THAT code (say, a reward that was used
                         // or expired since this cart last saw it). A voucher
                         // already applied beside it stays.
-                        setVoucherMessage(data.message, 'error');
-                        if (field) field.value = '';
+                        if (!restore) setVoucherMessage(data.message, 'error');
+
+                        // A dropped restore leaves the box empty. Looked up
+                        // afresh: `field` is shadowed in this callback by the
+                        // `var field` further down, so it is undefined here.
+                        // A refused "Use now" keeps its code beside its error.
+                        if (restore) {
+                            var restoredBox = document.getElementById('voucherInput');
+                            if (restoredBox) restoredBox.value = '';
+                        }
+
+                        // A remembered reward that no longer works is forgotten
+                        // too. It was only ever dropped when it sat in a slot,
+                        // and on a fresh load nothing does, so the same dead
+                        // code was re-sent (and re-refused) on every cart visit.
+                        if (sameCode(localStorage.getItem('peachy_reward'), code)) {
+                            localStorage.removeItem('peachy_reward');
+                        }
 
                         if (sameCode(document.getElementById('reward_code_hidden').value, code)) {
                             setRewardItem('', '');
@@ -1835,7 +1873,9 @@
                             clearVoucherSlot();
                         }
                     } else {
-                        setVoucherMessage(data.message, 'error');
+                        // Never an error under a box nobody typed in: see the
+                        // note on applyCode().
+                        if (!restore) setVoucherMessage(data.message, 'error');
                         document.getElementById('voucher_code_hidden').value = '';
                         voucherSlotIsReward = false;
 
@@ -1865,7 +1905,11 @@
                 .catch(function() {
                     // The code is NOT cleared here: nothing said it was wrong,
                     // only that the check could not be made, so the customer
-                    // keeps what they typed and can press Apply again.
+                    // keeps what they typed and can press Apply again. A
+                    // restore that could not be checked says nothing: the code
+                    // stays in the box, and Apply is right there.
+                    if (restore) return;
+
                     setVoucherMessage(
                         'We could not check that code just now. Please try again.',
                         'error'

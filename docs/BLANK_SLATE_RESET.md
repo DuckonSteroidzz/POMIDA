@@ -227,6 +227,7 @@ public/uploads/ads/             6 files   ad images
 public/uploads/ids/             5 files   NOT real IDs (checked Pass 4) — see DEPLOYMENT.md §7a
 public/uploads/uploads/         1 file    orphan from an old path bug
 storage/app/public/discount_ids/  0 files   emptied in Pass 4 (60 orphans, ~70 MB, removed)
+storage/app/gcash_proofs/                   customers' GCash payment screenshots: empty it with the orders
 storage/app/public/settings/gcash/          keep unless replacing the QR
 ```
 

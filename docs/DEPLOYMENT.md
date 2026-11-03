@@ -358,6 +358,7 @@ anywhere, so no user-facing text is lost by turning debug off.
 | Ad images | `->move(public_path('uploads/ads'))` | `public/uploads/ads/` | `uploads/ads/x.jpg` | No |
 | GCash QR | `->store('settings/gcash','public')` | `storage/app/public/settings/gcash/` | `settings/gcash/x.png` | **Yes** |
 | PWD/Senior ID at checkout | `->store('discount_ids','public')` | `storage/app/public/discount_ids/` | `discount_ids/x.png` | **Yes** |
+| GCash payment screenshot | `App\Services\GcashProof::attach()` on the `local` disk | `storage/app/gcash_proofs/` (private, created on first upload) | `gcash_proofs/<40 hex>.jpg` | No, and it must never be reachable by URL. Served only by `/gcash-proof/{order}` |
 
 `App\Support\Img::url()` resolves both: it strips any `public/` or `storage/`
 prefix, checks `storage/app/public/` first and returns `asset('storage/...')`

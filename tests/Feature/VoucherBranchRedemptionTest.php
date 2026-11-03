@@ -2,11 +2,17 @@
 
 namespace Tests\Feature;
 
+use App\Models\Branch;
+use App\Models\Category;
+use App\Models\Inventory;
 use App\Models\MenuItem;
+use App\Models\MenuItemIngredient;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\Voucher;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Tests\TestCase;
 
 /**
@@ -46,11 +52,11 @@ use Tests\TestCase;
  *
  * DATA HYGIENE
  * ------------
- * DatabaseTransactions, so nothing here is ever committed. Every voucher is one
- * this file mints under the VBRANCH prefix; no pre-existing row is selected for
- * mutation, which matters in a file about vouchers — the owner's live vouchers
- * (23 DISCOUNT, 9293 DISCOUNT-01, both global) are untouched by construction.
- * The branches (1..4) and menu items are only READ.
+ * DatabaseTransactions, so nothing here is ever committed. Every row this file
+ * uses is one it creates: two branches, a category, an owner, and at each branch
+ * a menu item with its own recipe and stock. It used to name menu items 24 and
+ * 30 and branches 1 and 2 of the data snapshot, so two tests broke the day item
+ * 30 lost its recipe, with nothing wrong in the code they guard.
  */
 class VoucherBranchRedemptionTest extends TestCase
 {
@@ -58,8 +64,76 @@ class VoucherBranchRedemptionTest extends TestCase
 
     private const PREFIX = 'VBRANCH';
 
-    /** A menu item that is genuinely orderable at each branch under test. */
-    private const ITEM_AT_BRANCH = [1 => 24, 2 => 30];
+    private Branch $branchA;
+    private Branch $branchB;
+
+    /** @var array<int, MenuItem> a menu item genuinely orderable at each branch, by branch id */
+    private array $itemAtBranch = [];
+
+    private User $owner;
+
+    protected function setUp(): void
+    {
+        parent::setUp();
+
+        $this->assertSame('pomida_db_testing', DB::connection()->getDatabaseName());
+
+        $category = Category::create(['name' => self::PREFIX . ' ' . uniqid(), 'is_active' => true]);
+        $this->branchA = $this->branch('A');
+        $this->branchB = $this->branch('B');
+
+        foreach ([$this->branchA, $this->branchB] as $branch) {
+            $this->itemAtBranch[$branch->id] = $this->orderableItem($branch, $category);
+        }
+
+        $this->owner = User::create([
+            'name'              => self::PREFIX . ' Owner',
+            'email'             => 'vbranch-owner-' . Str::lower(Str::random(12)) . '@example.test',
+            'password'          => 'Aa1!aaaaaa',
+            'role'              => 'admin',
+            'is_active'         => true,
+            'email_verified_at' => now(),
+        ]);
+    }
+
+    private function branch(string $label): Branch
+    {
+        return Branch::create([
+            'name'      => self::PREFIX . ' Branch ' . $label . ' ' . uniqid(),
+            'code'      => 'VB' . strtoupper(substr(uniqid(), -7)),
+            'address'   => self::PREFIX . ' address',
+            'is_active' => true,
+        ]);
+    }
+
+    /** A menu item of $branch with a recipe, and plenty of that recipe's ingredient in stock there. */
+    private function orderableItem(Branch $branch, Category $category): MenuItem
+    {
+        $item = MenuItem::create([
+            'category_id'   => $category->id,
+            'branch_id'     => $branch->id,
+            'name'          => self::PREFIX . ' Item ' . uniqid(),
+            'price'         => 500,
+            'cost'          => 0,
+            'is_available'  => true,
+            'display_order' => 0,
+        ]);
+
+        $ingredient = Inventory::create([
+            'branch_id'       => $branch->id,
+            'item_name'       => self::PREFIX . ' Ingredient ' . uniqid(),
+            'item_code'       => 'VB-' . strtoupper(substr(uniqid(), -8)) . random_int(10, 99),
+            'quantity'        => 100,
+            'unit'            => 'pc',
+            'low_stock_alert' => 0,
+            'unit_cost'       => 5,
+            'is_active'       => true,
+        ]);
+
+        MenuItemIngredient::create(['menu_item_id' => $item->id, 'inventory_id' => $ingredient->id, 'quantity_used' => 1]);
+
+        return $item->fresh();
+    }
 
     private function voucher(?int $branchId, string $suffix): Voucher
     {
@@ -90,7 +164,7 @@ class VoucherBranchRedemptionTest extends TestCase
     /** Checkout, as the cart form posts it. */
     private function checkout(Voucher $voucher, int $branchId)
     {
-        $item = MenuItem::findOrFail(self::ITEM_AT_BRANCH[$branchId]);
+        $item = $this->itemAtBranch[$branchId];
 
         $cart = [
             (string) $item->id => [
@@ -120,18 +194,18 @@ class VoucherBranchRedemptionTest extends TestCase
 
     public function test_a_branch_voucher_is_refused_at_another_branch(): void
     {
-        $voucher = $this->voucher(2, 'OWNBRANCH');
+        $voucher = $this->voucher($this->branchB->id, 'OWNBRANCH');
 
-        $this->preview($voucher, 1)
+        $this->preview($voucher, $this->branchA->id)
             ->assertOk()
             ->assertJson(['success' => false]);
     }
 
     public function test_the_refusal_names_the_branch_it_belongs_to(): void
     {
-        $voucher = $this->voucher(2, 'NAMED');
+        $voucher = $this->voucher($this->branchB->id, 'NAMED');
 
-        $message = $this->preview($voucher, 1)->json('message');
+        $message = $this->preview($voucher, $this->branchA->id)->json('message');
 
         $this->assertStringContainsString(
             (string) $voucher->branch->name,
@@ -142,9 +216,9 @@ class VoucherBranchRedemptionTest extends TestCase
 
     public function test_a_branch_voucher_is_accepted_at_its_own_branch(): void
     {
-        $voucher = $this->voucher(2, 'ATHOME');
+        $voucher = $this->voucher($this->branchB->id, 'ATHOME');
 
-        $this->preview($voucher, 2)
+        $this->preview($voucher, $this->branchB->id)
             ->assertOk()
             ->assertJson(['success' => true, 'discount' => 25]);
     }
@@ -153,7 +227,7 @@ class VoucherBranchRedemptionTest extends TestCase
     {
         $voucher = $this->voucher(null, 'GLOBAL');
 
-        foreach ([1, 2] as $branchId) {
+        foreach ([$this->branchA->id, $this->branchB->id] as $branchId) {
             $this->preview($voucher, $branchId)
                 ->assertOk()
                 ->assertJson(['success' => true, 'discount' => 25]);
@@ -164,9 +238,9 @@ class VoucherBranchRedemptionTest extends TestCase
 
     public function test_checkout_refuses_a_branch_voucher_at_another_branch(): void
     {
-        $voucher = $this->voucher(2, 'CHECKOUT');
+        $voucher = $this->voucher($this->branchB->id, 'CHECKOUT');
 
-        $this->checkout($voucher, 1)
+        $this->checkout($voucher, $this->branchA->id)
             ->assertSessionHasErrors('voucher_code_confirmed');
 
         $this->assertSame(
@@ -184,14 +258,14 @@ class VoucherBranchRedemptionTest extends TestCase
 
     public function test_checkout_honours_a_branch_voucher_at_its_own_branch(): void
     {
-        $voucher = $this->voucher(2, 'CHECKOUTOK');
+        $voucher = $this->voucher($this->branchB->id, 'CHECKOUTOK');
 
-        $this->checkout($voucher, 2)->assertSessionHasNoErrors();
+        $this->checkout($voucher, $this->branchB->id)->assertSessionHasNoErrors();
 
         $order = Order::where('voucher_id', $voucher->id)->first();
 
         $this->assertNotNull($order, 'the voucher was refused at its own branch');
-        $this->assertSame(2, (int) $order->branch_id);
+        $this->assertSame($this->branchB->id, (int) $order->branch_id);
         $this->assertEqualsWithDelta(25, (float) $order->discount_amount, 0.001);
     }
 
@@ -199,7 +273,7 @@ class VoucherBranchRedemptionTest extends TestCase
     {
         $voucher = $this->voucher(null, 'CHECKOUTGLOBAL');
 
-        $this->checkout($voucher, 1)->assertSessionHasNoErrors();
+        $this->checkout($voucher, $this->branchA->id)->assertSessionHasNoErrors();
 
         $this->assertSame(
             1,
@@ -217,14 +291,9 @@ class VoucherBranchRedemptionTest extends TestCase
     // reason: staff read the preview out to the customer, so a preview that
     // says yes where the submit says no is its own bug.
 
-    private function owner(): User
-    {
-        return User::where('role', 'admin')->orderBy('id')->firstOrFail();
-    }
-
     private function counterPreview(Voucher $voucher, int $branchId)
     {
-        return $this->actingAs($this->owner(), 'admin')
+        return $this->actingAs($this->owner, 'admin')
             ->postJson('/admin/manual-order/voucher-preview', [
                 'code'      => $voucher->code,
                 'subtotal'  => 500,
@@ -234,27 +303,27 @@ class VoucherBranchRedemptionTest extends TestCase
 
     public function test_the_counter_preview_refuses_a_branch_voucher_at_another_branch(): void
     {
-        $voucher = $this->voucher(2, 'COUNTER');
+        $voucher = $this->voucher($this->branchB->id, 'COUNTER');
 
-        $this->counterPreview($voucher, 1)
+        $this->counterPreview($voucher, $this->branchA->id)
             ->assertOk()
             ->assertJson(['success' => false]);
     }
 
     public function test_the_counter_preview_accepts_a_branch_voucher_at_its_own_branch(): void
     {
-        $voucher = $this->voucher(2, 'COUNTEROK');
+        $voucher = $this->voucher($this->branchB->id, 'COUNTEROK');
 
-        $this->counterPreview($voucher, 2)
+        $this->counterPreview($voucher, $this->branchB->id)
             ->assertOk()
             ->assertJson(['success' => true]);
     }
 
     private function manualOrder(Voucher $voucher, int $branchId)
     {
-        $item = MenuItem::findOrFail(self::ITEM_AT_BRANCH[$branchId]);
+        $item = $this->itemAtBranch[$branchId];
 
-        return $this->actingAs($this->owner(), 'admin')
+        return $this->actingAs($this->owner, 'admin')
             ->post('/admin/manual-order', [
                 'branch_id'      => $branchId,
                 'order_type'     => 'pick_up',
@@ -274,9 +343,9 @@ class VoucherBranchRedemptionTest extends TestCase
 
     public function test_a_manual_order_cannot_spend_another_branchs_voucher(): void
     {
-        $voucher = $this->voucher(2, 'MANUAL');
+        $voucher = $this->voucher($this->branchB->id, 'MANUAL');
 
-        $this->manualOrder($voucher, 1)->assertSessionHasErrors('voucher_code');
+        $this->manualOrder($voucher, $this->branchA->id)->assertSessionHasErrors('voucher_code');
 
         $this->assertSame(
             0,
@@ -296,9 +365,9 @@ class VoucherBranchRedemptionTest extends TestCase
      */
     public function test_a_manual_order_spends_its_own_branchs_voucher(): void
     {
-        $voucher = $this->voucher(2, 'MANUALOK');
+        $voucher = $this->voucher($this->branchB->id, 'MANUALOK');
 
-        $this->manualOrder($voucher, 2)->assertSessionHasNoErrors();
+        $this->manualOrder($voucher, $this->branchB->id)->assertSessionHasNoErrors();
 
         $this->assertSame(
             1,

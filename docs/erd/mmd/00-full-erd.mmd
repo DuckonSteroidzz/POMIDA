@@ -1,4 +1,4 @@
-%% POMIDA ERD - POMIDA — Full ERD - generated 2026-10-31 from pomida_db_testing
+%% POMIDA ERD - POMIDA — Full ERD - generated 2026-11-03 from pomida_db
 %% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
 %% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
 erDiagram
@@ -353,6 +353,9 @@ erDiagram
         timestamp created_at
         timestamp updated_at
         timestamp spin_prompted_at
+        timestamp rating_prompt_dismissed_at
+        varchar(255) gcash_proof_path
+        timestamp gcash_proof_uploaded_at
     }
     restaurant_tables {
         bigint id PK
@@ -472,6 +475,7 @@ erDiagram
         varchar(255) senior_image
         varchar(255) profile_image
         bigint branch_id FK
+        bigint rewards_branch_id FK
         tinyint(1) is_active
         varchar(6) verification_code
         timestamp verified_at
@@ -513,6 +517,7 @@ erDiagram
     branches ||--o{ table_access_codes : "issues code for"
     branches ||--o{ table_sessions : "hosts"
     branches |o--o{ users : "employs"
+    branches |o--o{ users : "keeps rewards card of"
     branches |o--o{ vouchers : "scopes"
     categories ||--o{ menu_items : "groups"
     categories ||--o{ subcategories : "contains"

@@ -2,8 +2,8 @@
     Streak Calendar — Account page, registered customers only.
 
     Data comes from App\Services\StreakCalendar::forAccountPage() via
-    AuthController::showAccount(). PER BRANCH: it shows $streakBranch, the
-    branch the customer is ordering from, and a day is marked only when it has
+    AuthController::showAccount(). PER BRANCH: it shows $streakBranch
+    (FreeDesserts::cardBranch()), and a day is marked only when it has
     at least one COMPLETED order AT THAT BRANCH (shop time zone, config
     app.shop_timezone); placed, pending and cancelled orders never mark a day.
     The current/best runs and "days this month" count that branch too. The one
@@ -58,6 +58,7 @@
             </p>
         </div>
     </div>
+    <p class="mb-3 text-xs leading-normal text-peach-deep/70" data-testid="streak-explainer">A streak counts days in a row. Missing a day starts it again at 1; your best streak is kept.</p>
 
     @if($current['length'] > 0 && ! $current['alive_today'])
         <p class="mb-3 rounded-xl bg-amber-50 px-3 py-2.5 text-sm font-medium text-amber-800">

@@ -16,6 +16,7 @@
     .pw-checklist li { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.16rem 0; }
     .pw-checklist i { flex: 0 0 auto; }
     .pw-checklist li.is-met { color: #276749; font-weight: 600; }
+    .pw-checklist-note { margin: 0.4rem 0 0; font-size: 0.8125rem; line-height: 1.35; color: var(--muted); }
 </style>
 
 <ul class="pw-checklist" id="pwChecklist" aria-label="Password requirements">
@@ -26,6 +27,11 @@
     <li data-rule="symbol"><i class="bi bi-circle" aria-hidden="true"></i><span>A special character, like ! or #</span></li>
     <li data-rule="match"><i class="bi bi-circle" aria-hidden="true"></i><span>Both passwords match</span></li>
 </ul>
+{{-- Not a tick-off line: this page never knows (or shows) the current password,
+     so the server alone decides. It says so up front instead. --}}
+@unless($errors->has('password'))
+<p class="pw-checklist-note">It must also be different from your current password.</p>
+@endunless
 
 @push('scripts')
 <script>

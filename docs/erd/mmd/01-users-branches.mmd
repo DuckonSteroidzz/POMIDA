@@ -1,4 +1,4 @@
-%% POMIDA ERD - POMIDA — Module 1: Users & Branches - generated 2026-10-31 from pomida_db_testing
+%% POMIDA ERD - POMIDA — Module 1: Users & Branches - generated 2026-11-03 from pomida_db
 %% Solid line = database foreign key. Dotted line = model-only relationship (Eloquent, no database FK).
 %% In this source "decimal(10_2)" stands for decimal(10,2): Mermaid cannot parse a comma inside a type.
 erDiagram
@@ -20,6 +20,7 @@ erDiagram
         varchar(255) senior_image
         varchar(255) profile_image
         bigint branch_id FK
+        bigint rewards_branch_id FK
         tinyint(1) is_active
         varchar(6) verification_code
         timestamp verified_at
@@ -63,6 +64,7 @@ erDiagram
     }
 
     branches |o--o{ users : "employs"
+    branches |o--o{ users : "keeps rewards card of"
     users |o--o{ admin_bootstrap : "is recorded as first admin in"
     users ||--o{ admin_sign_ins : "signs in as"
 

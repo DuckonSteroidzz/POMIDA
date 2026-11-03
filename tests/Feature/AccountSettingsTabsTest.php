@@ -10,6 +10,7 @@ use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Tests\Feature\Concerns\ConfiguresStreakReward;
 use Tests\TestCase;
 
 /**
@@ -36,6 +37,7 @@ use Tests\TestCase;
 class AccountSettingsTabsTest extends TestCase
 {
     use DatabaseTransactions;
+    use ConfiguresStreakReward;
 
     private const TABS = ['overview', 'rewards', 'profile', 'security'];
 
@@ -46,6 +48,10 @@ class AccountSettingsTabsTest extends TestCase
         $this->assertSame('pomida_db_testing', DB::connection()->getDatabaseName());
         Cache::flush();
         config(['loyalty.free_dessert_visit_days' => 7]);
+
+        // With no reward chosen the page shows the "isn't available" card, not the stamp card.
+        $this->clearStreakRewardSettings();
+        $this->chooseRewardItem($this->plainRewardItem());
     }
 
     private function customer(array $attrs = []): User

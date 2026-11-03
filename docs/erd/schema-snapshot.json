@@ -1,5 +1,5 @@
 {
-    "database": "pomida_db_testing",
+    "database": "pomida_db",
     "tables": {
         "admin_bootstrap": {
             "type": "BASE TABLE",
@@ -4473,6 +4473,39 @@
                     "key": "",
                     "extra": "",
                     "comment": ""
+                },
+                {
+                    "name": "rating_prompt_dismissed_at",
+                    "pos": 38,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "timestamp",
+                    "type": "timestamp",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "gcash_proof_path",
+                    "pos": 39,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "varchar",
+                    "type": "varchar(255)",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "gcash_proof_uploaded_at",
+                    "pos": 40,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "timestamp",
+                    "type": "timestamp",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
                 }
             ],
             "indexes": [
@@ -7141,8 +7174,19 @@
                     "comment": ""
                 },
                 {
-                    "name": "is_active",
+                    "name": "rewards_branch_id",
                     "pos": 18,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "bigint",
+                    "type": "bigint(20) unsigned",
+                    "key": "MUL",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "is_active",
+                    "pos": 19,
                     "default": "1",
                     "null": false,
                     "data_type": "tinyint",
@@ -7153,7 +7197,7 @@
                 },
                 {
                     "name": "verification_code",
-                    "pos": 19,
+                    "pos": 20,
                     "default": "NULL",
                     "null": true,
                     "data_type": "varchar",
@@ -7164,17 +7208,6 @@
                 },
                 {
                     "name": "verified_at",
-                    "pos": 20,
-                    "default": "NULL",
-                    "null": true,
-                    "data_type": "timestamp",
-                    "type": "timestamp",
-                    "key": "",
-                    "extra": "",
-                    "comment": ""
-                },
-                {
-                    "name": "email_verified_at",
                     "pos": 21,
                     "default": "NULL",
                     "null": true,
@@ -7185,8 +7218,19 @@
                     "comment": ""
                 },
                 {
-                    "name": "email_verification_token",
+                    "name": "email_verified_at",
                     "pos": 22,
+                    "default": "NULL",
+                    "null": true,
+                    "data_type": "timestamp",
+                    "type": "timestamp",
+                    "key": "",
+                    "extra": "",
+                    "comment": ""
+                },
+                {
+                    "name": "email_verification_token",
+                    "pos": 23,
                     "default": "NULL",
                     "null": true,
                     "data_type": "char",
@@ -7197,7 +7241,7 @@
                 },
                 {
                     "name": "password",
-                    "pos": 23,
+                    "pos": 24,
                     "default": null,
                     "null": false,
                     "data_type": "varchar",
@@ -7208,7 +7252,7 @@
                 },
                 {
                     "name": "remember_token",
-                    "pos": 24,
+                    "pos": 25,
                     "default": "NULL",
                     "null": true,
                     "data_type": "varchar",
@@ -7219,7 +7263,7 @@
                 },
                 {
                     "name": "created_at",
-                    "pos": 25,
+                    "pos": 26,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -7230,7 +7274,7 @@
                 },
                 {
                     "name": "updated_at",
-                    "pos": 26,
+                    "pos": 27,
                     "default": "NULL",
                     "null": true,
                     "data_type": "timestamp",
@@ -7264,6 +7308,14 @@
                     "columns": [
                         "email"
                     ]
+                },
+                {
+                    "name": "users_rewards_branch_id_foreign",
+                    "unique": false,
+                    "primary": false,
+                    "columns": [
+                        "rewards_branch_id"
+                    ]
                 }
             ],
             "fks": [
@@ -7277,6 +7329,18 @@
                         "id"
                     ],
                     "on_delete": "RESTRICT",
+                    "on_update": "RESTRICT"
+                },
+                {
+                    "name": "users_rewards_branch_id_foreign",
+                    "columns": [
+                        "rewards_branch_id"
+                    ],
+                    "ref_table": "branches",
+                    "ref_columns": [
+                        "id"
+                    ],
+                    "on_delete": "SET NULL",
                     "on_update": "RESTRICT"
                 }
             ]

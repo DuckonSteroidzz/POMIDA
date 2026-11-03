@@ -1088,6 +1088,12 @@
                         data-payment-status="{{ $order->paymentStatusLabel() }}"
 
 
+                        data-is-gcash="{{ strtolower((string) $order->payment_method) === 'gcash' ? '1' : '' }}"
+
+
+                        data-proof-url="{{ $order->gcashProofUrl() }}"
+
+
                         data-items='@json($fullOrderItems)'
 
 
@@ -1365,6 +1371,8 @@
                         <span>Total</span>
                         <span>₱{{ number_format($order->total, 2) }}</span>
                     </div>
+
+                    @include('admin.partials.gcash-proof-button')
                 </div>
 @if($helpRequest)
 <div style="
@@ -1600,9 +1608,17 @@
                     <span id="pcOrderModalTotal">₱0.00</span>
                 </div>
             </div>
+
+            <div id="pcOrderModalProof" class="pc-order-modal-proof" hidden>
+                <span class="label">GCash screenshot</span>
+                <img id="pcOrderModalProofImage" alt="Customer's GCash payment screenshot">
+                <p id="pcOrderModalProofNone" class="gp-none">No screenshot attached</p>
+            </div>
         </div>
     </div>
 </div>
+
+@include('admin.partials.gcash-proof-modal')
 
 {{-- PWD / Senior Citizen Discount Information Modal --}}
 <div id="pcDiscountModal" class="pc-discount-modal" aria-hidden="true">
@@ -3041,6 +3057,18 @@ function openOrderDetails(button) {
         });
     }
 
+    // The GCash screenshot, asked for only now that someone is looking.
+    const proofUrl = button.dataset.proofUrl || '';
+    const proofImage = document.getElementById('pcOrderModalProofImage');
+
+    document.getElementById('pcOrderModalProof').hidden = button.dataset.isGcash !== '1';
+    document.getElementById('pcOrderModalProofNone').hidden = proofUrl !== '';
+    proofImage.style.display = proofUrl ? '' : 'none';
+
+    if (proofUrl) {
+        proofImage.src = proofUrl;
+    }
+
     modal.classList.add('is-open');
     modal.setAttribute('aria-hidden', 'false');
     document.body.style.overflow = 'hidden';
@@ -3052,6 +3080,7 @@ function closeOrderDetails() {
 
     modal.classList.remove('is-open');
     modal.setAttribute('aria-hidden', 'true');
+    document.getElementById('pcOrderModalProofImage').removeAttribute('src');
     document.body.style.overflow = '';
 }
 

@@ -90,7 +90,7 @@ class CartVoucherClearedOnEmptyCartTest extends TestCase
         // The handler is short; a fixed generous window avoids depending on
         // exact brace nesting while still isolating it from the rest of the
         // 2,000+ line page.
-        return substr($html, $start, 1500);
+        return substr($html, $start, 2000);
     }
 
     public function test_an_empty_cart_clears_any_previously_stored_voucher_on_load(): void
@@ -114,7 +114,9 @@ class CartVoucherClearedOnEmptyCartTest extends TestCase
             'a non-empty cart no longer reapplies a stored voucher code at all'
         );
 
-        $this->assertStringContainsString('applyVoucher()', $body);
+        // Put back as a RESTORE (CartStoredVoucherQuietRestoreTest), not as if
+        // the customer had just pressed Apply.
+        $this->assertStringContainsString('applyCode(savedVoucher, true)', $body);
     }
 
     /**

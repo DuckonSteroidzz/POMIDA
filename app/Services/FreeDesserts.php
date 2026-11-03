@@ -17,6 +17,7 @@ use Illuminate\Database\QueryException;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 /**
  * The stamp card and its rewards (Oct 2026) — every rule in one place.
@@ -167,6 +168,81 @@ class FreeDesserts
         $id = session('branch_id');
 
         return is_numeric($id) && (int) $id > 0 ? Branch::find((int) $id) : null;
+    }
+
+    // ══════════ which branch's card a customer sees ══════════
+
+    /**
+     * The branch whose streak and stamp card the Account page and Vouchers &
+     * Rewards show: the one remembered on the account (rememberBranch), else
+     * the one in the session, else the branch of the customer's last order.
+     * Null only for an account with none of the three.
+     *
+     * This is a window onto a card, NOT the branch being ordered from: that is
+     * still sessionBranch(), and a customer can look at one branch's card while
+     * ordering at another. "Use now" and checkout never read this.
+     */
+    public static function cardBranch(User $user): ?Branch
+    {
+        $remembered = $user->rewards_branch_id ? Branch::find((int) $user->rewards_branch_id) : null;
+
+        if ($remembered ??= self::sessionBranch()) {
+            return $remembered;
+        }
+
+        $lastOrderBranch = Order::where('user_id', $user->id)
+            ->orderByDesc('created_at')
+            ->orderByDesc('id')
+            ->value('branch_id');
+
+        return $lastOrderBranch ? Branch::find((int) $lastOrderBranch) : null;
+    }
+
+    /**
+     * Keep $branchId as the card to show next time: the branch the customer
+     * last chose (AuthController::switchBranch, the switch on the cards, login)
+     * or last ordered from (OrderController::placeOrder), whichever came last.
+     *
+     * A convenience, so it can never be what fails a login or an order: a write
+     * that does not work is logged and the card falls back as cardBranch() says.
+     * Queries the one column, so nothing else unsaved on $user gets written.
+     */
+    public static function rememberBranch(User $user, int $branchId): void
+    {
+        if ($branchId <= 0 || (int) $user->rewards_branch_id === $branchId) {
+            return;
+        }
+
+        try {
+            User::whereKey($user->id)->update(['rewards_branch_id' => $branchId]);
+
+            $user->rewards_branch_id = $branchId;
+            $user->syncOriginalAttribute('rewards_branch_id');
+        } catch (QueryException $e) {
+            Log::warning('Could not remember the customer\'s stamp card branch', [
+                'user_id'   => $user->id,
+                'branch_id' => $branchId,
+                'error'     => $e->getMessage(),
+            ]);
+        }
+    }
+
+    /**
+     * The branches a customer can switch the card to: every open branch, any
+     * closed one they ordered at (those stamps are still theirs to see) and the
+     * one remembered now.
+     *
+     * @return Collection<int, Branch>
+     */
+    public static function cardBranchOptions(User $user): Collection
+    {
+        return Branch::query()
+            ->where(fn ($q) => $q
+                ->where('is_active', true)
+                ->orWhereIn('id', Order::where('user_id', $user->id)->select('branch_id'))
+                ->when($user->rewards_branch_id, fn ($q, $id) => $q->orWhere('id', (int) $id)))
+            ->orderBy('id')
+            ->get();
     }
 
     // ══════════ stamps ══════════
@@ -605,7 +681,7 @@ class FreeDesserts
     /**
      * What the stamp card (customer.partials.free-dessert-stamp-card, on the
      * Account page and Vouchers & Rewards) and the Account page's progress
-     * bar show for ONE branch — the one the customer is ordering from.
+     * bar show for ONE branch — cardBranch(), unless a page says otherwise.
      * Read-only apart from expiring stale rewards.
      *
      * counted is D at that branch; progress is D mod X: the stamps on the
@@ -617,9 +693,15 @@ class FreeDesserts
      * after one is chosen. 'available' is the usable rewards that can be
      * spent at that branch.
      *
+     * 'set_up' is false while the branch has no reward it can give
+     * (StreakRewardSettings::current()['configured']). Stamps still count and
+     * 'waiting' still adds up, but there is nothing to promise, so the pages
+     * show customer.partials.stamp-card-unavailable instead of the card.
+     *
      * ['enabled' => false] when no branch is known, or the branch is off
-     * (either switch, or X = 0): the card and the bar are hidden; rewards
-     * already earned stay listed and usable on Vouchers & Rewards.
+     * (either switch, or X = 0): the pages show that same card instead (or
+     * nothing, under the owner's master switch); rewards already earned stay
+     * listed and usable on Vouchers & Rewards.
      */
     public static function summaryFor(User $user, ?int $branchId): array
     {
@@ -641,6 +723,7 @@ class FreeDesserts
 
         return [
             'enabled'     => true,
+            'set_up'      => $settings['configured'],
             'branch_id'   => $branchId,
             'branch_name' => Branch::whereKey($branchId)->value('name') ?? 'this branch',
             'qualifies'   => Loyalty::qualifies($user),

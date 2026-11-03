@@ -25,10 +25,12 @@ return [
     //   - menu / category / ad images .......... public/uploads/*  (AdminController)
     //   - GCash QR ............................. storage/app/public/settings/gcash (SettingsController)
     //   - PWD / Senior ID scans ................ public/uploads/ids + storage/app/(public/)discount_ids
+    //   - GCash payment screenshots ............ storage/app/gcash_proofs (App\Services\GcashProof)
     'upload_paths' => [
         'public/uploads'           => base_path('public/uploads'),
         'storage/app/public'       => storage_path('app/public'),
         'storage/app/discount_ids' => storage_path('app/discount_ids'),
+        'storage/app/gcash_proofs' => storage_path('app/gcash_proofs'),
     ],
 
     // mysqldump is not on PATH in every environment (XAMPP and Laragon ship it

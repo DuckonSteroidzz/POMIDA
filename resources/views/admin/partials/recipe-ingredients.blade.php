@@ -87,6 +87,31 @@
         ?? fn ($row) => route('admin.menu-items.ingredients.priority', [$blockId, $row->id]);
 
     $recipeAllLow = $recipe->isNotEmpty() && $recipe->every(fn ($row) => $row->isLow());
+
+    // CAN MAKE (QA Nov 2): whole orders the shelf stock covers = stock remaining
+    // / the amount ONE order uses, the same floor(have / need) the stock verdict
+    // takes (MenuItem::servingsCoveredBy()), minus stock already promised to
+    // open orders, which only the Status column knows about. The HIGH line with
+    // the fewest is the one that limits the item; a LOW line never does, because
+    // the stock verdict skips it. The browser keeps this in step as lines are
+    // added, removed or flipped (pomidaRefreshCanMake()).
+    $canMakeOf = function ($inventory, $qty) {
+        $qty = (float) $qty;
+        if (! $inventory || $qty <= 0) {
+            return null;
+        }
+
+        return (float) $inventory->quantity <= 0 ? 0 : (int) floor((float) $inventory->quantity / $qty);
+    };
+    $limiterRowId = null;
+    $limiterBest = null;
+    foreach ($recipe as $candidate) {
+        $n = $candidate->isLow() ? null : $canMakeOf($candidate->inventory, $candidate->{$qtyAttribute});
+        if ($n !== null && ($limiterBest === null || $n < $limiterBest)) {
+            $limiterBest = $n;
+            $limiterRowId = $candidate->id;
+        }
+    }
 @endphp
 
 <div class="recipe-empty-notice" id="recipe-empty-{{ $blockId }}" style="background:#fff8e1; color:#6B4E00; font-weight:500; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.74rem; margin-bottom:0.5rem; {{ $recipeEmpty ? '' : 'display:none;' }}">
@@ -98,9 +123,10 @@
     <thead>
         <tr style="text-align:left; color:#374151; font-size:0.72rem; font-weight:600;">
             <th style="padding:0.3rem 0.4rem;">Ingredient</th>
-            <th style="padding:0.3rem 0.4rem;">Quantity</th>
+            <th style="padding:0.3rem 0.4rem;">Used per order</th>
             <th style="padding:0.3rem 0.4rem;">Priority Level</th>
             <th style="padding:0.3rem 0.4rem;">Stock Remaining</th>
+            <th style="padding:0.3rem 0.4rem;" title="Stock remaining divided by the amount one order uses">Can make</th>
             <th style="padding:0.3rem 0.4rem; text-align:right;"></th>
         </tr>
     </thead>
@@ -111,7 +137,7 @@
              (recalcRecipeCost() in menu-items.blade.php) recompute from the
              rows on screen after an ingredient is added or removed in Edit
              mode, the same way it already does from draft rows in Add mode. --}}
-        <tr style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}" data-unit-cost="{{ $row->inventory->unit_cost ?? 0 }}" data-qty="{{ $row->{$qtyAttribute} }}">
+        <tr class="{{ $row->id === $limiterRowId ? 'recipe-limiter' : '' }}" style="border-top:1px solid #f0f0f0;" data-ingredient-id="{{ $row->id }}" data-inventory-id="{{ $row->inventory_id }}" data-unit-cost="{{ $row->inventory->unit_cost ?? 0 }}" data-qty="{{ $row->{$qtyAttribute} }}" data-stock="{{ $row->inventory->quantity ?? '' }}">
             <td style="padding:0.35rem 0.4rem;">
                 {{ $row->inventory->item_name ?? '(removed)' }}
                 {{-- Archived before deleting a used ingredient was blocked: it still
@@ -135,6 +161,7 @@
                 —
                 @endif
             </td>
+            <td style="padding:0.35rem 0.4rem;" class="recipe-canmake">@php $cm = $canMakeOf($row->inventory, $row->{$qtyAttribute}); @endphp<span class="recipe-canmake-n">{{ $cm === null ? '—' : $cm . ($cm === 1 ? ' order' : ' orders') }}</span>@if($row->id === $limiterRowId) <span class="recipe-limit-tag">Limits item</span>@endif</td>
             <td style="padding:0.35rem 0.4rem; text-align:right;">
                 <button type="button" class="recipe-ing-delete-btn" data-url="{{ $deleteUrlFor($row) }}" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
                     <i class="bi bi-trash3"></i>
@@ -150,7 +177,7 @@
              the JS total recompute without a lookup. --}}
         @foreach($draftRows as $i => $draftRow)
             @php $draftInv = $inventoryItems->firstWhere('id', (int) ($draftRow['inventory_id'] ?? 0)); @endphp
-        <tr style="border-top:1px solid #f0f0f0;" data-draft-row="{{ $i }}" data-unit-cost="{{ $draftInv->unit_cost ?? 0 }}">
+        <tr style="border-top:1px solid #f0f0f0;" data-draft-row="{{ $i }}" data-unit-cost="{{ $draftInv->unit_cost ?? 0 }}" data-qty="{{ (float) ($draftRow['quantity_used'] ?? 0) }}" data-stock="{{ $draftInv->quantity ?? '' }}">
             <td style="padding:0.35rem 0.4rem;">{{ $draftInv->item_name ?? '(unknown)' }}</td>
             <td style="padding:0.35rem 0.4rem;">
                 {{ rtrim(rtrim(number_format((float) ($draftRow['quantity_used'] ?? 0), 3), '0'), '.') }} {{ $draftInv->unit ?? '' }}
@@ -167,6 +194,7 @@
                 —
                 @endif
             </td>
+            <td style="padding:0.35rem 0.4rem;" class="recipe-canmake">@php $dcm = $canMakeOf($draftInv, $draftRow['quantity_used'] ?? 0); @endphp<span class="recipe-canmake-n">{{ $dcm === null ? '—' : $dcm . ($dcm === 1 ? ' order' : ' orders') }}</span></td>
             <td style="padding:0.35rem 0.4rem; text-align:right;">
                 <button type="button" class="recipe-ing-delete-btn" data-draft="1" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
                     <i class="bi bi-trash3"></i>
@@ -208,14 +236,15 @@
     </div>
     <div style="flex:1; min-width:120px;">
         <label class="form-label-custom">
-            Quantity Used <span class="recipe-unit-label" style="color:#4B5563; font-weight:600;"></span>
+            Quantity used per order <span class="recipe-unit-label" style="color:#4B5563; font-weight:600;"></span>
         </label>
-        <input type="number" class="form-control-custom recipe-ing-qty" step="0.001" min="0.001" style="margin-bottom:0;">
+        <input type="number" class="form-control-custom recipe-ing-qty" step="0.001" min="0.001" aria-describedby="recipe-qty-help-{{ $blockId }}" style="margin-bottom:0;">
     </div>
     <button type="button" class="btn-primary-custom recipe-ing-add-btn" style="padding:0.5rem 0.9rem;">
         <i class="bi bi-plus"></i> Add
     </button>
 </div>
+<p class="recipe-qty-help" id="recipe-qty-help-{{ $blockId }}" style="margin:0.35rem 0 0; font-size:0.72rem; color:#4B5563;">How much ONE order uses. To add stock, go to Inventory and use Stock In.</p>
 
 <div style="border-top:1px solid #f0f0f0; margin-top:0.6rem; padding-top:0.45rem; font-size:0.78rem; color:#1F2937;">
     <strong>Cost from recipe:</strong>

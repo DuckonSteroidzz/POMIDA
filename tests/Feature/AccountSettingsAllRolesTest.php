@@ -399,7 +399,7 @@ class AccountSettingsAllRolesTest extends TestCase
                 'password_confirmation' => self::PASSWORD,
             ])->assertOk()->getContent();
 
-        $this->assertStringContainsString('The new password must be different from your current one.', $this->card($html, 'change-password'));
+        $this->assertStringContainsString('Your new password must be different from your current password.', $this->card($html, 'change-password'));
     }
 
     /** @dataProvider roles */

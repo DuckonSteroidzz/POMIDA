@@ -62,6 +62,32 @@ return Application::configure(basePath: dirname(__DIR__))
     })
     ->withExceptions(function (Exceptions $exceptions) {
         /*
+         * A corrupt WEBP screenshot. PHP's GD reports a JPEG or PNG it cannot
+         * decode as a warning, which GcashProof::reEncode() catches, but a WEBP
+         * as a FATAL error (measured: PHP 8.2 on Windows), even a truncated real
+         * one. Nothing can catch that, and the shutdown handler brings it here.
+         * Nothing has been stored by then and no transaction is open, so the
+         * honest answer is the same refusal as any other unreadable picture, not
+         * a 500. Scoped to this one route and this one failure: any other fatal
+         * still renders as a fatal. Nothing here changes what gets logged.
+         */
+        $exceptions->renderable(function (\Symfony\Component\ErrorHandler\Error\FatalError $e, $request) {
+            if (! $request->routeIs('customer.gcash-payment.proof.store')
+                || ! str_starts_with($e->getMessage(), 'gd-webp')) {
+                return null;
+            }
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => \App\Services\GcashProof::UNREADABLE_MESSAGE,
+                    'errors'  => ['screenshot' => [\App\Services\GcashProof::UNREADABLE_MESSAGE]],
+                ], 422);
+            }
+
+            return back();
+        });
+
+        /*
          * A database-layer failure (connection refused, most often — MySQL has
          * gone down repeatedly during development) is otherwise reported to
          * the visitor as the generic 500 page, whose own "Check my orders"

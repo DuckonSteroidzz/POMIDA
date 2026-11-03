@@ -186,6 +186,7 @@
                         <span class="co-muted" style="display:block; font-size:0.7rem;">
                             {{ $order->paymentStatusLabel() }}
                         </span>
+                        @include('admin.partials.gcash-proof-button')
                     </td>
                     <td data-label="Status" class="co-ta-center">
                         <span class="co-badge {{ $statusClass }}">{{ $statusLabel }}</span>
@@ -292,6 +293,8 @@
     </div>
     @endif
 </div>
+
+@include('admin.partials.gcash-proof-modal')
 
 @endsection
 

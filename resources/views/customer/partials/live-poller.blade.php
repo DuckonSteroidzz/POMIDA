@@ -13,7 +13,7 @@
 
     ONE request answers everyone: GET customer.live-status →
         { unread, latest_id, orders: [ {order_id, status, ...} ],
-          session_order_id, active }
+          session_order_id, active, completed_popups: [ {order_id, ...} ] }
     That is the bell's unread count + newest id AND the status of the orders any
     subscriber asked about — the work that used to be /notifications/unread-count
     (6s) + /order-status (3s) + /orders-status (3s) on three separate timers.
@@ -70,6 +70,8 @@
     function signature(d) {
         return [d.unread, d.latest_id].concat((d.orders || []).map(function (o) {
             return [o.order_id, o.status, o.payment_status, o.discount_status, o.updated_at].join(':');
+        })).concat((d.completed_popups || []).map(function (o) {
+            return 'popup' + o.order_id;
         })).join('|');
     }
 

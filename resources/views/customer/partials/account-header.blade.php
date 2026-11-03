@@ -4,11 +4,11 @@
 
     Avatar (the first letter of the name), name, email, an email
     status badge, and three mini stats: Points, Streak, Stamps. Everything is
-    real data for the branch the customer is ordering from, the same figures
+    real data for the branch whose cards are showing, the same figures
     the cards below it show: $customer->wheelPoints() (spin + bonus points, as
     Vouchers & Rewards shows), $streak['current']['length'] and
-    $freeDessert['progress']. A stat whose feature is off or has no branch yet
-    shows a dash rather than a made-up zero. Read-only; the details are edited
+    $freeDessert['progress']. A stat whose feature is off, not set up or has no
+    branch yet shows a dash rather than a made-up zero. Read-only; the details are edited
     in the Profile tab.
 
     The bonus-balance hero is partials/account-bonus-banner (Overview tab).
@@ -16,7 +16,7 @@
 @php
     $headerPoints = $customer?->wheelPoints() ?? 0;
     $headerStreak = $streak ? (int) $streak['current']['length'] : null;
-    $headerStamps = ($freeDessert['enabled'] ?? false)
+    $headerStamps = ($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false)
         ? $freeDessert['progress'] . '/' . $freeDessert['visit_days']
         : null;
     $headerVerified = $customer?->hasVerifiedEmail() ?? false;
