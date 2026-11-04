@@ -266,7 +266,7 @@
     .menu-stock-red { background: #f8d7da; color: #721c24; }
     .menu-stock-grey { background: #e5e7eb; color: #374151; }
     .menu-stock-left { margin-left: 0.35rem; font-size: 0.7rem; font-weight: 600; color: #4B5563; white-space: nowrap; }
-    /* "· limited by Egg (2 left)" is a sentence, so it may wrap on a narrow Status cell. */
+    /* "· runs out first: Egg (2 left)" is a sentence, so it may wrap on a narrow Status cell. */
     .menu-stock-limit { white-space: normal; }
     .menu-stock-note { margin: 0 0 0.6rem; font-size: 0.75rem; color: #4B5563; }
 
@@ -445,11 +445,11 @@
                     @if($st)
                     <span class="menu-stock-badge menu-stock-{{ $st['tone'] }}" data-stock-state="{{ $st['state'] }}">{{ $st['label'] }}</span>
                     {{-- Which ingredient holds the item back (QA Nov 2), named
-                         next to the verdict: "limited by Egg (2 left)" for Low,
+                         next to the verdict: "runs out first: Egg (2 left)" for Low,
                          just "Egg" for Out. Display only — MenuItem::stockLimiter(). --}}
                     @php $lim = $st['limited_by'] ?? null; @endphp
                     @if($lim && $st['state'] === 'low_stock')
-                    <span class="menu-stock-left menu-stock-limit">· limited by {{ $lim['name'] }}{{ isset($lim['size']) ? ' (' . $lim['size'] . ')' : '' }} ({{ $lim['left'] }} left)</span>
+                    <span class="menu-stock-left menu-stock-limit">· runs out first: {{ $lim['name'] }}{{ isset($lim['size']) ? ' (' . $lim['size'] . ')' : '' }} ({{ $lim['left'] }} left)</span>
                     @elseif($lim && $st['state'] === 'out_of_stock')
                     <span class="menu-stock-left menu-stock-limit">· {{ $lim['name'] }}{{ isset($lim['size']) ? ' (' . $lim['size'] . ')' : '' }}</span>
                     @elseif($st['remaining'] !== null)
@@ -1286,7 +1286,7 @@
         var lim = status.limited_by || null;
         var text = null;
         if (lim && status.state === 'low_stock') {
-            text = '· limited by ' + lim.name + (lim.size ? ' (' + lim.size + ')' : '') + ' (' + lim.left + ' left)';
+            text = '· runs out first: ' + lim.name + (lim.size ? ' (' + lim.size + ')' : '') + ' (' + lim.left + ' left)';
         } else if (lim && status.state === 'out_of_stock') {
             text = '· ' + lim.name + (lim.size ? ' (' + lim.size + ')' : '');
         } else if (status.remaining !== null) {
@@ -1389,6 +1389,8 @@
         var table = document.getElementById('recipe-table-add');
         if (empty) empty.style.display = hasRows ? 'none' : 'block';
         if (table) table.style.display = hasRows ? '' : 'none';
+        var runsNote = document.getElementById('recipe-note-add');
+        if (runsNote) runsNote.style.display = hasRows ? '' : 'none';
     }
 
     // Clears every draft row — called when the modal opens fresh for a new item,
@@ -1628,6 +1630,7 @@
 
                 document.getElementById('recipe-empty-' + blockId).style.display = 'none';
                 document.getElementById('recipe-table-' + blockId).style.display = '';
+                document.getElementById('recipe-note-' + blockId).style.display = '';
 
                 resetEntryRow();
                 recalcRecipeCost(blockId);
@@ -1682,6 +1685,7 @@
                     if (tbody && tbody.children.length === 0) {
                         document.getElementById('recipe-empty-' + blockId).style.display = 'block';
                         document.getElementById('recipe-table-' + blockId).style.display = 'none';
+                        document.getElementById('recipe-note-' + blockId).style.display = 'none';
                     }
                     recalcRecipeCost(blockId);
                 }

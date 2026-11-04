@@ -124,7 +124,15 @@ class RecipeQuantityVsStockTest extends TestCase
 
         $this->assertStringContainsString('3 orders', $html);
         $this->assertStringContainsString('5 orders', $html);
-        $this->assertSame(1, substr_count($html, 'Limits item</span>'), 'exactly one line limits the item');
+        $this->assertSame(1, substr_count($html, 'Runs out first</span>'), 'exactly one line runs out first');
+        $this->assertStringNotContainsString('Limits item', $html);
+
+        // QA Nov 3: the tag, the header and the line under the table explain themselves.
+        $hint = e(\App\Support\RecipeQuantityLimits::CAN_MAKE_HINT);
+        $this->assertStringContainsString('<span class="recipe-limit-tag" title="' . $hint . '"', $html);
+        $this->assertStringContainsString('title="' . $hint . '">Can make</th>', $html);
+        $this->assertStringContainsString(e(\App\Support\RecipeQuantityLimits::RUNS_OUT_NOTE), $html);
+        $this->assertStringContainsString('The High ingredient that runs out first decides if the item is Low Stock or Out of Stock. Low ingredients never limit the item.', $html);
         $this->assertMatchesRegularExpression('/<tr class="recipe-limiter"[^>]*data-qty="40[^"]*"/', $html, 'the Egg line (3 orders) is the limiter');
     }
 
@@ -209,7 +217,7 @@ class RecipeQuantityVsStockTest extends TestCase
         $this->assertSame(['name' => $egg->item_name, 'left' => 2, 'unit' => 'pc'], $status['limited_by']);
 
         $html = $this->menuPage($branch->id)->assertOk()->getContent();
-        $this->assertStringContainsString('· limited by ' . e($egg->item_name) . ' (2 left)', $html);
+        $this->assertStringContainsString('· runs out first: ' . e($egg->item_name) . ' (2 left)', $html);
     }
 
     public function test_out_of_stock_names_the_ingredient_that_is_out(): void

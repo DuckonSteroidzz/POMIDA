@@ -16,7 +16,7 @@
 @php
     $headerPoints = $customer?->wheelPoints() ?? 0;
     $headerStreak = $streak ? (int) $streak['current']['length'] : null;
-    $headerStamps = ($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false)
+    $headerStamps = ($freeDessert['enabled'] ?? false)
         ? $freeDessert['progress'] . '/' . $freeDessert['visit_days']
         : null;
     $headerVerified = $customer?->hasVerifiedEmail() ?? false;

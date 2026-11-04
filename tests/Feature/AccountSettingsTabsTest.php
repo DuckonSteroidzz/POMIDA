@@ -49,7 +49,7 @@ class AccountSettingsTabsTest extends TestCase
         Cache::flush();
         config(['loyalty.free_dessert_visit_days' => 7]);
 
-        // With no reward chosen the page shows the "isn't available" card, not the stamp card.
+        // With no reward chosen the card reads "Reward coming soon"; choose one so it names it.
         $this->clearStreakRewardSettings();
         $this->chooseRewardItem($this->plainRewardItem());
     }

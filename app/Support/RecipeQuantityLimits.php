@@ -51,6 +51,10 @@ class RecipeQuantityLimits
     public const TEMPLATE_LARGE = 'This recipe uses {qty} {unit} of {name} for ONE order. That is more than one order normally needs (over {limit} {unit}).';
     public const TEMPLATE_ADVICE = 'Did you mean to add stock? Use Inventory > Stock In instead.';
 
+    /** Recipe editor wording (QA Nov 3): the tooltip on "Can make" / "Runs out first", and the line under the table. */
+    public const CAN_MAKE_HINT = "Can make = how many orders this ingredient's stock can cover. The ingredient that runs out first decides the item's stock status. Restock it first.";
+    public const RUNS_OUT_NOTE = 'The High ingredient that runs out first decides if the item is Low Stock or Out of Stock. Low ingredients never limit the item.';
+
     /** Lower-cased unit => limit, as the browser looks it up. */
     public static function limits(): array
     {
@@ -64,6 +68,7 @@ class RecipeQuantityLimits
             'overStock' => self::TEMPLATE_OVER_STOCK,
             'large'     => self::TEMPLATE_LARGE,
             'advice'    => self::TEMPLATE_ADVICE,
+            'canMakeHint' => self::CAN_MAKE_HINT,
         ];
     }
 

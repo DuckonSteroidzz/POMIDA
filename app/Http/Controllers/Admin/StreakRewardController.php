@@ -89,6 +89,7 @@ class StreakRewardController extends Controller
 
         $streakOverview = collect();
         $branchTabs = collect();
+        $streakWarnings = collect();
         $globalDefaults = null;
         $scopeOk = true;
 
@@ -100,6 +101,7 @@ class StreakRewardController extends Controller
             $streakOverview = StreakRewardSettings::overview();
             $branchTabs = $streakOverview->pluck('branch');
             $globalDefaults = StreakRewardSettings::current(null);
+            $streakWarnings = $streakOverview->filter(fn (array $row) => $row['warning'] !== null)->values();
         } else {
             $scopeBranch = $locked > 0 ? Branch::find($locked) : null;
             $scopeOk = $scopeBranch !== null;
@@ -117,6 +119,21 @@ class StreakRewardController extends Controller
             'branch_enabled' => $scopeId !== null ? StreakRewardSettings::branchEnabled($scopeId) : null,
             'master_enabled' => \App\Models\Setting::streakCalendarEnabled(),
         ];
+
+        // A supervisor is told about their own branch only (the owner's list
+        // came from the overview above).
+        if ($locked !== null && $scopeBranch) {
+            $warning = StreakRewardSettings::warningText($streakRewards, $scopeBranch->name, StreakRewardSettings::current(null)['configured']);
+
+            if ($warning !== null) {
+                $streakWarnings = collect([[
+                    'branch'  => $scopeBranch,
+                    'enabled' => $streakRewards['branch_enabled'],
+                    'current' => $streakRewards,
+                    'warning' => $warning,
+                ]]);
+            }
+        }
 
         $rewardVoucherOptions = collect();
         $rewardMenuItemOptions = collect();
@@ -148,6 +165,7 @@ class StreakRewardController extends Controller
             'isAdmin',
             'streakRewards',
             'streakOverview',
+            'streakWarnings',
             'branchTabs',
             'globalDefaults',
             'preferredType',
@@ -212,7 +230,7 @@ class StreakRewardController extends Controller
             // branch, so only a company-wide voucher fits it.
             if (! StreakRewardSettings::fits($voucher->branch_id !== null ? (int) $voucher->branch_id : null, $branchId)) {
                 return $this->refuse('voucher_id', $branchId === null
-                    ? 'Choose a voucher for all branches.'
+                    ? 'That voucher is only for ' . ($voucher->branch?->name ?? 'one branch') . ', so it cannot be the All Branches reward. Choose a voucher for all branches.'
                     : 'Choose a voucher for ' . $branchName . ' or for all branches.', $branchId);
             }
         } else {
@@ -225,7 +243,7 @@ class StreakRewardController extends Controller
 
             if (! StreakRewardSettings::fits($menuItem->branch_id !== null ? (int) $menuItem->branch_id : null, $branchId)) {
                 return $this->refuse('menu_item_id', $branchId === null
-                    ? self::ITEM_PER_BRANCH_MESSAGE
+                    ? $menuItem->name . ' is only sold at ' . ($menuItem->branch?->name ?? 'one branch') . ', so it cannot be the All Branches reward. Choose a voucher for all branches, or pick that branch to give it a menu item of its own.'
                     : 'Choose a menu item sold at ' . $branchName . ' or at all branches.', $branchId);
             }
         }

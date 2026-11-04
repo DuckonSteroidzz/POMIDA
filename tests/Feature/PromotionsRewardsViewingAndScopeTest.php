@@ -474,9 +474,9 @@ class PromotionsRewardsViewingAndScopeTest extends TestCase
             ->assertRedirect(route('admin.streak-rewards', ['streak_branch' => 'default']) . '#streak-rewards-card')
             ->assertSessionHasErrors(['menu_item_id' => StreakRewardController::ITEM_PER_BRANCH_MESSAGE], null, 'streakRewards');
 
-        // One branch's item, sent anyway.
+        // One branch's item, sent anyway: refused by name, saying why.
         $this->actingAs($admin, 'admin')->post(route('admin.streak.rewards.update'), $payload + ['menu_item_id' => $this->item($this->mine, 'PRV Branch Only')->id])
-            ->assertSessionHasErrors(['menu_item_id' => StreakRewardController::ITEM_PER_BRANCH_MESSAGE], null, 'streakRewards');
+            ->assertSessionHasErrors(['menu_item_id' => 'PRV Branch Only is only sold at ' . $this->mine->name . ', so it cannot be the All Branches reward. Choose a voucher for all branches, or pick that branch to give it a menu item of its own.'], null, 'streakRewards');
 
         $this->assertSame($before, $this->defaultRows(), 'a refused All Branches save wrote something');
 

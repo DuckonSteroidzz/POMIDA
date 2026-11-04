@@ -126,7 +126,7 @@
             <th style="padding:0.3rem 0.4rem;">Used per order</th>
             <th style="padding:0.3rem 0.4rem;">Priority Level</th>
             <th style="padding:0.3rem 0.4rem;">Stock Remaining</th>
-            <th style="padding:0.3rem 0.4rem;" title="Stock remaining divided by the amount one order uses">Can make</th>
+            <th style="padding:0.3rem 0.4rem;" title="{{ \App\Support\RecipeQuantityLimits::CAN_MAKE_HINT }}">Can make</th>
             <th style="padding:0.3rem 0.4rem; text-align:right;"></th>
         </tr>
     </thead>
@@ -161,7 +161,7 @@
                 —
                 @endif
             </td>
-            <td style="padding:0.35rem 0.4rem;" class="recipe-canmake">@php $cm = $canMakeOf($row->inventory, $row->{$qtyAttribute}); @endphp<span class="recipe-canmake-n">{{ $cm === null ? '—' : $cm . ($cm === 1 ? ' order' : ' orders') }}</span>@if($row->id === $limiterRowId) <span class="recipe-limit-tag">Limits item</span>@endif</td>
+            <td style="padding:0.35rem 0.4rem;" class="recipe-canmake">@php $cm = $canMakeOf($row->inventory, $row->{$qtyAttribute}); @endphp<span class="recipe-canmake-n">{{ $cm === null ? '—' : $cm . ($cm === 1 ? ' order' : ' orders') }}</span>@if($row->id === $limiterRowId) <span class="recipe-limit-tag" title="{{ \App\Support\RecipeQuantityLimits::CAN_MAKE_HINT }}" aria-label="Runs out first. {{ \App\Support\RecipeQuantityLimits::CAN_MAKE_HINT }}">Runs out first</span>@endif</td>
             <td style="padding:0.35rem 0.4rem; text-align:right;">
                 <button type="button" class="recipe-ing-delete-btn" data-url="{{ $deleteUrlFor($row) }}" style="background:#C0392B; color:white; border:none; border-radius:6px; padding:0.2rem 0.5rem; font-size:0.7rem; cursor:pointer;">
                     <i class="bi bi-trash3"></i>
@@ -207,6 +207,7 @@
     </tbody>
 </table>
 </div>
+<p class="recipe-runs-out-note" id="recipe-note-{{ $blockId }}" style="margin:0 0 0.5rem; font-size:0.72rem; color:#4B5563; {{ $recipeEmpty ? 'display:none;' : '' }}">{{ \App\Support\RecipeQuantityLimits::RUNS_OUT_NOTE }}</p>
 
 {{-- Not a refusal: the owner may mean it. But it is worth saying once. --}}
 <div class="recipe-all-low-notice" id="recipe-all-low-{{ $blockId }}" style="background:#fff8e1; color:#6B4E00; font-weight:500; padding:0.4rem 0.6rem; border-radius:6px; font-size:0.72rem; margin-bottom:0.5rem; {{ $recipeAllLow ? '' : 'display:none;' }}">

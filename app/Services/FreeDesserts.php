@@ -688,20 +688,29 @@ class FreeDesserts
      * CURRENT card. A full card is handed in for a reward, exactly like a
      * paper one, so 7 of 7 shows as a ready reward plus a new card at 0.
      *
+     * 'owed' is the same count once a reward IS set (and the customer
+     * qualifies): full cards still unpaid, granted at the next completed
+     * order at that branch. The card says so meanwhile.
+     *
      * 'waiting' counts full cards at that branch that earned nothing yet
      * because it has no reward: they are granted at the next completion there
      * after one is chosen. 'available' is the usable rewards that can be
      * spent at that branch.
      *
      * 'set_up' is false while the branch has no reward it can give
-     * (StreakRewardSettings::current()['configured']). Stamps still count and
-     * 'waiting' still adds up, but there is nothing to promise, so the pages
-     * show customer.partials.stamp-card-unavailable instead of the card.
+     * (StreakRewardSettings::current()['configured']): none chosen, the item
+     * archived or deleted, or a reward that belongs to another branch. The
+     * card is still ON, so the pages still show the real card with the
+     * customer's real stamps and days needed, "Reward coming soon" in place of
+     * the reward name, and a note. Nothing is issued meanwhile (grantDue()
+     * needs a snapshot); 'waiting' counts the full cards that will be paid once
+     * a reward is chosen.
      *
      * ['enabled' => false] when no branch is known, or the branch is off
-     * (either switch, or X = 0): the pages show that same card instead (or
-     * nothing, under the owner's master switch); rewards already earned stay
-     * listed and usable on Vouchers & Rewards.
+     * (either switch, or X = 0): the pages show
+     * customer.partials.stamp-card-unavailable instead (or nothing, under the
+     * owner's master switch); rewards already earned stay listed and usable on
+     * Vouchers & Rewards.
      */
     public static function summaryFor(User $user, ?int $branchId): array
     {
@@ -716,9 +725,14 @@ class FreeDesserts
         $counted = self::countedDays($user, $branchId);
 
         $waiting = 0;
+        $owed = 0;
 
         if (! $settings['configured']) {
             $waiting = max(0, intdiv($counted, $perReward) - self::heldAt($user, $branchId)->count());
+        } elseif (Loyalty::qualifies($user)) {
+            // A reward IS set, but a full card was never paid (it filled while none
+            // could be given): grantDue() pays it at the next completed order here.
+            $owed = max(0, intdiv($counted, $perReward) - self::heldAt($user, $branchId)->count());
         }
 
         return [
@@ -734,6 +748,7 @@ class FreeDesserts
             'show_stamps' => $perReward <= self::MAX_STAMPS_SHOWN,
             'reward_text' => $settings['description'],
             'waiting'     => $waiting,
+            'owed'        => $owed,
             'available'   => self::usableQuery($user)
                 ->where(fn ($q) => $q->where('branch_id', $branchId)->orWhereNull('branch_id'))
                 ->get(),

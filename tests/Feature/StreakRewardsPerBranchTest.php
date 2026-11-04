@@ -531,9 +531,10 @@ class StreakRewardsPerBranchTest extends TestCase
 
         // "All branches": company-wide only.
         $this->actingAs($admin, 'admin')->post(route('admin.streak.rewards.update'), $this->settingsPayload('default', $this->voucher(2)))
-            ->assertSessionHasErrors(['voucher_id' => 'Choose a voucher for all branches.'], null, 'streakRewards');
-        $this->actingAs($admin, 'admin')->post(route('admin.streak.rewards.update'), $this->settingsPayload('default', $this->item(2)))
-            ->assertSessionHasErrors(['menu_item_id' => StreakRewardController::ITEM_PER_BRANCH_MESSAGE], null, 'streakRewards');
+            ->assertSessionHasErrors(['voucher_id' => 'That voucher is only for ' . Branch::find(2)->name . ', so it cannot be the All Branches reward. Choose a voucher for all branches.'], null, 'streakRewards');
+        $branchItem = $this->item(2);
+        $this->actingAs($admin, 'admin')->post(route('admin.streak.rewards.update'), $this->settingsPayload('default', $branchItem))
+            ->assertSessionHasErrors(['menu_item_id' => $branchItem->name . ' is only sold at ' . Branch::find(2)->name . ', so it cannot be the All Branches reward. Choose a voucher for all branches, or pick that branch to give it a menu item of its own.'], null, 'streakRewards');
 
         $this->assertSame([], $this->rows(), 'a refused save wrote something');
 

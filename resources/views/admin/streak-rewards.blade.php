@@ -70,6 +70,14 @@
     .sr-btn-ghost{display:inline-flex;align-items:center;gap:0.35rem;min-height:36px;background:#fff;color:var(--pc-red);border:1.5px solid #F6B49B;border-radius:999px;padding:0 0.85rem;font-size:0.78rem;font-weight:700;cursor:pointer;text-decoration:none;font-family:inherit}
     .sr-btn-ghost:hover{background:#FFF4EC;color:var(--pc-red)}
 
+    /* The page-top warning: a branch whose stamp card cannot give a reward. */
+    .sr-alert{background:#FEF2F2;border:1px solid #FECACA;border-left:5px solid #DC2626;border-radius:var(--pc-radius);padding:0.85rem 1.1rem;margin:0 0 1rem;color:#7F1D1D}
+    .sr-alert-title{font-size:0.92rem;font-weight:800;margin:0 0 0.45rem}
+    .sr-alert ul{margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.5rem}
+    .sr-alert li{font-size:0.82rem;line-height:1.5}
+    .sr-alert li a{color:#B91C1C;font-weight:800;white-space:nowrap}
+    .sr-alert-off{display:block;font-size:0.76rem;color:#92400E}
+
     .sr-warn{font-size:0.8rem;line-height:1.45;color:#92400E;background:#FFFBEB;border:1px solid #FDE68A;border-radius:10px;padding:0.6rem 0.85rem;margin:0 0 0.9rem}
 
     .sr-setrow{display:flex;align-items:center;gap:0.8rem;background:#FDF0E8;border-radius:12px;padding:0.75rem 1rem;margin:0 0 1rem}
@@ -135,6 +143,7 @@
     .sr-ov-row form{margin:0}
     .sr-ov-detail{grid-column:1/-1;font-size:0.76rem;color:var(--pc-mute);margin:0.2rem 0 0;line-height:1.45}
     .sr-ov-note{font-size:0.76rem;color:#92400E;margin:0.4rem 0 0}
+    .sr-ov-warn{grid-column:1/-1;font-size:0.76rem;line-height:1.45;color:#B91C1C;font-weight:700;margin:0.35rem 0 0}
     .sr-pager{display:flex;align-items:center;gap:0.35rem;margin-top:auto;padding-top:0.8rem;border-top:1px dashed #F3DCCD}
     .sr-pager:empty{display:none}
     .sr-pager-info{font-size:0.74rem;color:var(--pc-mute);margin-right:auto;font-weight:600}
@@ -174,6 +183,27 @@
                 aria-label="Master Streak Calendar" data-testid="streak-master-switch"
                 title="{{ $streakRewards['master_enabled'] ? 'On — click to turn off for every branch' : 'Off — click to turn on' }}"></button>
         </form>
+    </section>
+@endif
+
+@if($streakWarnings->isNotEmpty())
+    <section class="sr-alert" role="alert" data-testid="streak-rewards-broken">
+        <p class="sr-alert-title"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i>
+            {{ $streakWarnings->count() === 1 ? 'A branch cannot give its stamp-card reward' : $streakWarnings->count() . ' branches cannot give their stamp-card reward' }}
+        </p>
+        <ul>
+            @foreach($streakWarnings as $srWarn)
+                <li data-testid="streak-rewards-broken-row" data-branch="{{ $srWarn['branch']->id }}">
+                    {{ $srWarn['warning'] }}
+                    @if($isAdmin)
+                        <a href="{{ route('admin.streak-rewards', ['streak_branch' => $srWarn['current']['source'] === \App\Services\StreakRewardSettings::SOURCE_DEFAULT ? \App\Http\Controllers\Admin\StreakRewardController::DEFAULT_SCOPE : $srWarn['branch']->id]) }}#streak-rewards-card">Fix it</a>
+                    @endif
+                    @unless($srWarn['enabled'])
+                        <span class="sr-alert-off">The stamp card is also switched off at {{ $srWarn['branch']->name }}.</span>
+                    @endunless
+                </li>
+            @endforeach
+        </ul>
     </section>
 @endif
 
@@ -451,6 +481,9 @@
                                 <span class="sr-badge {{ $streakRewards['master_enabled'] ? 'is-on' : 'is-off' }}">{{ $streakRewards['master_enabled'] ? 'ON' : 'OFF' }}</span>
                             </div>
                             <p class="sr-ov-detail">{{ $srDetail($globalDefaults) }}</p>
+                            @if($globalReason = \App\Services\StreakRewardSettings::reasonText($globalDefaults, 'All Branches'))
+                                <p class="sr-ov-warn" data-testid="streak-rewards-overview-warning"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> All Branches cannot give a reward. Reason: {{ $globalReason }}</p>
+                            @endif
                         </div>
                         @foreach($streakOverview as $srRow)
                             @php $srRowBranch = $srRow['branch']; @endphp
@@ -469,6 +502,9 @@
                                         title="{{ $srRow['enabled'] ? 'On — click to turn off at ' . $srRowBranch->name : 'Off — click to turn on at ' . $srRowBranch->name }}"></button>
                                 </form>
                                 <p class="sr-ov-detail">{{ $srDetail($srRow['current']) }}</p>
+                                @if($srRow['warning'])
+                                    <p class="sr-ov-warn" data-testid="streak-rewards-overview-warning"><i class="bi bi-exclamation-triangle" aria-hidden="true"></i> {{ $srRow['warning'] }}</p>
+                                @endif
                             </div>
                         @endforeach
                     </div>

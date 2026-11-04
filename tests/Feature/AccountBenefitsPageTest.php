@@ -47,8 +47,8 @@ class AccountBenefitsPageTest extends TestCase
             'loyalty.free_dessert_visit_days'  => 0,
         ]);
 
-        // For the tests that turn it on: with no reward chosen the page shows
-        // the "isn't available" card, not the stamp card.
+        // For the tests that turn it on: with no reward chosen the card reads
+        // "Reward coming soon" instead of naming one, so choose one here.
         $this->clearStreakRewardSettings();
         $this->chooseRewardItem($this->plainRewardItem());
     }

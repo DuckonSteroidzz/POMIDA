@@ -108,6 +108,7 @@ class StreakRewardSettings
     public const PROBLEM_ITEM_GONE = 'item_gone';
     public const PROBLEM_ITEM_OTHER_BRANCH = 'item_other_branch';
     public const PROBLEM_VOUCHER_OTHER_BRANCH = 'voucher_other_branch';
+    public const PROBLEM_VOUCHER_UNREADABLE = 'voucher_unreadable';
 
     /**
      * The reward rows that decide $branchId (null = the company default
@@ -205,7 +206,15 @@ class StreakRewardSettings
 
         $voucher = $type === self::TYPE_VOUCHER ? self::decodeVoucher($rows[self::VOUCHER] ?? null) : null;
 
+        // An archived or deleted reward item, named for the admin warning only
+        // (archived rows are hidden by the global scope; a permanently deleted
+        // one has no name left).
+        $goneItemName = $type === self::TYPE_MENU_ITEM && $menuItemId && $menuItem === null
+            ? MenuItem::withoutGlobalScopes()->whereKey($menuItemId)->value('name')
+            : null;
+
         $problem = match (true) {
+            $type === self::TYPE_VOUCHER && $voucher === null && ($rows[self::VOUCHER] ?? null) !== null => self::PROBLEM_VOUCHER_UNREADABLE,
             $type === self::TYPE_MENU_ITEM && $menuItem === null => self::PROBLEM_ITEM_GONE,
             $type === self::TYPE_MENU_ITEM && ! self::fits($menuItem->branch_id !== null ? (int) $menuItem->branch_id : null, $branchId) => self::PROBLEM_ITEM_OTHER_BRANCH,
             $type === self::TYPE_MENU_ITEM => null,
@@ -227,6 +236,7 @@ class StreakRewardSettings
             'type'             => $type,
             'menu_item_id'     => $menuItemId,
             'menu_item'        => $menuItem,
+            'gone_item_name'   => $goneItemName,
             'voucher'          => $voucher,
             'configured'       => $configured,
             'problem'          => $problem,
@@ -336,17 +346,25 @@ class StreakRewardSettings
 
     /**
      * One line per branch for the owner's overview: its switch, where its
-     * reward comes from, and what it is.
+     * reward comes from, what it is, and — when it cannot give one — why
+     * ('warning', see warningText()).
      *
-     * @return Collection<int, array{branch: Branch, enabled: bool, current: array}>
+     * @return Collection<int, array{branch: Branch, enabled: bool, current: array, warning: ?string}>
      */
     public static function overview(): Collection
     {
-        return Branch::orderBy('id')->get()->map(fn (Branch $branch) => [
-            'branch'  => $branch,
-            'enabled' => self::branchEnabled($branch->id),
-            'current' => self::current($branch->id),
-        ]);
+        $defaultWorks = self::current(null)['configured'];
+
+        return Branch::orderBy('id')->get()->map(function (Branch $branch) use ($defaultWorks) {
+            $current = self::current($branch->id);
+
+            return [
+                'branch'  => $branch,
+                'enabled' => self::branchEnabled($branch->id),
+                'current' => $current,
+                'warning' => self::warningText($current, $branch->name, $defaultWorks),
+            ];
+        });
     }
 
     // ══════════ plain words ══════════
@@ -426,6 +444,51 @@ class StreakRewardSettings
 
         return $lead . 'earns one reward: ' . $current['description'] . '. Each reward gets its own one-time code and can be used only at '
             . $where . '. ' . self::validityText($current['valid_days']);
+    }
+
+    /**
+     * The REAL reason a branch cannot give a reward, for the admin warnings
+     * (the page banner and the Branch Overview row); null when it can.
+     *
+     * Names whose reward it is — the All Branches reward, or the branch's own
+     * set — because that is the difference between "fix All Branches" and
+     * "fix this branch". $defaultWorks: the All Branches reward is fine, so
+     * a branch's own empty set is what is hiding it.
+     */
+    public static function reasonText(array $current, string $branchName, bool $defaultWorks = false): ?string
+    {
+        if ($current['problem'] === null) {
+            return null;
+        }
+
+        $own = $current['source'] === self::SOURCE_BRANCH;
+        $whose = $own ? $branchName . "'s own reward" : 'the All Branches reward';
+        $fix = $own ? 'Choose a reward for ' . $branchName . ', or switch it back to All Branches.' : 'Choose a company-wide reward.';
+
+        return match ($current['problem']) {
+            self::PROBLEM_ITEM_GONE => $whose . ' (' . ($current['gone_item_name'] ? 'Free ' . $current['gone_item_name'] : 'a menu item') . ') is archived or deleted. ' . $fix,
+            self::PROBLEM_ITEM_OTHER_BRANCH => $whose . ' (Free ' . ($current['menu_item']?->name ?? 'menu item') . ') belongs only to '
+                . ($current['menu_item']?->branch?->name ?? 'one branch') . '. ' . $fix,
+            self::PROBLEM_VOUCHER_OTHER_BRANCH => $whose . ' (voucher ' . ($current['voucher']['code'] ?? '') . ') belongs only to '
+                . ($current['voucher']['branch_name'] ?? 'one branch') . '. ' . $fix,
+            self::PROBLEM_VOUCHER_UNREADABLE => $whose . " has voucher terms that can't be read. " . $fix,
+            default => $own
+                ? $branchName . ' has its own settings but no reward chosen in them' . ($defaultWorks ? ', and that hides the All Branches reward' : '') . '. ' . $fix
+                : 'no reward is chosen under All Branches. ' . $fix,
+        };
+    }
+
+    /**
+     * One sentence for the admin: this branch cannot give a reward, what its
+     * customers see meanwhile, and the real reason. Null when it can.
+     */
+    public static function warningText(array $current, string $branchName, bool $defaultWorks = false): ?string
+    {
+        $reason = self::reasonText($current, $branchName, $defaultWorks);
+
+        return $reason === null
+            ? null
+            : $branchName . ': no reward can be given, so customers see "Reward coming soon" and a full stamp card earns nothing. Reason: ' . $reason;
     }
 
     /** Why nothing is granted, in words for the admin card; null when a reward can be given. */

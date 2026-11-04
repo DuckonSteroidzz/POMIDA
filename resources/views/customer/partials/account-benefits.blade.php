@@ -59,13 +59,14 @@
         {{-- $milestones above is empty while the owner's Streak Calendar
              switch is off. The stamp card is per branch: this line is the
              branch whose cards are showing, shown while that branch's card is
-             on (both switches) and has a reward to promise. --}}
+             on (both switches). With no reward it can give yet, the reward
+             reads "coming soon", the same as the stamp card. --}}
         @php $benefitBranch = $streakBranch ?? null; @endphp
-        @if($benefitBranch && ($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false))
+        @if($benefitBranch && ($freeDessert['enabled'] ?? false))
         @php
             $benefitReward = \App\Services\StreakRewardSettings::current($benefitBranch->id)['description'];
             // "a Free Chocolate Cake" for an item reward, "a reward: 20% off" for a voucher.
-            $benefitRewardPhrase = ! $benefitReward ? 'a reward' : (str_starts_with($benefitReward, 'Free ') ? 'a ' . $benefitReward : 'a reward: ' . $benefitReward);
+            $benefitRewardPhrase = ! $benefitReward ? 'a reward (coming soon)' : (str_starts_with($benefitReward, 'Free ') ? 'a ' . $benefitReward : 'a reward: ' . $benefitReward);
         @endphp
         <li class="min-w-0">
             <a href="#free-dessert" class="flex h-full items-start gap-3 rounded-2xl border border-peach-soft bg-white p-4 no-underline transition hover:-translate-y-0.5 hover:border-peach-rose">

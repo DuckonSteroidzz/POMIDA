@@ -1,8 +1,9 @@
 {{--
-    Where the stamp card goes at a branch that has none to show: switched off
-    (FreeDesserts::active() is false) or not set up (no reward it can give,
-    StreakRewardSettings::current()['configured'] is false). Same place and same
-    heading as the card, so every branch has the same layout.
+    Where the stamp card goes at a branch that has none to show: it is
+    switched off there (FreeDesserts::active() is false). A branch that is ON
+    but has no reward it can give does NOT come here — it shows the real card
+    with "Reward coming soon" (free-dessert-stamp-card, $rewardPending). Same
+    place and same heading as the card, so every branch has the same layout.
 
     Stamps are read from completed orders and nothing here changes them, so what
     the customer has collected at this branch is saved and counts once the card

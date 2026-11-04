@@ -612,7 +612,7 @@ class StampCardBranchMemoryTest extends TestCase
         $this->assertStringContainsString('data-testid="streak-unavailable"', $this->account($user->fresh()));
     }
 
-    public function test_a_branch_with_no_reward_chosen_shows_the_clear_card_and_keeps_its_calendar(): void
+    public function test_a_branch_with_no_reward_chosen_shows_the_real_card_as_reward_coming_soon_and_keeps_its_calendar(): void
     {
         $user = $this->customer();
         $bare = $this->branch('QA No Reward');
@@ -620,14 +620,21 @@ class StampCardBranchMemoryTest extends TestCase
 
         $html = $this->account($user->fresh());
 
-        $this->assertStringContainsString(self::UNAVAILABLE, $html);
-        $this->assertStringNotContainsString('data-testid="free-dessert-card"', $html);
+        // Its switch is ON, so it is the normal card (not the "isn't available" one).
+        $this->assertStringNotContainsString(self::UNAVAILABLE, $html);
+        $this->assertStringNotContainsString('data-testid="stamp-card-unavailable"', $html);
+        $this->assertStringContainsString('data-testid="free-dessert-card"', $html);
+        $this->assertStringContainsString('Reward coming soon', $html);
+        $this->assertStringContainsString('Keep collecting. Your reward will be added once the cafe sets it up.', $html);
         $this->assertStringContainsString('data-testid="streak-calendar"', $html, 'its branch switch is on, so its calendar still shows');
 
-        $this->assertStringContainsString(self::UNAVAILABLE, $this->vouchers($user->fresh()));
+        $vouchers = $this->vouchers($user->fresh());
+        $this->assertStringNotContainsString(self::UNAVAILABLE, $vouchers);
+        $this->assertStringContainsString('data-testid="free-dessert-card"', $vouchers);
+        $this->assertStringContainsString('Reward coming soon', $vouchers);
     }
 
-    public function test_stamps_at_a_branch_with_no_card_are_said_to_be_saved_and_a_full_card_still_says_so(): void
+    public function test_stamps_at_a_branch_with_no_reward_show_on_the_card_and_a_full_card_still_says_so(): void
     {
         $user = $this->customer();
         $bare = $this->branch('QA No Reward');
@@ -635,17 +642,22 @@ class StampCardBranchMemoryTest extends TestCase
 
         $this->orderOn($user, '2026-10-20', $bare);
         $this->orderOn($user, '2026-10-22', $bare);
-        $html = $this->account($user->fresh());
-        $this->assertMatchesRegularExpression('/Your 2 stamps at [^<]*are saved\./', $html);
+        foreach ([$this->account($user->fresh()), $this->vouchers($user->fresh())] as $html) {
+            // The customer's real stamps and the built-in days needed (config 7: none saved).
+            $this->assertStringContainsString('2 / 7 stamps', $html);
+            $this->assertSame(2, substr_count($html, 'data-stamp="filled"'));
+            $this->assertSame(5, substr_count($html, 'data-stamp="empty"'));
+        }
 
         foreach (['2026-10-10', '2026-10-12', '2026-10-14', '2026-10-16', '2026-10-18'] as $day) {
             $this->orderOn($user, $day, $bare);
         }
         $this->assertStringContainsString('data-testid="free-dessert-waiting"', $this->account($user->fresh()));
 
-        // Switched off too: still saved, never a made-up zero.
+        // Switched off: the "isn't available" card, with the stamps still saved, never a made-up zero.
         $this->setBranchSwitch($bare->id, false);
         $this->assertMatchesRegularExpression('/Your 7 stamps at [^<]*are saved\./', $this->account($user->fresh()));
+        $this->assertStringContainsString(self::UNAVAILABLE, $this->vouchers($user->fresh()));
     }
 
     public function test_the_no_card_state_changes_no_stamp_or_reward_rule(): void

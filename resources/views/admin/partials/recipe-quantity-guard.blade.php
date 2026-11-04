@@ -16,8 +16,8 @@
           MenuItem::servingsCoveredBy(). Null when it cannot be worked out.
       pomidaRefreshCanMake(tbody)
           Rewrites the "Can make" cells of a recipe table from the rows'
-          data-stock / data-qty and marks the HIGH line with the fewest orders
-          as the one that limits the item (a LOW line never does).
+          data-stock / data-qty and tags the HIGH line with the fewest orders
+          "Runs out first" (a LOW line never does).
 
     Nothing here changes stock logic, the low-stock threshold, recipes or
     stock: the owner can confirm any warning and keep the line.
@@ -26,6 +26,8 @@
     .recipe-limiter { background: #fff8e1; }
     .recipe-limit-tag { display: block; width: fit-content; margin-top: 0.15rem; padding: 0.1rem 0.4rem; border-radius: 6px; background: #fde68a; color: #6B4E00; font-size: 0.66rem; font-weight: 700; white-space: nowrap; }
     .recipe-canmake { white-space: nowrap; font-weight: 600; }
+    /* "Runs out first" is longer than the old tag: let it wrap on a phone rather than widen the column. */
+    @media (max-width: 600px) { .recipe-limit-tag { white-space: normal; max-width: 4.6rem; } }
 </style>
 <script>
     window.POMIDA_RECIPE_LIMITS = @json(\App\Support\RecipeQuantityLimits::limits());
@@ -97,7 +99,9 @@
             if (limits) {
                 var tag = document.createElement('span');
                 tag.className = 'recipe-limit-tag';
-                tag.textContent = 'Limits item';
+                tag.textContent = 'Runs out first';
+                tag.title = window.POMIDA_RECIPE_TEXT.canMakeHint;
+                tag.setAttribute('aria-label', 'Runs out first. ' + window.POMIDA_RECIPE_TEXT.canMakeHint);
                 cell.appendChild(document.createTextNode(' '));
                 cell.appendChild(tag);
             }

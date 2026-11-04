@@ -6,8 +6,13 @@
     $freeDessert comes from App\Services\FreeDesserts::summaryFor(), via
     AuthController::showAccount() and ::showVouchers(), for ONE branch —
     FreeDesserts::cardBranch(), $cardBranch here — and the card is labeled with
-    it. A branch whose card is off or not set up gets
-    partials/stamp-card-unavailable in the same place. One
+    it. A branch whose card is switched off gets
+    partials/stamp-card-unavailable in the same place. A branch whose card is
+    ON but has no reward it can give (none chosen, the item archived or
+    deleted, or a reward that belongs to another branch) still gets THIS card
+    with the customer's real stamps, "Reward coming soon" where the reward
+    would be named, and a note ($rewardPending); a full card issues nothing
+    meanwhile (FreeDesserts::grantDue). One
     stamp per shop day with a completed order at that branch (any days, not in
     a row; several orders on one day are one stamp). Every X stamps (that
     branch's App\Services\StreakRewardSettings) earn one reward — what it is
@@ -28,7 +33,7 @@
     minmax(0,1fr) grid so nothing pushes the page sideways at 360px. More
     than FreeDesserts::MAX_STAMPS_SHOWN stamps get the progress bar instead.
 --}}
-@if(! (($freeDessert['enabled'] ?? false) && ($freeDessert['set_up'] ?? false)))
+@if(! ($freeDessert['enabled'] ?? false))
     @include('customer.partials.stamp-card-unavailable', ['fillWidth' => $fillWidth ?? false])
 @else
 @php
@@ -37,6 +42,8 @@
     $stampsLeft = $perReward - $stamps;
     $stampCols = $perReward <= 7 ? $perReward : (int) ceil($perReward / 2);
     $rewardText = $freeDessert['reward_text'] ?? null;
+    // The card is on but no reward can be given yet: the stamps are real, the reward is not.
+    $rewardPending = ! ($freeDessert['set_up'] ?? false);
     // "a Free Chocolate Cake" for an item reward, "a reward: 20% off" for a voucher.
     $rewardPhrase = ! $rewardText ? 'a reward' : (str_starts_with($rewardText, 'Free ') ? 'a ' . $rewardText : 'a reward: ' . $rewardText);
     $readyCount = $freeDessert['available']->count();
@@ -70,6 +77,28 @@
         </p>
         <p class="mb-3.5 ml-[52px] text-xs font-semibold leading-normal text-peach-deep/80 max-[640px]:ml-0" data-testid="free-dessert-scope">Stamps here count only for orders at {{ $cardBranchName }}.</p>
     @endunless
+
+    @if($rewardPending)
+        <div class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3" data-testid="free-dessert-reward-pending">
+            <p class="text-base font-bold text-peach-deep"><i class="bi bi-gift" aria-hidden="true"></i> <span data-testid="free-dessert-reward-name">Reward coming soon</span></p>
+            <p class="mt-1 text-sm font-medium text-amber-800" data-testid="free-dessert-reward-pending-note">Keep collecting. Your reward will be added once the cafe sets it up.</p>
+            {{-- A full card that earned nothing yet: it is paid at the next completed order after a reward is chosen. --}}
+            @if(($freeDessert['waiting'] ?? 0) > 0)
+                <p class="mt-2 text-sm font-semibold text-amber-800" data-testid="free-dessert-waiting">
+                    <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+                    Your card is full! Your reward will be added to your account soon.
+                </p>
+            @endif
+        </div>
+    @endif
+
+    {{-- A reward is set now, but a card that filled earlier is still unpaid: it is paid at the next completed order here. --}}
+    @if(! $rewardPending && ($freeDessert['owed'] ?? 0) > 0)
+        <p class="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800" data-testid="free-dessert-owed">
+            <i class="bi bi-hourglass-split" aria-hidden="true"></i>
+            Your card is full! Your reward will be added after your next completed order at {{ $cardBranchName }}.
+        </p>
+    @endif
 
     @unless($freeDessert['qualifies'])
         <p class="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">

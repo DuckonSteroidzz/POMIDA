@@ -2785,6 +2785,8 @@ window.pcBranchSelectHandler = function (value) {
             const can = document.createElement('span');
             can.className = 'pchy-ing-can';
             can.textContent = 'can make ' + canMake + (canMake === 1 ? ' order' : ' orders');
+            can.title = window.POMIDA_RECIPE_TEXT.canMakeHint;
+            can.setAttribute('aria-label', 'Can make ' + canMake + (canMake === 1 ? ' order' : ' orders') + '. ' + window.POMIDA_RECIPE_TEXT.canMakeHint);
             qty.appendChild(can);
         }
         row.appendChild(qty);
