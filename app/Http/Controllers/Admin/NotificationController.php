@@ -58,6 +58,12 @@ class NotificationController extends Controller
                 'message' => $n->message,
                 'is_read' => $n->read_at !== null,
                 'ago'     => $n->created_at->diffForHumans(null, true) . ' ago',
+                // A "Refund needed" row opens that refund (QA, 5 Nov 2026) —
+                // it stays openable after Mark Refunded. Null for every other
+                // type: those have nothing of their own to open.
+                'url'     => $n->type === 'refund_pending' && $n->order_id
+                    ? route('admin.refunds.show', $n->order_id)
+                    : null,
             ])->values(),
         ]);
     }

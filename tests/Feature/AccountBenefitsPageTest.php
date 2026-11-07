@@ -296,7 +296,8 @@ class AccountBenefitsPageTest extends TestCase
         $this->assertSame(1, substr_count($html, 'data-testid="guest-signup-teaser"'));
         $this->assertStringNotContainsString('signupTeaserHtml', $html);
         $this->assertStringNotContainsString('data-signup-teaser', $html);
-        $this->assertStringContainsString("showSpinToast('😅', 'Try Again!', 'Better luck next time!');", $html);
+        $this->assertStringContainsString("showSpinToast('😅', 'Try Again!', 'Better luck next time! ' + line);", $html);
+        $this->assertStringContainsString("var line = 'You now have ' + data.total_points + ' points.';", $html);
     }
 
     // ══════════ the simpler look (item I, Oct 2026) ══════════
@@ -440,7 +441,7 @@ class AccountBenefitsPageTest extends TestCase
         $user->forceFill(['points' => 5, 'bonus_points' => 12])->save();
 
         $this->actingAs($user, 'customer')->get(route('customer.game'))
-            ->assertOk()->assertSee('17 pts', false);
+            ->assertOk()->assertSee('<span data-points-balance>17</span> pts', false);
         $this->actingAs($user, 'customer')->get(route('customer.more'))
             ->assertOk()->assertSee('17 points', false);
         $this->actingAs($user, 'customer')->get(route('customer.vouchers'))

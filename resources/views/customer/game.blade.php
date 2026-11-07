@@ -78,21 +78,6 @@
             max-width: 420px;
         }
 
-        .legend-title {
-            font-family: 'Fraunces', Georgia, serif;
-            font-size: 1.1563rem;
-            font-weight: 800;
-            color: #8B1A1A;
-            margin: 0 0 .85rem;
-            text-align: center;
-        }
-
-        .legend-list {
-            display: flex;
-            flex-direction: column;
-            gap: .6rem;
-        }
-
         .legend-item {
             display: flex;
             align-items: flex-start;
@@ -112,30 +97,6 @@
             padding: .3rem .55rem;
             border-radius: 999px;
             white-space: nowrap;
-        }
-
-        .legend-badge.voucher {
-            background: linear-gradient(135deg,#2E7D5B,#1f5c40);
-        }
-
-        /* Timing badge on the voucher-win modal — states plainly when a
-           wheel-won voucher actually becomes usable, since AuthController
-           always mints these with valid_from = today (see
-           AuthController::addPoints / VoucherClaims::mintForGuest) — usable
-           on the very next order, but never on the order that won it, since
-           that order already existed before the win and a voucher can only
-           ever be attached to an order at the moment it is created. */
-        .voucher-timing-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: .35rem;
-            background: linear-gradient(135deg,#2E7D5B,#1f5c40);
-            color: #fff;
-            font-size: 0.875rem;
-            font-weight: 800;
-            padding: .35rem .75rem;
-            border-radius: 999px;
-            margin: 0 0 .65rem;
         }
 
         /* Confetti overlay for a spin win. Fixed, full-viewport, and inert to
@@ -159,35 +120,6 @@
             color: #8B1A1A;
         }
 
-        .legend-note {
-            margin: 0 0 .85rem;
-            font-size: 0.875rem;
-            line-height: 1.4;
-            color: #5b4740;
-            text-align: center;
-        }
-
-        .legend-status {
-            display: inline-block;
-            margin-top: .35rem;
-            padding: .15rem .55rem;
-            border-radius: 999px;
-            background: #F5F0EC;
-            color: #5b4740;
-            font-size: 0.8125rem;
-            font-weight: 700;
-        }
-
-        .legend-status.is-winnable { background: #E4F2EA; color: #1f5c40; }
-        .legend-status.is-need_points { background: #FDE8DE; color: #8B1A1A; }
-
-        .legend-empty {
-            font-size: 0.875rem;
-            color: #8A6A61;
-            text-align: center;
-            padding: .5rem 0 0;
-        }
-
         @media (min-width: 900px) {
             .game-layout {
                 flex-direction: row;
@@ -203,11 +135,6 @@
 
             .game-legend {
                 margin-top: .25rem;
-            }
-
-            .legend-title,
-            .legend-note {
-                text-align: left;
             }
         }
 
@@ -502,7 +429,7 @@
 
         <div class="mb-5 grid gap-1">
             <h1 class="font-display text-2xl font-black leading-tight tracking-tight text-peach-deep sm:text-3xl">Spin &amp; Win</h1>
-            <p class="mt-1 text-sm text-peach-deep/55">Play while you wait and earn points or vouchers.</p>
+            <p class="mt-1 text-sm text-peach-deep/55">Play while you wait to earn points, then redeem them for vouchers.</p>
         </div>
 
         {{-- ══════════ PRIZES THIS GUEST IS HOLDING ══════════
@@ -557,7 +484,8 @@
                  AuthController::showGame(). The old inline Auth::check() read
                  the default 'web' guard, so a logged-in customer always saw
                  the guest total (0 pts) instead of their real balance. --}}
-            <span class="font-display text-base font-black text-peach-red" id="pointsDisplay">{{ $pointsBalance }} pts</span>
+            {{-- data-points-balance: kept in step after a spin or a redeem. --}}
+            <span class="font-display text-base font-black text-peach-red" id="pointsDisplay"><span data-points-balance>{{ $pointsBalance }}</span> pts</span>
         </div>
 
         {{-- Guests only: what an account adds (config/loyalty.php). --}}
@@ -579,7 +507,7 @@
 
                 <div class="game-play">
                     <p class="game-title">🎰 Spin & Win!</p>
-                    <p class="game-subtitle">Spin for a chance to earn points & win vouchers!</p>
+                    <p class="game-subtitle">Spin to earn points!</p>
 
                     <div class="wheel-container">
                         <div class="wheel-pointer">▼</div>
@@ -615,34 +543,19 @@
                     @endunless
                 </div>
 
+                {{-- "Redeem your points" (Nov 2026): a spin only earns
+                     points; the customer redeems them here whenever they
+                     like. Shared with Vouchers & Rewards. A guest's page
+                     reloads after a redeem so the code is pinned at the top. --}}
                 <div class="game-legend">
-                    <p class="legend-title">🏆 What you can win</p>
-                    <p class="legend-note" data-testid="points-rule">Points add up from every spin. When you have enough for a prize, your next spin wins it and takes those points. Each prize can be won once.</p>
-                    <div class="legend-list">
-                        <div class="legend-item">
-                            <span class="legend-badge">Every spin</span>
-                            <span class="legend-text"><strong>3, 5, or 8 points</strong> — or Try Again</span>
-                        </div>
-
-                        {{-- Each prize's status for THIS customer comes from
-                             App\Support\WheelPrizes, the rule the picker uses. --}}
-                        @forelse($wheelPrizes as $prize)
-                        @php $v = $prize['voucher']; @endphp
-                        <div class="legend-item" data-prize-id="{{ $v->id }}">
-                            <span class="legend-badge voucher">{{ $v->points_required }} pts</span>
-                            <span class="legend-text">
-                                <strong>{{ $v->code }}</strong> —
-                                {{ $v->discount_type === 'percent' ? number_format($v->discount_value, 0) . '% off' : '₱' . number_format($v->discount_value, 2) . ' off' }}
-                                @if($v->description)
-                                    <br><span style="color:#8A6A61;">{{ $v->description }}</span>
-                                @endif
-                                <br><span class="legend-status is-{{ $prize['status'] }}" data-prize-status>{{ $prize['label'] }}</span>
-                            </span>
-                        </div>
-                        @empty
-                        <p class="legend-empty">No bonus vouchers available right now — just spin for points!</p>
-                        @endforelse
+                    <div class="legend-item" style="margin-bottom:1rem;">
+                        <span class="legend-badge">Every spin</span>
+                        <span class="legend-text"><strong>3, 5, or 8 points</strong> — or Try Again</span>
                     </div>
+                    @include('customer.partials.points-redeem', [
+                        'redeemPrizes' => $wheelPrizes,
+                        'redeemReload' => ! Auth::guard('customer')->check(),
+                    ])
                 </div>
 
             </div>
@@ -652,6 +565,13 @@
                 <p style="font-size:1rem;font-weight:600;color:#555;">Game is currently unavailable</p>
                 <p style="font-size:0.875rem;">Check back later!</p>
             </div>
+            {{-- Points already earned can still be redeemed with the game off. --}}
+            <div class="game-legend" style="margin:0 auto;">
+                @include('customer.partials.points-redeem', [
+                    'redeemPrizes' => $wheelPrizes,
+                    'redeemReload' => ! Auth::guard('customer')->check(),
+                ])
+            </div>
             @endif
 
 
@@ -659,27 +579,9 @@
         </section>
     </main>
 
-    {{-- Voucher-win modal. When a spin awards a voucher (or a guest redeems
-         one), the unique 1-time code is shown here front-and-centre rather
-         than only inline in the result panel, so it cannot be scrolled past. --}}
-    <div id="voucherWinModal" style="display:none;position:fixed;inset:0;background:rgba(74,59,54,.55);z-index:9998;align-items:center;justify-content:center;padding:1rem;">
-        <div style="background:#fff;border-radius:18px;padding:1.5rem 1.25rem;max-width:380px;width:100%;text-align:center;box-shadow:0 20px 50px -20px rgba(139,26,26,.5);">
-            <p style="font-family:'Fraunces',Georgia,serif;font-size:1.25rem;font-weight:900;color:#8B1A1A;margin:0 0 .25rem;">🎉 You won a voucher!</p>
-            {{-- States plainly when this can actually be used. The server
-                 always mints wheel-won vouchers as valid starting today —
-                 usable on the very next order, never on the order that won
-                 them — rather than leaving that to be assumed. --}}
-            <span id="voucherWinTiming" class="voucher-timing-badge" style="display:none;"></span>
-            <p id="voucherWinDesc" style="font-size:0.875rem;color:#8A6A61;margin:0 0 .75rem;"></p>
-            <div id="voucherWinCode" style="font-size:1.6563rem;font-weight:900;letter-spacing:2px;color:#C0392B;background:#FFF7F3;border:2px dashed #F4845F;border-radius:10px;padding:.6rem .5rem;margin:0 0 .6rem;word-break:break-all;"></div>
-            <p id="voucherWinNote" style="font-size:0.875rem;color:#8A6A61;margin:0 0 .5rem;line-height:1.45;"></p>
-            {{-- Says plainly where the points went, so a falling balance is
-                 never a mystery. --}}
-            <p id="voucherWinPoints" style="font-size:0.875rem;font-weight:700;color:#8B1A1A;margin:0 0 1rem;line-height:1.45;"></p>
-            <button type="button" id="voucherWinCopy" class="copy-btn" style="width:100%;margin:0 0 .5rem;"><i class="bi bi-clipboard"></i> Copy Code</button>
-            <button type="button" onclick="document.getElementById('voucherWinModal').style.display='none'" style="background:none;border:0;color:#8A6A61;font-size:0.875rem;text-decoration:underline;cursor:pointer;">Close</button>
-        </div>
-    </div>
+    {{-- The voucher-win modal that used to sit here is gone (Nov 2026): a spin
+         no longer awards a voucher. A redeemed voucher's code is shown by
+         customer.partials.points-redeem. --}}
 
     {{-- Lightweight centre popup for a points win or a "Try Again". Replaces
          the old persistent green result card that used to sit under the wheel;
@@ -710,7 +612,6 @@
            AuthController::addPoints(), and a spin the server refuses comes back
            422 with the corrected state below. */
         var spinState = @json($spinState);
-        var isSignedIn = @json(Auth::guard('customer')->check());
 
         function renderSpinState(s) {
             if (!s) return;
@@ -959,9 +860,8 @@
         }
 
         function updatePointsDisplay(data) {
-            var pointsEl = document.getElementById('pointsDisplay');
-            if (pointsEl && data && typeof data.total_points !== 'undefined') {
-                pointsEl.textContent = data.total_points + ' pts';
+            if (data && typeof data.total_points !== 'undefined' && window.PointsRedeem) {
+                window.PointsRedeem.setBalance(data.total_points);
             }
         }
 
@@ -993,48 +893,27 @@
         function showResult(data, won) {
             renderSpinState(data);
             updatePointsDisplay(data);
-            renderPrizes(data.prizes);
+            if (window.PointsRedeem) window.PointsRedeem.render(data.prizes);
 
-            if (data.voucher) {
-                /* Won a voucher — the claim code is the whole point, so
-                   it gets the dedicated centre modal, not a toast. A
-                   guest win carries claim_code (the only way they can
-                   ever redeem it); a signed-in win also gets one now so
-                   the prize can be handed to a Dine-In friend.
+            /* A spin only earns points (Nov 2026): it never takes any and never
+               awards a voucher. The result says what it earned and the new
+               balance, plus a nudge when the points already cover a voucher
+               the customer can redeem below. */
+            var line = 'You now have ' + data.total_points + ' points.';
+            if (data.can_redeem) {
+                line += '<br><strong>' + 'You have enough points to redeem ' + esc(data.can_redeem) + '.' + '</strong>';
+            } else if (data.next_voucher) {
+                line += '<br>' + data.points_needed +
+                    ' more pts to redeem: ' + esc(data.next_voucher);
+            }
 
-                   The server awards a prize on ANY spin once the balance
-                   covers it, Try Again included. This used to require a
-                   points segment, so landing on Try Again showed "Better luck
-                   next time" while the points were spent and the voucher was
-                   created without a word. */
-                var shownCode = data.voucher.claim_code || data.voucher.code;
-
-                showVoucherWinModal(
-                    shownCode,
-                    data.voucher.description || '',
-                    isSignedIn
-                        ? 'Saved in Vouchers & Rewards. Type this 1-time code into the voucher box at checkout. It works once.'
-                        : 'You have no account, so this code is the only way to use this voucher. Type it into the voucher box in your cart. It works once.',
-                    data.voucher.message || '',
-                    (won.type === 'points' ? '' : 'The wheel said Try Again, but your points were enough for this prize. ') +
-                        data.voucher.points_spent + ' points used. You now have ' + data.total_points + ' points.'
-                );
-                if (window.celebrateWin) window.celebrateWin();
-
-                setTimeout(releaseSpinButton, 3000);
-            } else if (won.type === 'points') {
-                var line = 'Total Points: ' + data.total_points;
-                if (data.next_voucher) {
-                    line += '<br>' + data.points_needed +
-                        ' more pts to win: ' + esc(data.next_voucher) + '!';
-                }
+            if (won.type === 'points') {
                 showSpinToast('⭐', '+' + won.points + ' Points!', line);
                 if (window.celebrateWin) window.celebrateWin();
-                releaseSpinButton();
             } else {
-                showSpinToast('😅', 'Try Again!', 'Better luck next time!');
-                releaseSpinButton();
+                showSpinToast('😅', 'Try Again!', 'Better luck next time! ' + line);
             }
+            releaseSpinButton();
 
             /* Ad popup. Driven by the server's spin_number, not by a
                page-local counter: show_ad is true on the last spin of
@@ -1047,18 +926,7 @@
             }
         }
 
-        /* Each prize's status line after a spin, as the server now sees it. */
-        function renderPrizes(prizes) {
-            (prizes || []).forEach(function (prize) {
-                var row = document.querySelector('[data-prize-id="' + prize.id + '"] [data-prize-status]');
-                if (row) {
-                    row.className = 'legend-status is-' + prize.status;
-                    row.textContent = prize.label;
-                }
-            });
-        }
-
-        /* The win panel builds HTML from a server response, so anything from it
+        /* The result toast builds HTML from a server response, so anything from it
            is escaped before it goes in. */
         function esc(v) {
             var d = document.createElement('div');
@@ -1066,29 +934,11 @@
             return d.innerHTML;
         }
 
-        /* Voucher-win modal — the unique 1-time code, shown centre-screen. */
-        function showVoucherWinModal(code, desc, note, timingMessage, pointsLine) {
-            document.getElementById('voucherWinCode').textContent = code || '';
-            document.getElementById('voucherWinDesc').textContent = desc || '';
-            document.getElementById('voucherWinNote').textContent = note || '';
-            document.getElementById('voucherWinPoints').textContent = pointsLine || '';
-
-            var timing = document.getElementById('voucherWinTiming');
-            if (timingMessage) {
-                timing.textContent = '✅ ' + timingMessage;
-                timing.style.display = 'inline-flex';
-            } else {
-                timing.style.display = 'none';
-            }
-
-            document.getElementById('voucherWinModal').style.display = 'flex';
-        }
-
         /* ══════════ Win celebration: confetti + chime ══════════
            Deliberately dependency-free — a canvas burst and a couple of
            Web Audio oscillator notes cover this without pulling in a
            confetti/sound library for two seconds of animation. Fired for
-           every real win (points or voucher); a "Try Again" gets neither. */
+           a points spin and a redeemed voucher; a "Try Again" gets neither. */
         (function () {
             var confettiCanvas = document.getElementById('confettiCanvas');
             var cctx = confettiCanvas ? confettiCanvas.getContext('2d') : null;
@@ -1202,29 +1052,6 @@
                 window.fireConfetti();
                 window.playCelebrationChime();
             };
-        })();
-
-        (function () {
-            var btn = document.getElementById('voucherWinCopy');
-            if (!btn) return;
-            btn.addEventListener('click', function () {
-                var code = document.getElementById('voucherWinCode').textContent;
-                var done = function () {
-                    btn.innerHTML = '✓ Copied!';
-                    setTimeout(function () { btn.innerHTML = '<i class="bi bi-clipboard"></i> Copy Code'; }, 1800);
-                };
-                if (navigator.clipboard) {
-                    navigator.clipboard.writeText(code).then(done, done);
-                } else {
-                    var ta = document.createElement('textarea');
-                    ta.value = code;
-                    document.body.appendChild(ta);
-                    ta.select();
-                    try { document.execCommand('copy'); } catch (err) {}
-                    document.body.removeChild(ta);
-                    done();
-                }
-            });
         })();
 
         /* Copy buttons on the "prizes you are holding" panel above the wheel. */

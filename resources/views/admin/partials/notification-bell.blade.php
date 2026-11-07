@@ -151,6 +151,8 @@
     .pc-notif-title { margin: 0; font-size: 0.8rem; font-weight: 700; color: var(--pc-maroon); }
     .pc-notif-item.unread .pc-notif-title { font-weight: 900; }
     .pc-notif-msg { margin: 0.15rem 0 0; font-size: 0.75rem; line-height: 1.35; color: rgba(90, 62, 54, 0.85); }
+    .pc-notif-open { display: inline-flex; align-items: center; gap: 0.25rem; margin-top: 0.3rem; font-size: 0.72rem; font-weight: 800; color: #7C2D12; text-decoration: none; }
+    .pc-notif-open:hover { text-decoration: underline; }
     .pc-notif-ago { margin: 0.25rem 0 0; font-size: 0.63rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; color: rgba(90, 62, 54, 0.45); }
     .pc-notif-empty { padding: 1.4rem 0.9rem; text-align: center; font-size: 0.75rem; color: rgba(90, 62, 54, 0.5); margin: 0; }
 
@@ -301,6 +303,10 @@
                      '<div style="min-width:0;flex:1;">' +
                        '<p class="pc-notif-title">' + esc(n.title) + '</p>' +
                        '<p class="pc-notif-msg">' + esc(n.message) + '</p>' +
+                       (n.url
+                           ? '<a class="pc-notif-open" data-testid="notif-open-refund" href="' + esc(n.url) + '">' +
+                               'Open refund <i class="bi bi-arrow-right"></i></a>'
+                           : '') +
                        '<p class="pc-notif-ago">' + esc(n.ago) + '</p>' +
                      '</div>' +
                      '<button type="button" class="pc-notif-dismiss" data-anotif-dismiss ' +

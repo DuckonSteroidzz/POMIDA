@@ -114,7 +114,7 @@
 .bm .bm-icon-btn{width:36px;height:36px;border-radius:10px;border:1px solid transparent;background:transparent;color:var(--brown-soft);display:grid;place-items:center;font-size:1rem;transition:.15s}
 .bm .bm-icon-btn:hover,.bm .bm-icon-btn[aria-expanded=true]{background:var(--peach-soft);color:var(--peach-deep)}
 
-.bm .bm-table-wrap{overflow-x:auto}
+.bm .bm-table-wrap{overflow-x:auto;position:relative}/* positioned so the absolutely-placed .bm-sr header label is clipped by this frame instead of widening the whole page (QA Nov 5) */
 .bm .bm-table{width:100%;border-collapse:collapse}
 .bm .bm-table th{text-align:left;font-size:.68rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--brown-soft);padding:.8rem 1.25rem;background:var(--cream);border-bottom:1px solid var(--line)}
 .bm .bm-table td{padding:.9rem 1.25rem;border-bottom:1px solid #F7EDE4;vertical-align:middle}
@@ -285,9 +285,9 @@
   @endif
 
   <section class="bm-stats" aria-label="Branch totals">
-    <div class="bm-stat"><span class="bm-stat-ico"><i class="bi bi-shop"></i></span><div><p class="bm-stat-num" data-stat="total">{{ $branches->count() }}</p><p class="bm-stat-lbl">Total branches</p></div></div>
-    <div class="bm-stat"><span class="bm-stat-ico ok"><i class="bi bi-door-open"></i></span><div><p class="bm-stat-num" data-stat="open">{{ $openCount }}</p><p class="bm-stat-lbl">Open</p></div></div>
-    <div class="bm-stat"><span class="bm-stat-ico off"><i class="bi bi-door-closed"></i></span><div><p class="bm-stat-num" data-stat="inactive">{{ $branches->count() - $openCount }}</p><p class="bm-stat-lbl">Inactive</p></div></div>
+    <div class="bm-stat stat-fit"><span class="bm-stat-ico"><i class="bi bi-shop"></i></span><div><p class="bm-stat-num stat-fig" data-stat="total">{{ $branches->count() }}</p><p class="bm-stat-lbl">Total branches</p></div></div>
+    <div class="bm-stat stat-fit"><span class="bm-stat-ico ok"><i class="bi bi-door-open"></i></span><div><p class="bm-stat-num stat-fig" data-stat="open">{{ $openCount }}</p><p class="bm-stat-lbl">Open</p></div></div>
+    <div class="bm-stat stat-fit"><span class="bm-stat-ico off"><i class="bi bi-door-closed"></i></span><div><p class="bm-stat-num stat-fig" data-stat="inactive">{{ $branches->count() - $openCount }}</p><p class="bm-stat-lbl">Inactive</p></div></div>
   </section>
 
   <section class="bm-card">

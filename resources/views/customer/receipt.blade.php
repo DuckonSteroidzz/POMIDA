@@ -335,7 +335,16 @@
         <div class="no-print rise rise-1 mb-5 flex flex-wrap items-end justify-between gap-3 sm:mb-7">
             <div class="min-w-0">
                 <p class="text-[0.8125rem] font-bold uppercase tracking-[0.22em] text-peach-red/70">Order Receipt</p>
-                <h1 class="mt-1 font-display text-3xl font-black leading-tight tracking-tight text-peach-deep sm:text-4xl">Freshly baked, all settled.</h1>
+                {{-- A refund order is not "all settled" (QA, 5 Nov 2026). --}}
+                <h1 class="mt-1 font-display text-3xl font-black leading-tight tracking-tight text-peach-deep sm:text-4xl">
+                    @if($order->refundIsOwed())
+                        Cancelled — your refund is on the way.
+                    @elseif($order->isRefund())
+                        Cancelled and refunded.
+                    @else
+                        Freshly baked, all settled.
+                    @endif
+                </h1>
             </div>
             <div class="no-print flex items-center gap-2">
                 <button type="button" onclick="window.print()" class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-peach-soft bg-white px-4 py-2.5 text-sm font-bold text-peach-deep transition hover:border-peach hover:text-peach-red">
@@ -468,6 +477,22 @@
 
             {{-- ===== Right: details + thanks ===== --}}
             <aside class="rise rise-3 space-y-5 lg:sticky lg:top-24">
+
+                {{-- Refund status (QA, 5 Nov 2026) — same sentence as Order
+                     History and the "Refund sent" notification. --}}
+                @if($refundMessage = $order->customerRefundMessage())
+                <div class="rounded-[1.25rem] border p-5 sm:p-6 {{ $order->refundIsOwed() ? 'border-amber-200 bg-amber-50' : 'border-green-200 bg-green-50' }}"
+                     data-testid="receipt-refund-status" data-refund-state="{{ $order->refundIsOwed() ? 'owed' : 'refunded' }}">
+                    <p class="flex items-center gap-2 font-display text-base font-black tracking-tight {{ $order->refundIsOwed() ? 'text-amber-800' : 'text-green-800' }}">
+                        <i class="bi {{ $order->refundIsOwed() ? 'bi-hourglass-split' : 'bi-check-circle-fill' }}" aria-hidden="true"></i>
+                        {{ $order->refundIsOwed() ? 'Refund on the way' : 'Refund sent' }}
+                    </p>
+                    <p class="mt-1.5 text-sm font-semibold leading-relaxed {{ $order->refundIsOwed() ? 'text-amber-900' : 'text-green-900' }}">{{ $refundMessage }}</p>
+                    @if($order->refundIsOwed())
+                    <p class="mt-1.5 text-xs font-medium leading-relaxed text-peach-deep/60">Staff send it by hand from the cafe's GCash. You'll get a notification when it's sent.</p>
+                    @endif
+                </div>
+                @endif
 
                 <div class="card-surface-lg p-5 sm:p-6">
                     <h3 class="mb-4 font-display text-base font-black tracking-tight text-peach-deep sm:text-lg">Order Details</h3>

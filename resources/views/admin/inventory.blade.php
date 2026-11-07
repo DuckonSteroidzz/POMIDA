@@ -120,20 +120,20 @@
 
 {{-- ── Stat strip ── --}}
 <div class="iv-stats">
-    <button type="button" class="iv-stat" data-status="" onclick="ivSetStatus('')">
-        <span class="iv-stat-num">{{ $countTotal }}</span>
+    <button type="button" class="iv-stat stat-fit" data-status="" onclick="ivSetStatus('')">
+        <span class="iv-stat-num stat-fig">{{ $countTotal }}</span>
         <span class="iv-stat-label">All Items</span>
     </button>
-    <button type="button" class="iv-stat iv-stat-ok" data-status="in" onclick="ivSetStatus('in')">
-        <span class="iv-stat-num">{{ $countOk }}</span>
+    <button type="button" class="iv-stat stat-fit iv-stat-ok" data-status="in" onclick="ivSetStatus('in')">
+        <span class="iv-stat-num stat-fig">{{ $countOk }}</span>
         <span class="iv-stat-label">In Stock</span>
     </button>
-    <button type="button" class="iv-stat iv-stat-low" data-status="low" onclick="ivSetStatus('low')">
-        <span class="iv-stat-num">{{ $countLow }}</span>
+    <button type="button" class="iv-stat stat-fit iv-stat-low" data-status="low" onclick="ivSetStatus('low')">
+        <span class="iv-stat-num stat-fig">{{ $countLow }}</span>
         <span class="iv-stat-label">Low Stock</span>
     </button>
-    <button type="button" class="iv-stat iv-stat-out" data-status="out" onclick="ivSetStatus('out')">
-        <span class="iv-stat-num">{{ $countOut }}</span>
+    <button type="button" class="iv-stat stat-fit iv-stat-out" data-status="out" onclick="ivSetStatus('out')">
+        <span class="iv-stat-num stat-fig">{{ $countOut }}</span>
         <span class="iv-stat-label">Out of Stock</span>
     </button>
     {{--
@@ -144,8 +144,9 @@
         so it reads as one family of tiles; cursor:default only, so it does
         not invite a click that would do nothing.
     --}}
-    <div class="iv-stat" style="cursor:default;">
-        <span class="iv-stat-num">₱{{ number_format($totalStockValue, 2) }}</span>
+    @php $ivValueText = '₱' . number_format($totalStockValue, 2); @endphp
+    <div class="iv-stat stat-fit" style="cursor:default;">
+        <span class="iv-stat-num stat-fig" {!! \App\Support\StatFigure::attrs($ivValueText) !!}>{{ $ivValueText }}</span>
         <span class="iv-stat-label">Total Stock Value</span>
     </div>
 </div>
@@ -514,7 +515,7 @@
             <div class="iv-grid-3">
                 <div class="iv-field">
                     <label class="iv-label">Quantity <span class="iv-req">*</span></label>
-                    <input type="number" name="quantity" id="itemQuantity" class="iv-input" step="0.001" min="0" value="{{ old('quantity') }}" required>
+                    <input type="number" name="quantity" id="itemQuantity" class="iv-input" step="0.001" min="0" max="{{ \App\Support\InputLimits::STOCK_MAX }}" value="{{ old('quantity') }}" required>
                 </div>
                 <div class="iv-field">
                     <label class="iv-label">Unit <span class="iv-req">*</span></label>
@@ -527,14 +528,14 @@
                 </div>
                 <div class="iv-field">
                     <label class="iv-label">Low Stock Alert</label>
-                    <input type="number" name="low_stock_alert" id="itemLow" class="iv-input" step="0.001" min="0" value="{{ old('low_stock_alert') }}">
+                    <input type="number" name="low_stock_alert" id="itemLow" class="iv-input" step="0.001" min="0" max="{{ \App\Support\InputLimits::STOCK_MAX }}" value="{{ old('low_stock_alert') }}">
                 </div>
             </div>
 
             <div class="iv-grid-2">
                 <div class="iv-field">
                     <label class="iv-label">Unit Cost (₱)</label>
-                    <input type="number" name="unit_cost" id="itemCost" class="iv-input" step="0.01" min="0" value="{{ old('unit_cost') }}">
+                    <input type="number" name="unit_cost" id="itemCost" class="iv-input" step="0.01" min="0" max="{{ \App\Support\InputLimits::UNIT_COST_MAX }}" value="{{ old('unit_cost') }}">
                 </div>
                 <div class="iv-field">
                     <label class="iv-label">Supplier</label>
@@ -569,7 +570,7 @@
             @csrf
             <div class="iv-field">
                 <label class="iv-label">Amount <span id="stockUnit"></span></label>
-                <input type="number" name="amount" id="stockAmount" class="iv-input" step="0.001" min="0.001" required autofocus>
+                <input type="number" name="amount" id="stockAmount" class="iv-input" step="0.001" min="0.001" max="{{ \App\Support\InputLimits::STOCK_MAX }}" required autofocus>
             </div>
             <div class="iv-field">
                 <label class="iv-label">Note (Optional)</label>
@@ -776,8 +777,12 @@
     @media (min-width: 768px) {
         .iv-header { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
         .iv-actions { justify-content: flex-end; }
-        {{-- 5 tiles now (the 4 status filters + Total Stock Value). --}}
-        .iv-stats { grid-template-columns: repeat(5, minmax(0,1fr)); }
+        {{-- 5 tiles now (the 4 status filters + Total Stock Value). Between
+             768 and 1199 the sidebar leaves each of five tiles ~100px, too
+             narrow for a seven-figure amount (QA Nov 5), so the amount takes
+             its own full row there, as it already does on phones. --}}
+        .iv-stats { grid-template-columns: repeat(4, minmax(0,1fr)); }
+        .iv-stats > :last-child { grid-column: 1 / -1; }
         .iv-pager { grid-template-columns: minmax(0,1fr) auto; align-items: center; }
         .iv-pager-nav { justify-content: flex-end; }
 
@@ -797,6 +802,11 @@
             background-size: 40px 100%, 40px 100%, 6px 100%, 6px 100%;
             background-attachment: local, local, scroll, scroll;
         }
+    }
+
+    @media (min-width: 1200px) {
+        .iv-stats { grid-template-columns: repeat(5, minmax(0,1fr)); }
+        .iv-stats > :last-child { grid-column: auto; }
     }
 
     /* ── Mobile: rows become cards ── */

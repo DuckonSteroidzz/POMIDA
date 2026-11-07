@@ -57,9 +57,9 @@
     @media (max-width: 1100px) { .ads-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .ads-stat { min-width: 0; background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1rem; box-shadow: 0 10px 30px -18px rgba(139, 26, 26, 0.45); }
     .ads-stat-icon { float: right; font-size: 1.3rem; line-height: 1; }
-    .ads-stat-num { font-size: 1.5rem; font-weight: 700; line-height: 1.2; color: #8B1A1A; margin: 0; }
+    .ads-stat-num { --fig-max: 1.5rem; font-size: 1.5rem; font-weight: 700; line-height: 1.2; color: #8B1A1A; margin: 0; }
     .ads-stat-label { font-size: 0.78rem; color: #9A837B; margin: 0; }
-    @media (max-width: 640px) { .ads-stat-num { font-size: 1.25rem; } }
+    @media (max-width: 640px) { .ads-stat-num { --fig-max: 1.25rem; font-size: 1.25rem; } }
 
     .ads-card { background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.2rem; min-width: 0; box-shadow: 0 10px 30px -18px rgba(139, 26, 26, 0.45); }
     @media (max-width: 640px) { .ads-card { padding: 1rem; } }
@@ -222,21 +222,21 @@
      viewing, whatever the list's filters say. "Live now" is the rule the
      Game and Menu pages use (Ad::scopeLiveNow). --}}
 <div class="ads-stats" data-testid="ad-stats">
-    <div class="ads-stat">
+    <div class="ads-stat stat-fit">
         <span class="ads-stat-icon" aria-hidden="true">📣</span>
-        <p class="ads-stat-num" data-ad-stat="total">{{ number_format($adStats['total']) }}</p><p class="ads-stat-label">Total ads</p>
+        <p class="ads-stat-num stat-fig" data-ad-stat="total">{{ number_format($adStats['total']) }}</p><p class="ads-stat-label">Total ads</p>
     </div>
-    <div class="ads-stat">
+    <div class="ads-stat stat-fit">
         <span class="ads-stat-icon" aria-hidden="true">✅</span>
-        <p class="ads-stat-num" data-ad-stat="live">{{ number_format($adStats['live']) }}</p><p class="ads-stat-label">Live now</p>
+        <p class="ads-stat-num stat-fig" data-ad-stat="live">{{ number_format($adStats['live']) }}</p><p class="ads-stat-label">Live now</p>
     </div>
-    <div class="ads-stat">
+    <div class="ads-stat stat-fit">
         <span class="ads-stat-icon" aria-hidden="true">🎮</span>
-        <p class="ads-stat-num" data-ad-stat="game">{{ number_format($adStats['game']) }}</p><p class="ads-stat-label">Game Page</p>
+        <p class="ads-stat-num stat-fig" data-ad-stat="game">{{ number_format($adStats['game']) }}</p><p class="ads-stat-label">Game Page</p>
     </div>
-    <div class="ads-stat">
+    <div class="ads-stat stat-fit">
         <span class="ads-stat-icon" aria-hidden="true">📋</span>
-        <p class="ads-stat-num" data-ad-stat="menu">{{ number_format($adStats['menu']) }}</p><p class="ads-stat-label">Menu Page</p>
+        <p class="ads-stat-num stat-fig" data-ad-stat="menu">{{ number_format($adStats['menu']) }}</p><p class="ads-stat-label">Menu Page</p>
     </div>
 </div>
 

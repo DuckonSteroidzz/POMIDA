@@ -3,13 +3,15 @@
 namespace App\Support;
 
 /**
- * One rule, applied once: never hand a spreadsheet a cell it will execute.
+ * Two rules, applied once, for every free-text cell written to a CSV: never
+ * hand a spreadsheet a cell it will EXECUTE, and never hand it a cell it will
+ * RE-INTERPRET as a number.
  *
- * Menu item names, ingredient names and bottleneck names are all user-entered
- * free text. Excel, LibreOffice Calc and Google Sheets all treat a cell whose
- * first character is =, +, - or @ as a FORMULA rather than as text, so an
- * ingredient saved as `=HYPERLINK("http://evil","Click")` — or the far more
- * mundane `-Sauce` — stops being a label the moment the exported file is
+ * 1. Formulas. Menu item names, ingredient names and bottleneck names are all
+ * user-entered free text. Excel, LibreOffice Calc and Google Sheets all treat a
+ * cell whose first character is =, +, - or @ as a FORMULA rather than as text,
+ * so an ingredient saved as `=HYPERLINK("http://evil","Click")` — or the far
+ * more mundane `-Sauce` — stops being a label the moment the exported file is
  * opened. `fputcsv()` does not help here: quoting is about the CSV grammar
  * (commas, quotes, newlines), and a correctly quoted "=cmd" is still parsed as
  * a formula once the quotes are stripped by the reader.
@@ -20,12 +22,20 @@ namespace App\Support;
  * nothing is silently lost from the export — `-Sauce` still reads `-Sauce` in
  * the cell, it just no longer reads as "subtract Sauce".
  *
+ * 2. Numbers that were never numbers (QA Nov 5: a cell read 1.11111E+46).
+ * Quoting does not stop a spreadsheet from parsing a cell made only of digits
+ * as a NUMBER. A 47-digit item name became 1.11111E+46 and its digits were
+ * gone; a 16-digit ID loses everything past the 15th digit; a phone number or
+ * table label written `007` loses its leading zeros. Such a cell is written as
+ * `="digits"`, which Excel, LibreOffice and Google Sheets all show as the text
+ * between the quotes. It is only ever built from a string that already matched
+ * the digits-only pattern below, so it cannot carry anything executable.
+ *
  * Deliberately NOT a generic export framework (Phase 2d explicitly rules one
- * out): one static method, applied to the free-text cells of the three CSV
- * exports that have them. Numbers, dates and our own fixed labels do not go
- * through it — they cannot contain user input, and putting `'` in front of a
- * formatted number would break the column's arithmetic in the spreadsheet for
- * no gain.
+ * out): one static method, applied to the free-text cells of the CSV exports
+ * that have them. Real numbers and dates (money, quantities) do not go through
+ * it — they stay numeric, which is the point of the second rule — and our own
+ * fixed labels cannot contain user input.
  */
 final class Csv
 {
@@ -40,6 +50,13 @@ final class Csv
     private const TRIGGERS = ['=', '+', '-', '@', "\t", "\r"];
 
     /**
+     * Digits-only text a spreadsheet would turn into a number: 12 or more
+     * digits (General format shows 12+ as scientific and keeps 15), or any
+     * digit string with a leading zero, or e-notation such as "1e46".
+     */
+    private const NUMBER_LOOKING = '/^(?:\d{12,}|0\d+|\d+(?:\.\d+)?[eE][+-]?\d+)$/D';
+
+    /**
      * A cell safe to write into a CSV that a spreadsheet will open.
      *
      * Non-strings pass through untouched: an int, a float or null cannot carry
@@ -50,6 +67,10 @@ final class Csv
     {
         if (!is_string($value) || $value === '') {
             return $value;
+        }
+
+        if (preg_match(self::NUMBER_LOOKING, $value) === 1) {
+            return '="' . $value . '"';
         }
 
         return in_array($value[0], self::TRIGGERS, true)

@@ -1383,7 +1383,7 @@ private function switchBranch($branchId): void
             $cart = session()->get('cart', []);
 
             $itemId = $request->input('item_id');
-            $quantity = (int) $request->input('quantity', 1);
+            $quantity = min((int) $request->input('quantity', 1), \App\Support\InputLimits::ORDER_QTY_MAX);
             $selectedOptions = $request->input('options', []);
 
             $optionDetails = [];
@@ -1499,7 +1499,7 @@ private function switchBranch($branchId): void
             $unitPrice = $basePrice + $optionsTotal;
 
             if (isset($cart[$cartKey])) {
-                $cart[$cartKey]['quantity'] += $quantity;
+                $cart[$cartKey]['quantity'] = min($cart[$cartKey]['quantity'] + $quantity, \App\Support\InputLimits::ORDER_QTY_MAX);
             } else {
                 $cart[$cartKey] = [
                     'menu_item_id' => $itemId,
@@ -1781,7 +1781,7 @@ private function switchBranch($branchId): void
         }
 
         $cart = session()->get('cart', []);
-        $newQty = (int) $request->input('quantity');
+        $newQty = min((int) $request->input('quantity'), \App\Support\InputLimits::ORDER_QTY_MAX);
 
         /*
          * Stock guard for the +/- quantity control (Sept 2026).
@@ -2491,7 +2491,11 @@ private function switchBranch($branchId): void
             ? \App\Services\FreeDesserts::rewardsFor($customer)
             : collect();
 
-        return view('customer.vouchers', compact('userVouchers', 'freeDessert', 'loyaltyRewards', 'rewardBranch', 'streakOn', 'cardBranch', 'cardBranches'));
+        // "Redeem your points" (Nov 2026): the same list as Spin & Win.
+        $pointsBalance = $customer->wheelPoints();
+        $redeemPrizes = WheelPrizes::forVisitor($pointsBalance);
+
+        return view('customer.vouchers', compact('userVouchers', 'freeDessert', 'loyaltyRewards', 'rewardBranch', 'streakOn', 'cardBranch', 'cardBranches', 'pointsBalance', 'redeemPrizes'));
     }
 
     // ══════════ HELP REQUEST ══════════
@@ -2917,8 +2921,8 @@ private function switchBranch($branchId): void
             ? []
             : GuestVoucherClaims::forDisplay();
 
-        // "What you can win", with each prize's status for this visitor. The
-        // same rule the picker draws from: see App\Support\WheelPrizes.
+        // "Redeem your points", with each reward's status for this visitor. The
+        // same rule the Redeem button is checked against: App\Support\WheelPrizes.
         $wheelPrizes = WheelPrizes::forVisitor($pointsBalance);
 
         // The wheel's segments come from the server so the odds live in one
@@ -3004,28 +3008,6 @@ private function switchBranch($branchId): void
     ];
 
     /**
-     * The voucher a spin wins at this point total, or null.
-     *
-     * ONE definition, used by both the guest branch and the signed-in branch of
-     * addPoints(), so the two can never drift into offering different prizes on
-     * the same points. Everything a wheel prize must be lives in
-     * App\Support\WheelPrizes, which the game page's list reads as well: this
-     * draws only from what that list would call "You can win this". The holding
-     * limit is checked by the callers, before they get here.
-     *
-     * @param  int[]  $excludeVoucherIds  vouchers this player has already won
-     */
-    private function winnableVoucherFor(int $totalPoints, array $excludeVoucherIds): ?\App\Models\Voucher
-    {
-        return WheelPrizes::pick(WheelPrizes::evaluate(
-            $totalPoints,
-            $excludeVoucherIds,
-            0,
-            session('branch_id') ? (int) session('branch_id') : null
-        ));
-    }
-
-    /**
      * Scope a Voucher/Ad query to what THIS customer's current branch may be
      * shown or awarded: their own branch's rows, plus every GLOBAL (NULL
      * branch_id) row. NULL = global is the established convention for both
@@ -3072,14 +3054,6 @@ private function switchBranch($branchId): void
     private function gameIsEnabled(): bool
     {
         return Setting::gameEnabled();
-    }
-
-    /** "10% off" / "₱50.00 off", for the win panel. */
-    private function voucherDiscountText(\App\Models\Voucher $voucher): string
-    {
-        return $voucher->discount_type === 'percent'
-            ? $voucher->discount_value . '% off'
-            : '₱' . number_format($voucher->discount_value, 2) . ' off';
     }
 
     public function addPoints(Request $request)
@@ -3207,107 +3181,67 @@ private function switchBranch($branchId): void
             ), 422);
         }
 
-        // What the server's wheel awarded. Everything below (guest points,
-        // account points, the reward threshold, a wheel voucher and its
-        // "valid starting tomorrow" window) runs on this value, unchanged.
+        // What the server's wheel awarded. Everything below runs on this value.
         $points = (int) self::WHEEL_SEGMENTS[$segment]['points'];
 
         /*
-         * GUEST WIN.
+         * A SPIN ONLY EARNS (QA, Nov 5 2026).
          *
-         * This branch used to award session points and nothing else — no
-         * voucher was ever minted for a guest, so a guest could not win one,
-         * could not hold a claim, and therefore (item 30) could never redeem
-         * one. What the team described at the defense, "save the code and type
-         * it in next time", simply did not exist.
+         * Until now this was also where a voucher was won: the moment the
+         * balance covered a prize, the spin took the points and minted the
+         * claim, so a customer who already had plenty of points had to order
+         * and spin again to get a promo added later. Now nothing here deducts a
+         * point or issues a voucher. The customer presses Redeem instead
+         * (redeemPoints() / App\Services\PointsRedeem), whenever they like.
          *
-         * A guest now wins the same prizes on the same thresholds as a signed-in
-         * customer. The difference is only in how the prize is HELD: with no
-         * account to key a claim to, the claim is ownerless and carries its own
-         * unique, single-use claim code, which is handed to the customer to
-         * keep. See App\Services\VoucherClaims for why that does not reopen the
-         * item-30 bypass.
+         * A guest's points still live in the session. The route is
+         * session-blocking, so this read-and-write cannot interleave with a
+         * redeem in another tab of the same session.
          */
         if (!Auth::guard('customer')->check()) {
-            $totalPoints = session('guest_points', 0) + $points;
+            $totalPoints = (int) session('guest_points', 0) + $points;
 
             session()->put('guest_points', $totalPoints);
 
-            $voucherData = null;
-            $claimCode   = null;
-
-            // Same ceiling the signed-in path applies below, so playing as a
-            // guest cannot be used to hoard more prizes than an account can.
-            if (GuestVoucherClaims::unusedCount() < GuestVoucherClaims::MAX_UNUSED) {
-                // A guest is identified by their session, so "already won"
-                // means "already won in this session". What they take away is
-                // the claim code, not this list.
-                $earnedVoucher = $this->winnableVoucherFor(
-                    $totalPoints,
-                    GuestVoucherClaims::all()->pluck('voucher_id')->map('intval')->all()
-                );
-
-                if ($earnedVoucher) {
-                    $totalPoints -= (int) $earnedVoucher->points_required;
-                    session()->put('guest_points', $totalPoints);
-
-                    $claim = VoucherClaims::mintForGuest($earnedVoucher);
-                    GuestVoucherClaims::remember($claim);
-
-                    $claimCode = VoucherClaims::display($claim->claim_code);
-
-                    $voucherData = [
-                        'code'        => $earnedVoucher->code,
-                        'claim_code'  => $claimCode,
-                        'description' => $earnedVoucher->description
-                            ?? $this->voucherDiscountText($earnedVoucher),
-                        'valid_from'  => $claim->valid_from?->toDateString(),
-                        'expires_at'  => ShopDay::formatExpiry($earnedVoucher->expires_at) ?: null,
-                        'message'     => 'Valid now — use it on your next order.',
-                        'points_spent' => (int) $earnedVoucher->points_required,
-                    ];
-                }
-            }
+            $prizes = WheelPrizes::forVisitor($totalPoints);
 
             return response()->json(array_merge([
                 'success'      => true,
                 'total_points' => $totalPoints,
-                'voucher'      => $voucherData,
+                'can_redeem'   => $this->redeemHint($prizes),
                 'next_voucher' => null,
                 'points_needed' => 0,
                 // Renamed from 'message' so it cannot shadow the spin-state
-                // message the counter renders. Nothing in the page read it.
-                'guest_notice' => $voucherData
-                    ? 'Save your claim code — it is the only way to use this voucher later.'
-                    : 'Keep spinning to win a voucher!',
+                // message the counter renders. Nothing in the page reads it.
+                'guest_notice' => 'Keep spinning to earn points, then redeem them for a voucher.',
                 // What an account would add (config/loyalty.php), shown under
                 // the spin result. Null when every bonus is switched off.
                 'signup_teaser' => \App\Services\Loyalty::guestTeaser(),
-                'prizes'        => WheelPrizes::forJson(WheelPrizes::forVisitor($totalPoints)),
+                'prizes'        => WheelPrizes::forJson($prizes),
             ], $this->spinResultState($spinNumber, $segment)));
         }
 
         /** @var \App\Models\User $user */
         $user = Auth::guard('customer')->user();
 
-        $user->points += $points;
-        $user->save();
+        /*
+         * Credited in the database, not as `$user->points += $points; save()`.
+         * $user was loaded when this request began; if another tab redeemed
+         * points in between, saving the old figure plus this spin wrote the
+         * spent points straight back. An increment adds to whatever is there.
+         */
+        \App\Models\User::whereKey($user->id)->increment('points', $points);
 
         /*
-         * BONUS POINTS COUNT TOWARDS THE WHEEL VOUCHER (Oct 2026).
-         *
-         * Registered-customer bonuses (App\Services\Loyalty) live in
-         * users.bonus_points. They are added here — read fresh, since a
-         * bonus may have been credited since this request loaded the user —
-         * so they do the one thing points can do: bring the next wheel
-         * voucher closer. A voucher's cost is taken from the spin balance
-         * first and only the remainder from the bonus balance. (Neither
-         * balance is reset when an order is placed any more — see
-         * App\Services\SpinPoints.)
+         * The total shown is the spin balance plus the bonus balance
+         * (App\Services\Loyalty, users.bonus_points), read fresh: both count
+         * towards a voucher, and Redeem spends the spin balance first.
          */
-        $bonusPoints = (int) \App\Models\User::whereKey($user->id)->value('bonus_points');
+        $balances = \App\Models\User::whereKey($user->id)->first(['points', 'bonus_points']);
+        $user->points = (int) $balances->points;
+        $user->syncOriginalAttribute('points');
 
-        $totalPoints = $user->points + $bonusPoints;
+        $totalPoints = (int) $balances->points + (int) $balances->bonus_points;
 
         /*
          * NO NOTIFICATION AT A LIFETIME-POINTS THRESHOLD.
@@ -3320,122 +3254,7 @@ private function switchBranch($branchId): void
          * credited; nothing else happens here.
          */
 
-        // Check kung may 2 na vouchers ang user — hindi na pwede kumita pa.
-        // Only claims that can still be spent count: see WheelPrizes::spendable().
-        $existingVoucherCount = WheelPrizes::heldCount();
-
-        $voucherData = null;
-
-        if ($existingVoucherCount < 2) {
-            /*
-             * Any voucher this customer has EVER been awarded, used or not.
-             *
-             * This used to filter on `is_used = false`, which meant a voucher
-             * went back into the eligible pool the moment the customer spent it
-             * — and the insert below then collided with user_vouchers'
-             * UNIQUE(user_id, voucher_id) and threw a 500 straight out of the
-             * spin endpoint. Reproduced live: win ZZWHEEL, redeem it at
-             * checkout, spin back up to the threshold, and every qualifying
-             * spin returned HTTP 500 (SQLSTATE 23000, "Duplicate entry
-             * '32-37'"). The unique key is the authoritative statement of
-             * intent — a given wheel voucher is winnable once per customer — so
-             * this matches it instead of contradicting it.
-             */
-            $alreadyWon = \App\Models\UserVoucher::where('user_id', $user->id)
-                ->pluck('voucher_id')
-                ->map('intval')
-                ->all();
-
-            // Same selection rules the guest branch above uses, from one place,
-            // so a guest and a signed-in customer can never be offered
-            // different prizes on the same points.
-            $earnedVoucher = $this->winnableVoucherFor($totalPoints, $alreadyWon);
-
-            if ($earnedVoucher) {
-                // Deduct points — spin balance first, then bonus balance.
-                $cost      = (int) $earnedVoucher->points_required;
-                $fromSpin  = min((int) $user->points, $cost);
-                $fromBonus = $cost - $fromSpin;
-
-                $user->points -= $fromSpin;
-                $user->save();
-
-                if ($fromBonus > 0) {
-                    // Atomic and floored, so a concurrent bonus credit is not
-                    // overwritten and the balance can never go negative.
-                    \App\Models\User::whereKey($user->id)
-                        ->where('bonus_points', '>=', $fromBonus)
-                        ->decrement('bonus_points', $fromBonus);
-                }
-
-                $totalPoints -= $cost;
-
-                // Valid from = today (pwede nang gamitin sa susunod na order,
-                // hindi lang sa order na kinuha ang panalo)
-                // The shop's date (ShopDay), so a win just after midnight in
-                // Manila is dated that day and not UTC's previous one.
-                $validFrom = ShopDay::todayString();
-
-                /*
-                 * This window belongs on THIS CUSTOMER'S claim, not on the
-                 * shared voucher row. A wheel-won voucher code can be won by
-                 * many different customers over time (see the UNIQUE(order_id)
-                 * -free, per-user_id user_vouchers rows this creates one of),
-                 * and they do not all win it on the same day. Writing
-                 * valid_from onto $earnedVoucher used to mean the SECOND
-                 * customer who ever won a given code silently moved the
-                 * FIRST customer's redemption window too — reproduced live:
-                 * winner A's effective valid_from visibly changed the moment
-                 * winner B won the same voucher, with no action from A at all.
-                 *
-                 * vouchers.valid_from is untouched here and keeps its original,
-                 * correct job: a single shared launch date for a PUBLIC promo
-                 * code, which has no per-customer user_vouchers row to carry
-                 * it on instead. See Voucher::redemptionErrorFor() for the
-                 * matching read-side split.
-                 */
-                /*
-                 * A signed-in win now mints a CLAIM CODE too (2026-09-01).
-                 *
-                 * It used to be omitted deliberately — the claim lived on the
-                 * account and there was nothing to hand over. That made the
-                 * Dine-In story impossible rather than merely blocked: a
-                 * Dine-In customer never creates an account, so a prize won by
-                 * a friend could not reach them because no transferable
-                 * artefact existed at all.
-                 *
-                 * The claim is still recorded against the winner's account, so
-                 * it still appears on their Vouchers page and still counts
-                 * against the one-wheel-voucher-per-account cap. What changed
-                 * is that it also has a code they can pass on.
-                 */
-                $accountClaim = \App\Models\UserVoucher::create([
-                    'user_id'       => $user->id,
-                    'voucher_id'    => $earnedVoucher->id,
-                    'claim_code'    => \App\Services\VoucherClaims::mintCode(),
-                    'acquired_date' => ShopDay::todayString(),
-                    'valid_from'    => $validFrom,
-                    'is_used'       => false,
-                ]);
-
-                $discountText = $this->voucherDiscountText($earnedVoucher);
-
-                $voucherData = [
-                    'code'        => $earnedVoucher->code,
-                    // A signed-in winner now gets a claim code as well, so the
-                    // prize can be handed to a Dine-In customer who has no
-                    // account. It is shown to them the same way a guest's is.
-                    'claim_code'  => \App\Services\VoucherClaims::display($accountClaim->claim_code),
-                    'description' => ($earnedVoucher->description ?? $discountText),
-                    'valid_from'  => $validFrom,
-                    'expires_at'  => ShopDay::formatExpiry($earnedVoucher->expires_at) ?: null,
-                    'message'     => 'Valid now — use it on your next order.',
-                    'points_spent' => $cost,
-                ];
-            }
-        }
-
-        // Next voucher to earn: only a prize more points alone would unlock, so
+        // Next voucher to aim for: only one more points alone would unlock, so
         // the hint can never name one from another branch (audit B6), one already
         // won, one sold out or one that has not started.
         $prizes = WheelPrizes::forVisitor($totalPoints);
@@ -3444,14 +3263,98 @@ private function switchBranch($branchId): void
         return response()->json(array_merge([
             'success'        => true,
             'total_points'   => $totalPoints,
-            'voucher'        => $voucherData,
+            'can_redeem'     => $this->redeemHint($prizes),
             'next_voucher'   => $nextVoucher ? $nextVoucher->description : null,
             'points_needed'  => $nextVoucher
                 ? ($nextVoucher->points_required - $totalPoints)
                 : 0,
-            'voucher_slots'  => 2 - $existingVoucherCount,
+            'voucher_slots'  => GuestVoucherClaims::MAX_UNUSED - WheelPrizes::heldCount(),
             'prizes'         => WheelPrizes::forJson($prizes),
         ], $this->spinResultState($spinNumber, $segment)));
+    }
+
+    /**
+     * "₱50 OFF" when the new balance already covers a voucher this visitor can
+     * redeem, for the "You have enough points to redeem ..." line after a spin.
+     */
+    private function redeemHint(array $prizes): ?string
+    {
+        $ready = WheelPrizes::firstRedeemable($prizes);
+
+        return $ready ? WheelPrizes::rewardName($ready) : null;
+    }
+
+    /**
+     * Redeem points for a voucher (QA, Nov 5 2026): the Redeem button on Spin &
+     * Win and on Vouchers & Rewards. No spin and no new order needed.
+     *
+     * Everything is decided here, on the server, by App\Services\PointsRedeem
+     * against locked rows: once per customer, at most two unused, branch,
+     * start date, active / expired and usage limit, and enough points. A
+     * refusal is a 422 with the reason and nothing changed. Either way the
+     * reply carries the balance and every reward's status, so the page can
+     * repaint without a reload.
+     *
+     * Allowed while the Spin & Win switch is off: that switch stops spinning,
+     * and points already earned stay the customer's to use.
+     */
+    public function redeemPoints(Request $request)
+    {
+        $data = $request->validate([
+            'voucher_id' => ['required', 'integer', 'min:1'],
+        ]);
+
+        $branchId = session('branch_id') ? (int) session('branch_id') : null;
+        $signedIn = Auth::guard('customer')->check();
+
+        try {
+            $result = $signedIn
+                ? \App\Services\PointsRedeem::forAccount((int) Auth::guard('customer')->id(), (int) $data['voucher_id'], $branchId)
+                : \App\Services\PointsRedeem::forGuest((int) $data['voucher_id'], $branchId);
+        } catch (\App\Services\PointsRedeemRefused $refused) {
+            $total = $this->currentPoints();
+
+            return response()->json([
+                'success'      => false,
+                'status'       => $refused->status,
+                'message'      => $refused->getMessage(),
+                'total_points' => $total,
+                'prizes'       => WheelPrizes::forJson(WheelPrizes::forVisitor($total)),
+            ], 422);
+        }
+
+        /** @var \App\Models\Voucher $voucher */
+        $voucher = $result['voucher'];
+        $claim = $result['claim'];
+
+        return response()->json([
+            'success'      => true,
+            'total_points' => $result['total_points'],
+            // Shaped like the old spin win, so the code is shown the same way.
+            'voucher'      => [
+                'code'         => $voucher->code,
+                'claim_code'   => VoucherClaims::display($claim->claim_code),
+                'name'         => WheelPrizes::rewardName($voucher),
+                'description'  => $voucher->description,
+                'valid_from'   => $claim->valid_from?->toDateString(),
+                'expires_at'   => ShopDay::formatExpiry($voucher->expires_at) ?: null,
+                'message'      => 'Valid now — use it on your next order.',
+                'points_spent' => $result['points_spent'],
+            ],
+            'prizes'       => WheelPrizes::forJson(WheelPrizes::forVisitor($result['total_points'])),
+        ]);
+    }
+
+    /** This visitor's spendable points: account spin + bonus, or the guest's session total. */
+    private function currentPoints(): int
+    {
+        if (! Auth::guard('customer')->check()) {
+            return (int) session('guest_points', 0);
+        }
+
+        $row = \App\Models\User::whereKey(Auth::guard('customer')->id())->first(['points', 'bonus_points']);
+
+        return (int) ($row?->points ?? 0) + (int) ($row?->bonus_points ?? 0);
     }
 
     /**

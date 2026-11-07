@@ -547,7 +547,8 @@ class MenuOptionsSeniorFriendlyRedesignTest extends TestCase
         $priceField = substr($html, strpos($html, 'name="price"'), 400);
         $this->assertStringContainsString('required', $priceField);
         $this->assertStringContainsString('min="0.01"', $priceField);
-        $this->assertStringContainsString('max="99999999.99"', $priceField);
+        // Was 99999999.99 until QA Nov 5, when every price got one realistic cap.
+        $this->assertStringContainsString('max="' . \App\Support\InputLimits::PRICE_MAX . '"', $priceField);
     }
 
     public function test_the_server_still_refuses_a_missing_or_zero_or_negative_price(): void

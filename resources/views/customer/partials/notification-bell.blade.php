@@ -143,6 +143,8 @@
 
     [data-toast-type="gcash_approved"]              .toast-bar { background: #16A34A; }
     [data-toast-type="gcash_approved"]              .toast-ico { color: #16A34A; }
+    [data-toast-type="refund_sent"]                 .toast-bar { background: #16A34A; }
+    [data-toast-type="refund_sent"]                 .toast-ico { color: #16A34A; }
     [data-toast-type="gcash_rejected"]              .toast-bar { background: #B91C1C; }
     [data-toast-type="gcash_rejected"]              .toast-ico { color: #B91C1C; }
     [data-toast-type="gcash_awaiting_verification"] .toast-bar { background: #D97706; }
@@ -326,6 +328,7 @@
         gcash_approved:              'bi-check-circle-fill',
         gcash_rejected:              'bi-exclamation-octagon-fill',
         gcash_awaiting_verification: 'bi-hourglass-split',
+        refund_sent:                 'bi-cash-coin',
         new_order:                   'bi-bag-check-fill',
         points_reward_earned:        'bi-gift-fill',
         free_dessert_earned:         'bi-gift-fill',

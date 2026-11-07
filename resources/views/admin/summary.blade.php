@@ -138,9 +138,9 @@
 <div class="summary-kpi-grid">
 
     {{-- 1. Net Revenue — the money taken --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Net Revenue (Money Taken)</p>
-        <p class="kpi-value">₱{{ number_format($netRevenue, 2) }}</p>
+        <p class="kpi-value stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($netRevenue, 2)) !!}>₱{{ number_format($netRevenue, 2) }}</p>
         @if (is_null($revenueChangePercent))
             <span class="kpi-delta kpi-delta-neutral">No prior-period data</span>
         @else
@@ -152,47 +152,47 @@
     </div>
 
     {{-- 2. Gross Revenue — before discounts --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Gross Revenue (Before Discounts)</p>
-        <p class="kpi-value">₱{{ number_format($grossRevenue, 2) }}</p>
+        <p class="kpi-value stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($grossRevenue, 2)) !!}>₱{{ number_format($grossRevenue, 2) }}</p>
     </div>
 
     {{-- 3. Discounts given — the difference between the two above --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Discounts Given (PWD / Senior / Voucher)</p>
-        <p class="kpi-value">₱{{ number_format($totalDiscounts, 2) }}</p>
+        <p class="kpi-value stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($totalDiscounts, 2)) !!}>₱{{ number_format($totalDiscounts, 2) }}</p>
     </div>
 
     {{-- 4. Total COGS --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Total COGS (Ingredient Cost)</p>
-        <p class="kpi-value">₱{{ number_format($totalCogs, 2) }}</p>
+        <p class="kpi-value stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($totalCogs, 2)) !!}>₱{{ number_format($totalCogs, 2) }}</p>
     </div>
 
     {{-- 5. Gross Profit --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Gross Profit (Net Revenue &minus; COGS)</p>
-        <p class="kpi-value">₱{{ number_format($grossProfit, 2) }}</p>
+        <p class="kpi-value stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($grossProfit, 2)) !!}>₱{{ number_format($grossProfit, 2) }}</p>
     </div>
 
     {{-- 6. Gross Margin % --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Gross Margin (of Net Revenue)</p>
-        <p class="kpi-value">
+        <p class="kpi-value stat-fig">
             {{ is_null($grossMarginPercent) ? '—' : number_format($grossMarginPercent, 1) . '%' }}
         </p>
     </div>
 
     {{-- 7. Total Completed Orders --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Total Completed Orders</p>
-        <p class="kpi-value">{{ number_format($totalOrders) }}</p>
+        <p class="kpi-value stat-fig">{{ number_format($totalOrders) }}</p>
     </div>
 
     {{-- 8. Out-of-Stock Items --}}
-    <div class="kpi-card {{ $outOfStockCount > 0 ? 'kpi-card-warning' : '' }}">
+    <div class="stat-fit kpi-card {{ $outOfStockCount > 0 ? 'kpi-card-warning' : '' }}">
         <p class="kpi-label">Out-of-Stock Menu Items</p>
-        <p class="kpi-value">{{ number_format($outOfStockCount) }}</p>
+        <p class="kpi-value stat-fig">{{ number_format($outOfStockCount) }}</p>
         @if ($outOfStockCount > 0)
             <span class="kpi-delta kpi-delta-down">
                 <i class="bi bi-exclamation-triangle-fill"></i> Cannot be made right now
@@ -201,9 +201,9 @@
     </div>
 
     {{-- 9. Total Inventory Asset Value --}}
-    <div class="kpi-card">
+    <div class="stat-fit kpi-card">
         <p class="kpi-label">Total Inventory Asset Value</p>
-        <p class="kpi-value">₱{{ number_format($inventoryAssetValue, 2) }}</p>
+        <p class="kpi-value stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($inventoryAssetValue, 2)) !!}>₱{{ number_format($inventoryAssetValue, 2) }}</p>
     </div>
 
 </div>
@@ -514,7 +514,7 @@
 <style>
     .summary-kpi-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+        grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
         gap: 1rem;
     }
 
@@ -539,6 +539,7 @@
 
     .kpi-value {
         margin: 0;
+        --fig-max: 1.7rem;
         font-size: 1.7rem;
         font-weight: 800;
         color: #1F2937;

@@ -144,7 +144,7 @@
 
                             <div>
                                 <label class="form-label-custom" for="edit-contact-{{ $s->id }}">Contact Number</label>
-                                <input type="text" id="edit-contact-{{ $s->id }}" name="contact_number" maxlength="30"
+                                <input type="text" id="edit-contact-{{ $s->id }}" name="contact_number" maxlength="{{ \App\Support\InputLimits::PHONE_MAX }}"
                                     value="{{ $s->contact_number }}" autocomplete="off" class="form-control-custom">
                             </div>
 

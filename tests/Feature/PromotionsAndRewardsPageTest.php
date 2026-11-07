@@ -2,15 +2,14 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\Customer\AuthController;
 use App\Models\Branch;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Support\ShopDay;
+use App\Support\WheelPrizes;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Str;
-use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -280,22 +279,14 @@ class PromotionsAndRewardsPageTest extends TestCase
             $this->voucher(['points_required' => 10, 'max_uses' => 0, 'used_count' => 7]),     // unlimited: yes
         ];
 
-        // Ask the real picker (AuthController::winnableVoucherFor) over and over,
-        // excluding what it already returned, with plenty of points and no branch
-        // picked (globals only), until nothing is left.
-        $picker = new ReflectionMethod(AuthController::class, 'winnableVoucherFor');
-        $picker->setAccessible(true);
-        $controller = app(AuthController::class);
-
-        $this->withSession([]);
-        $picked = [];
-        for ($i = 0; $i < 200; $i++) {
-            $won = $picker->invoke($controller, 1_000_000, $picked);
-            if ($won === null) {
-                break;
-            }
-            $picked[] = $won->id;
-        }
+        // What a customer could redeem with plenty of points, nothing held and
+        // no branch picked (globals only): App\Support\WheelPrizes, the rule the
+        // Redeem button is checked against (a spin awards nothing since Nov 2026).
+        $picked = collect(WheelPrizes::evaluate(1_000_000, [], 0, null))
+            ->where('status', WheelPrizes::REDEEMABLE)
+            ->map(fn ($p) => (int) $p['voucher']->id)
+            ->values()
+            ->all();
 
         $expected = Voucher::onWheel()->whereNull('branch_id')->pluck('id')->all();
         sort($picked);

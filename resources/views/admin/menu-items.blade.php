@@ -657,14 +657,14 @@
             <div style="display: flex; gap: 0.75rem; margin-bottom: 0.85rem;">
                 <div style="flex: 1;">
                     <label class="form-label-custom">Price (₱)</label>
-                    <input type="number" name="price" id="itemPrice" class="form-control-custom" step="0.01" min="0" value="{{ old('price') }}" required style="margin-bottom:0;">
+                    <input type="number" name="price" id="itemPrice" class="form-control-custom" step="0.01" min="0" max="{{ \App\Support\InputLimits::PRICE_MAX }}" value="{{ old('price') }}" required style="margin-bottom:0;">
                     <small id="itemPriceNote" style="font-size:0.72rem;color:#4B5563;font-weight:500;display:none;">
                         Starting-from price: the lowest active size. Set prices in Sizes.
                     </small>
                 </div>
                 <div style="flex: 1;">
                     <label class="form-label-custom">Cost (₱)</label>
-                    <input type="number" name="cost" id="itemCost" class="form-control-custom" step="0.01" min="0" value="{{ old('cost') }}" style="margin-bottom:0;">
+                    <input type="number" name="cost" id="itemCost" class="form-control-custom" step="0.01" min="0" max="{{ \App\Support\InputLimits::PRICE_MAX }}" value="{{ old('cost') }}" style="margin-bottom:0;">
                     {{-- No directional word ("above"/"below") on purpose — the Cost
                          field's position relative to Recipe Ingredients could change
                          again, and a directional note is the kind of thing that quietly
@@ -709,11 +709,11 @@
                             <div class="size-enable-row">
                                 <div>
                                     <label class="form-label-custom" for="sizeEnableRegular-{{ $mi->id }}">Regular price (₱)</label>
-                                    <input type="number" id="sizeEnableRegular-{{ $mi->id }}" name="regular_price" form="sizeEnable-{{ $mi->id }}" class="form-control-custom" step="0.01" min="0.01" max="99999999.99" required autocomplete="off" style="margin-bottom:0;">
+                                    <input type="number" id="sizeEnableRegular-{{ $mi->id }}" name="regular_price" form="sizeEnable-{{ $mi->id }}" class="form-control-custom" step="0.01" min="0.01" max="{{ \App\Support\InputLimits::PRICE_MAX }}" required autocomplete="off" style="margin-bottom:0;">
                                 </div>
                                 <div>
                                     <label class="form-label-custom" for="sizeEnableLarge-{{ $mi->id }}">Large price (₱)</label>
-                                    <input type="number" id="sizeEnableLarge-{{ $mi->id }}" name="large_price" form="sizeEnable-{{ $mi->id }}" class="form-control-custom" step="0.01" min="0.01" max="99999999.99" required autocomplete="off" style="margin-bottom:0;">
+                                    <input type="number" id="sizeEnableLarge-{{ $mi->id }}" name="large_price" form="sizeEnable-{{ $mi->id }}" class="form-control-custom" step="0.01" min="0.01" max="{{ \App\Support\InputLimits::PRICE_MAX }}" required autocomplete="off" style="margin-bottom:0;">
                                 </div>
                                 <button type="submit" form="sizeEnable-{{ $mi->id }}" class="btn-primary-custom size-btn">
                                     <i class="bi bi-plus-circle"></i> Set up sizes
@@ -751,7 +751,7 @@
                                         <div class="size-edit-row">
                                             <div class="size-price-field">
                                                 <label class="form-label-custom" for="sizePrice-{{ $size->id }}">{{ $size->name }} price (₱)</label>
-                                                <input type="number" id="sizePrice-{{ $size->id }}" name="price" form="sizeUpdate-{{ $size->id }}" class="form-control-custom" step="0.01" min="0.01" max="99999999.99" value="{{ $size->price }}" required autocomplete="off" style="margin-bottom:0;">
+                                                <input type="number" id="sizePrice-{{ $size->id }}" name="price" form="sizeUpdate-{{ $size->id }}" class="form-control-custom" step="0.01" min="0.01" max="{{ \App\Support\InputLimits::PRICE_MAX }}" value="{{ $size->price }}" required autocomplete="off" style="margin-bottom:0;">
                                             </div>
                                             <label class="size-active-toggle" for="sizeActive-{{ $size->id }}">
                                                 <input type="hidden" name="is_active" value="0" form="sizeUpdate-{{ $size->id }}">
@@ -836,7 +836,7 @@
                         <option value="" disabled>No inventory for this branch yet</option>
                     @endif
                 </select>
-                <input type="number" name="inventory_amount_used" id="itemAmountUsed" step="any" min="0" value="{{ old('inventory_amount_used', 0) }}" tabindex="-1">
+                <input type="number" name="inventory_amount_used" id="itemAmountUsed" step="any" min="0" max="{{ \App\Support\InputLimits::RECIPE_QTY_MAX }}" value="{{ old('inventory_amount_used', 0) }}" tabindex="-1">
             </div>
 
             <div id="currentImageWrapper" style="display:none; margin-bottom: 0.85rem;">

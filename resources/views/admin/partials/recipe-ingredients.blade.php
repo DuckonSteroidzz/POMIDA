@@ -239,7 +239,7 @@
         <label class="form-label-custom">
             Quantity used per order <span class="recipe-unit-label" style="color:#4B5563; font-weight:600;"></span>
         </label>
-        <input type="number" class="form-control-custom recipe-ing-qty" step="0.001" min="0.001" aria-describedby="recipe-qty-help-{{ $blockId }}" style="margin-bottom:0;">
+        <input type="number" class="form-control-custom recipe-ing-qty" step="0.001" min="0.001" max="{{ \App\Support\InputLimits::RECIPE_QTY_MAX }}" aria-describedby="recipe-qty-help-{{ $blockId }}" style="margin-bottom:0;">
     </div>
     <button type="button" class="btn-primary-custom recipe-ing-add-btn" style="padding:0.5rem 0.9rem;">
         <i class="bi bi-plus"></i> Add

@@ -187,6 +187,18 @@ return Application::configure(basePath: dirname(__DIR__))
             if ($request->routeIs('customer.login.post') || $request->routeIs('admin.login.post')) {
                 $loginRoute = $request->routeIs('admin.login.post') ? 'admin.login' : 'customer.login';
 
+                // A staff login page that was left open while another tab signed
+                // in (QA, 6 Nov 2026): "your session expired" would be wrong, the
+                // browser is signed in. The login page now says who, and offers
+                // Continue or Log out and switch, so go there with that sentence.
+                if ($loginRoute === 'admin.login' && ! $request->expectsJson()
+                    && ($signedIn = \App\Support\StaffAccount::current())) {
+                    return redirect()->route('admin.login')->withErrors([
+                        'session' => "You're already signed in as " . \App\Support\StaffAccount::nameAndRole($signedIn)
+                            . '. Log out first to sign in with a different account.',
+                    ]);
+                }
+
                 if ($request->expectsJson()) {
                     return response()->json([
                         'success' => false,
@@ -221,6 +233,31 @@ return Application::configure(basePath: dirname(__DIR__))
                 return redirect()->route($resetStep)->withErrors([
                     'session' => 'This page needed refreshing, so nothing was submitted. Please enter that again.',
                 ]);
+            }
+
+            /*
+             * QA, 6 Nov 2026. A staff window drawn for one account, submitted
+             * after another window signed this browser in as someone else (or
+             * out), holds a token the new login rotated away. The token check is
+             * what refuses it, as it always was, and nothing was saved. Only
+             * what is SHOWN changes: a staff form says which account the
+             * browser is now signed in as, in plain words, instead of the
+             * branded "page expired" card.
+             *
+             * Limited to a browser form that sent its account stamp (the page's
+             * script adds it, see admin/partials/account-watch). A fetch keeps
+             * its JSON 419, which the page script already answers with a
+             * reload; a request with no stamp keeps the card exactly as before.
+             */
+            if ($request->is('admin', 'admin/*')
+                && ! $request->expectsJson()
+                && ! \App\Support\StaffAccount::isBackground($request)
+                && \App\Support\StaffAccount::stampFrom($request) !== null) {
+                return \App\Support\StaffAccount::refusal(
+                    $request,
+                    \App\Support\StaffAccount::current(),
+                    false
+                );
             }
 
             return null;

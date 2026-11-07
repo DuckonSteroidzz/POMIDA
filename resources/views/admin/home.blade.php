@@ -826,26 +826,44 @@
                 to a customer should not be discoverable only by going looking
                 for it.
 
-                Marking one refunded drops it from this band and leaves it in
-                the archive as ordinary history.
+                Marking one refunded drops it from this band; it stays on the
+                Refunds page (admin.refunds) as history, with who and when.
+
+                QA, 5 Nov 2026: the band used to render only while something
+                was owed, so on a normal day refunds were nowhere to be seen.
+                It now always shows — "No refunds owed" when empty — with a
+                "View all refunds" link and a View link per row.
             --}}
-            @if(isset($refundPendingOrders) && $refundPendingOrders->count() > 0)
-            <div class="pc-card" style="border-left:4px solid #7C2D12;">
-                <div class="pc-section-head">
+            @php $refundPendingOrders = $refundPendingOrders ?? collect(); @endphp
+            <div class="pc-card" style="border-left:4px solid #7C2D12;" data-testid="refunds-owed-band">
+                <div class="pc-section-head" style="flex-wrap:wrap;gap:0.5rem;">
                     <div style="display:flex;align-items:center;gap:0.6rem;">
                         <p class="pc-section-title" style="color:#7C2D12;">
                             <i class="bi bi-cash-stack"></i> Refunds Owed
                         </p>
+                        @if($refundPendingOrders->count() > 0)
                         <span class="pc-count" style="background:#7C2D12;">
                             {{ $refundPendingOrders->count() }}
                         </span>
+                        @endif
                     </div>
+                    <a href="{{ route('admin.refunds') }}" data-testid="refunds-view-all"
+                       style="font-size:0.78rem;font-weight:700;color:#7C2D12;text-decoration:none;display:inline-flex;align-items:center;gap:0.3rem;min-height:36px;">
+                        View all refunds <i class="bi bi-arrow-right"></i>
+                    </a>
                 </div>
 
-                <p style="margin:0 0 0.9rem;font-size:0.78rem;color:#8A6A61;line-height:1.5;">
-                    These customers cancelled after marking their GCash payment as sent.
-                    Send the refund manually, then mark it below so it stops showing here.
+                @if($refundPendingOrders->count() === 0)
+                <p style="margin:0;font-size:0.8rem;color:#8A6A61;line-height:1.5;" data-testid="refunds-none-owed">
+                    <i class="bi bi-check-circle" style="color:#2E7D5B;"></i>
+                    No refunds owed. Past refunds are under <a href="{{ route('admin.refunds') }}" style="color:#7C2D12;font-weight:700;">Refunds</a>.
                 </p>
+                @else
+                <p style="margin:0 0 0.9rem;font-size:0.78rem;color:#8A6A61;line-height:1.5;">
+                    These GCash orders were cancelled after the customer paid.
+                    Send the refund manually, then mark it below. It moves to Refunds as history.
+                </p>
+                @endif
 
                 @foreach($refundPendingOrders as $refundOrder)
                     <div style="display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0.75rem;padding:0.75rem 0.9rem;margin-bottom:0.5rem;background:#FDF6F3;border:1px solid #F2DDD4;border-radius:12px;">
@@ -864,6 +882,15 @@
                             </p>
                         </div>
 
+                        <div style="display:flex;flex-wrap:wrap;gap:0.5rem;align-items:center;">
+                        <a href="{{ route('admin.refunds.show', $refundOrder->id) }}"
+                           class="pc-btn"
+                           data-testid="refund-board-view"
+                           style="background:#fff;color:#7C2D12;border:1px solid #F2C9B4;text-decoration:none;">
+                            <i class="bi bi-eye"></i>
+                            View
+                        </a>
+
                         <form action="{{ route('admin.orders.payment.refunded', $refundOrder->id) }}" method="POST" style="margin:0;">
                             @csrf
                             @method('PUT')
@@ -875,10 +902,10 @@
                                 Mark Refunded
                             </button>
                         </form>
+                        </div>
                     </div>
                 @endforeach
             </div>
-            @endif
 
             <div class="pc-card">
         <div class="pc-section-head">
@@ -2725,7 +2752,7 @@ function addManualDiscountIdRow(idNumber, fullName)
         input.name = 'discount_beneficiaries[' + index + '][' + field[0] + ']';
         input.className = 'form-control-custom';
         input.autocomplete = 'off';
-        input.maxLength = 100;
+        input.maxLength = field[0] === 'id_number' ? @json(\App\Support\InputLimits::ID_NUMBER_MAX) : 100;
         input.required = true;
         input.value = field[2] || '';
 
@@ -3665,6 +3692,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             name="table_number"
                             id="manualTableNumber"
                             class="form-control-custom"
+                            maxlength="10"
                             autocomplete="off"
                         >
                     </div>
@@ -4088,6 +4116,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                 name="discount_beneficiary_id"
                                 id="manualDiscountIdNumber"
                                 class="form-control-custom"
+                                maxlength="{{ \App\Support\InputLimits::ID_NUMBER_MAX }}"
                                 autocomplete="off"
                                 disabled
                             >
@@ -4172,6 +4201,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             id="manualAmountPaid"
                             class="form-control-custom"
                             min="0"
+                            max="{{ \App\Support\InputLimits::AMOUNT_PAID_MAX }}"
                             step="0.01"
                             value="0"
                             oninput="updateManualTotals()"

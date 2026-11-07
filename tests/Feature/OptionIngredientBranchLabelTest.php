@@ -664,13 +664,16 @@ class OptionIngredientBranchLabelTest extends TestCase
             ->withSession(['selected_branch_id' => 'all'])
             ->postJson('/admin/menu-options/' . $option->id . '/ingredients', [
                 'inventory_id'  => $inv->id,
-                'quantity_used' => '9999999.999',
+                // Was the column's own ceiling (9999999.999) until QA Nov 5; a
+                // recipe line is what ONE order uses, so it now has the
+                // realistic cap in App\Support\InputLimits instead.
+                'quantity_used' => \App\Support\InputLimits::RECIPE_QTY_MAX,
             ])
             ->assertOk()
             ->assertJsonPath('success', true);
 
         $this->assertSame(
-            '9999999.999',
+            \App\Support\InputLimits::RECIPE_QTY_MAX,
             MenuOptionIngredient::where('menu_option_id', $option->id)->value('quantity_used')
         );
     }

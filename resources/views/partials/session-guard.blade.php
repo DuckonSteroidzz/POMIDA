@@ -85,17 +85,45 @@
     var TOKEN_URL = @json(route(request()->is('admin', 'admin/*') ? 'admin.session-token' : 'customer.session-token'));
     var refreshingToken = false;
 
+    // STAFF PAGES ONLY (QA, 6 Nov 2026): the id of the staff account this page
+    // was drawn for, from admin/partials/account-watch's meta tag, or '' (a
+    // customer page, or a staff page nobody was signed in on).
+    function drawnForAccount() {
+        var meta = document.querySelector('meta[name="staff-account"]');
+        if (!meta || !meta.getAttribute('content')) { return ''; }
+        try {
+            var account = JSON.parse(meta.getAttribute('content'));
+            return account && account.id ? String(account.id) : '';
+        } catch (e) {
+            return '';
+        }
+    }
+
     function refreshToken() {
         if (refreshingToken || document.hidden || typeof window.fetch !== 'function') { return; }
         refreshingToken = true;
 
         function done() { refreshingToken = false; }
 
+        // A staff page asks as the account it was drawn for. If the browser has
+        // been signed in as someone else since, the answer is NOT a token: a
+        // stale Admin window must not be handed the Supervisor session's token
+        // and carry on. It is told who is signed in now, and account-watch
+        // shows the notice and reloads.
+        var acct = drawnForAccount();
+        var url = acct ? TOKEN_URL + '?acct=' + encodeURIComponent(acct) : TOKEN_URL;
+
         // window.fetch, once wrapped below: a session that has really ended is
         // answered here the same way as on any other background request.
-        window.fetch(TOKEN_URL, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+        window.fetch(url, { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
             .then(function (response) { return response.ok ? response.json() : null; })
             .then(function (data) {
+                if (data && data.account_changed) {
+                    if (typeof window.CustomEvent === 'function') {
+                        window.dispatchEvent(new CustomEvent('peachy:staff-account-changed', { detail: data.account || null }));
+                    }
+                    return;
+                }
                 if (!data || !data.token) { return; }
                 var meta = document.querySelector('meta[name="csrf-token"]');
                 if (meta) { meta.setAttribute('content', data.token); }

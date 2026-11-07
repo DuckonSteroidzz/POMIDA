@@ -65,8 +65,9 @@
         $days = $voucher->daysUntilExpiry();
         $pointsVoucher = (int) $voucher->points_required > 0;
 
-        // The Wheel switch. ON = switched onto the wheel (vouchers.on_wheel).
-        // A 0-point voucher is never a prize, so it reads OFF. Disabled, with
+        // The Points Reward switch (vouchers.on_wheel; the column name is kept).
+        // ON = customers can redeem their Spin & Win points for this voucher.
+        // A 0-point voucher is never a points reward, so it reads OFF. Disabled, with
         // the reason as its tooltip, wherever the server would refuse it.
         if (! $canManage) {
             $wheelTitle = $canAuthorVouchers
@@ -75,7 +76,7 @@
         } elseif (! $pointsVoucher) {
             $wheelTitle = \App\Models\Voucher::WHEEL_NEEDS_POINTS;
         } else {
-            $wheelTitle = 'On: eligible for Spin & Win · Off: excluded';
+            $wheelTitle = 'On: customers can redeem their points for this voucher · Off: not a points reward';
         }
 
         if ($days === null) {
@@ -127,7 +128,7 @@
                     <th>Points Req.</th>
                     <th>Valid</th>
                     <th>Scope</th>
-                    <th>Wheel</th>
+                    <th title="Vouchers customers can redeem with their Spin &amp; Win points">Points Reward</th>
                     <th>Status</th>
                     <th>Actions</th>
                 </tr>
@@ -166,14 +167,14 @@
                         <span class="vch-badge is-global"><span aria-hidden="true">🌐</span> Global</span>
                         @endif
                     </td>
-                    {{-- Wheel: include this voucher on Spin & Win (on_wheel).
+                    {{-- Points Reward: customers may redeem points for this voucher (on_wheel).
                          A real switch since Oct 2026 — the page's script sends
                          it to admin.vouchers.wheel. It is one condition of
-                         being a prize; the note says when another one (off,
+                         being redeemable; the note says when another one (off,
                          expired, used up) is holding it back. --}}
                     <td class="vch-cell-wheel">
                         <x-admin.on-off-switch :checked="$p['wheelOn']" :disabled="! $p['wheelEnabled']"
-                            :title="$p['wheelTitle']" label="Spin wheel for {{ $voucher->code }}"
+                            :title="$p['wheelTitle']" label="Points reward for {{ $voucher->code }}"
                             data-vch-wheel="{{ $voucher->id }}" data-code="{{ $voucher->code }}"
                             :data-url="$p['wheelEnabled'] ? route('admin.vouchers.wheel', $voucher->id) : null" />
                         <span class="vch-wheel-note" data-vch-wheel-note="{{ $voucher->id }}" @if(! $p['wheelPaused']) hidden @endif>{{ $p['wheelPaused'] }}</span>
@@ -222,9 +223,9 @@
                     <span class="vch-badge is-global"><span aria-hidden="true">🌐</span> Global</span>
                     @endif
                 </dd></div>
-                <div><dt>Spin Wheel</dt><dd>
+                <div><dt>Points Reward</dt><dd>
                     <x-admin.on-off-switch :checked="$p['wheelOn']" :disabled="! $p['wheelEnabled']"
-                        :title="$p['wheelTitle']" label="Spin wheel for {{ $voucher->code }}"
+                        :title="$p['wheelTitle']" label="Points reward for {{ $voucher->code }}"
                         data-vch-wheel="{{ $voucher->id }}" data-code="{{ $voucher->code }}"
                         :data-url="$p['wheelEnabled'] ? route('admin.vouchers.wheel', $voucher->id) : null" />
                     <span class="vch-wheel-note" data-vch-wheel-note="{{ $voucher->id }}" @if(! $p['wheelPaused']) hidden @endif>{{ $p['wheelPaused'] }}</span>

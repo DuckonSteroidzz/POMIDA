@@ -9,6 +9,10 @@
     {{-- Live CSRF token + the 419 handler for every admin page. --}}
     @include('partials.session-guard')
 
+    {{-- Which staff account this page was drawn for, and the notice when the
+         browser's one staff login changes in another tab (QA, 6 Nov 2026). --}}
+    @include('admin.partials.account-watch')
+
     {{--
         Sidebar icon flicker, investigated 2026-09-02.
 
@@ -401,6 +405,27 @@
             box-shadow: var(--pc-shadow);
         }
 
+        /* ── Stat cards: a big figure never leaves its card ──
+           QA Nov 5: Inventory's Total Stock Value (₱5,343,127.60) spilled out
+           of its tile as the window narrowed. A money figure is one unbreakable
+           word at a fixed size, so a tile could only grow or be overflowed.
+           .stat-fit makes the tile a size container (its width comes from the
+           grid track, never from its contents); .stat-fig shrinks the figure to
+           fit that width — 100cqw divided by (characters x 0.64em) — never
+           above the page's own size (--fig-max) and never below 0.8rem. If it
+           still cannot fit at 0.8rem it wraps (overflow-wrap:anywhere) instead
+           of escaping. --n is the character count, set by the StatFigure helper
+           together with a title tooltip holding the full value; without it the
+           figure is treated as a short count and only the wrap applies. */
+        .stat-fit { container-type: inline-size; min-width: 0; }
+        .stat-fit .stat-fig.stat-fig {
+            min-width: 0;
+            max-width: 100%;
+            overflow-wrap: anywhere;
+            font-size: var(--fig-max, 1.3rem);
+            font-size: clamp(0.8rem, calc(100cqw / (var(--n, 6) * 0.64)), var(--fig-max, 1.3rem));
+        }
+
         /* ── Rejected/corrected date range notice ──
            Drawn by admin.partials.date-range-notice on Analytics and Summary
            when a submitted custom range had to be swapped or discarded. Lives
@@ -658,6 +683,38 @@
                 transition: opacity .4s ease, transform .4s ease;
             }
 
+        /* "This browser is signed in as someone else" — stays until read and
+           closed (the toasts above vanish after 2.5s, too fast for a sentence
+           this long). Sits in the page flow at the top, not over the board. */
+        .alert-account-custom {
+            display: flex;
+            align-items: flex-start;
+            justify-content: space-between;
+            gap: 0.8rem;
+            margin: 0 0 1rem;
+            padding: 0.85rem 1.1rem;
+            border-radius: 12px;
+            background: #FDF1E6;
+            color: #7C2D12;
+            border: 1px solid #F2C9B4;
+            border-left: 5px solid #C0392B;
+            font-size: 0.87rem;
+            font-weight: 600;
+            line-height: 1.45;
+        }
+        .alert-account-custom button {
+            flex: 0 0 auto;
+            border: 0;
+            background: transparent;
+            color: inherit;
+            font-size: 1.1rem;
+            line-height: 1;
+            cursor: pointer;
+            min-width: 44px;
+            min-height: 44px;
+            margin: -0.6rem -0.7rem 0 0;
+        }
+
         /* ── Responsive ── */
         @media (max-width: 1024px) {
             :root { --pc-sidebar-w: 200px; }
@@ -813,6 +870,15 @@
                 class="nav-link-item {{ request()->routeIs('admin.completed-orders') ? 'active' : '' }}">
                 <i class="bi bi-receipt"></i>
                 <span>Completed Orders</span>
+            </a>
+
+            {{-- Refunds (QA, 5 Nov 2026) — every refund, owed and refunded,
+                 so a settled one can always be opened again. Every portal
+                 role, like Mark Refunded itself; see RefundController. --}}
+            <a href="{{ route('admin.refunds') }}"
+                class="nav-link-item {{ request()->routeIs('admin.refunds', 'admin.refunds.show') ? 'active' : '' }}">
+                <i class="bi bi-cash-stack"></i>
+                <span>Refunds</span>
             </a>
 
             {{-- Inventory --}}
@@ -975,6 +1041,9 @@
             $showBranchDropdown = request()->routeIs(
                 'admin.home',
                 'admin.completed-orders',
+                // Refunds (QA, 5 Nov 2026): the list follows the bar, like
+                // Completed Orders.
+                'admin.refunds',
                 'admin.inventory',
                 'admin.menu-items',
                 // Menu Options (Oct 2026): acts on the bar itself — the
@@ -1121,6 +1190,17 @@
             <div class="alert-success-custom" data-auto-dismiss>
                 <i class="bi bi-check-circle"></i>
                 {{ session('success') }}
+            </div>
+
+        @endif
+
+        {{-- Account notice: a form from a window drawn for another account was
+             refused (QA, 6 Nov 2026). Persistent, with a close button. --}}
+        @if(session('account_notice'))
+
+            <div class="alert-account-custom" role="alert" data-testid="account-notice">
+                <span>{{ session('account_notice') }}</span>
+                <button type="button" aria-label="Close" onclick="this.parentNode.remove()">&times;</button>
             </div>
 
         @endif

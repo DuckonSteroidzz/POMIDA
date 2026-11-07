@@ -100,7 +100,7 @@ class OrderController extends Controller
             'is_takeout'            => 'nullable|boolean',
             'items'                 => 'required|array|min:1',
             'items.*.menu_item_id'  => 'required|exists:menu_items,id',
-            'items.*.quantity'      => 'required|integer|min:1',
+            'items.*.quantity'      => 'required|integer|min:1|max:' . \App\Support\InputLimits::ORDER_QTY_MAX,
             'table_number'          => 'nullable|string',
             'payment_method'        => 'nullable|in:cash,gcash,card',
             'voucher_code_confirmed' => 'nullable|string|max:100',
@@ -1664,9 +1664,13 @@ public function cancelCustomerOrder(Request $request, int $id)
      *
      * A GCash order cancelled BEFORE that tap has payment_status 'pending' —
      * no money moved, nothing to refund — and is treated exactly like cash.
+     *
+     * Since QA 5 Nov 2026 the same holds once staff have APPROVED the
+     * payment ('paid'): the order is still 'pending' and cancellable, and
+     * the money is certainly in. One rule: Order::cancellationOwesRefund().
      */
-    $needsRefund = $order->payment_method === 'gcash'
-        && $order->payment_status === 'awaiting_verification';
+    $needsRefund = $order->cancellationOwesRefund();
+    $wasApproved = $order->payment_status === 'paid';
 
     $order->status = 'cancelled';
     $order->cancelled_at = now();
@@ -1675,7 +1679,9 @@ public function cancelCustomerOrder(Request $request, int $id)
         $order->payment_status = 'refund_pending';
 
         $order->cancellation_reason =
-            'Cancelled by the customer after they marked it paid via GCash. '
+            ($wasApproved
+                ? 'Cancelled by the customer after staff confirmed their GCash payment. '
+                : 'Cancelled by the customer after they marked it paid via GCash. ')
             . 'Refund must be sent manually.';
     } else {
         $order->cancellation_reason = 'Cancelled by the customer.';

@@ -97,9 +97,9 @@
     @media (max-width: 1100px) { .vch-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
     .vch-stat { position: relative; min-width: 0; background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1rem; box-shadow: 0 10px 30px -18px rgba(139, 26, 26, 0.45); }
     .vch-stat-icon { float: right; font-size: 1.3rem; line-height: 1; }
-    .vch-stat-num { font-size: 1.5rem; font-weight: 700; line-height: 1.2; color: #8B1A1A; margin: 0; }
+    .vch-stat-num { --fig-max: 1.5rem; font-size: 1.5rem; font-weight: 700; line-height: 1.2; color: #8B1A1A; margin: 0; }
     .vch-stat-label { font-size: 0.78rem; color: #9A837B; margin: 0; }
-    @media (max-width: 640px) { .vch-stat-num { font-size: 1.25rem; } }
+    @media (max-width: 640px) { .vch-stat-num { --fig-max: 1.25rem; font-size: 1.25rem; } }
 
     .vch-card { background: #fff; border: 1px solid rgba(244, 132, 95, 0.28); border-radius: 16px; padding: 1.25rem; margin-bottom: 1.2rem; min-width: 0; box-shadow: 0 10px 30px -18px rgba(139, 26, 26, 0.45); }
     @media (max-width: 640px) { .vch-card { padding: 1rem; } }
@@ -240,21 +240,21 @@
      the same word the list's Status filter and badges use: see
      Voucher::listStatus() / isOnWheel(). --}}
 <div class="vch-stats" data-testid="voucher-stats">
-    <div class="vch-stat">
+    <div class="vch-stat stat-fit">
         <span class="vch-stat-icon" aria-hidden="true">🎟️</span>
-        <p class="vch-stat-num" data-stat="total">{{ number_format($voucherStats['total']) }}</p><p class="vch-stat-label">Total vouchers</p>
+        <p class="vch-stat-num stat-fig" data-stat="total">{{ number_format($voucherStats['total']) }}</p><p class="vch-stat-label">Total vouchers</p>
     </div>
-    <div class="vch-stat">
+    <div class="vch-stat stat-fit">
         <span class="vch-stat-icon" aria-hidden="true">✅</span>
-        <p class="vch-stat-num" data-stat="active">{{ number_format($voucherStats['active']) }}</p><p class="vch-stat-label">Active now</p>
+        <p class="vch-stat-num stat-fig" data-stat="active">{{ number_format($voucherStats['active']) }}</p><p class="vch-stat-label">Active now</p>
     </div>
-    <div class="vch-stat">
+    <div class="vch-stat stat-fit">
         <span class="vch-stat-icon" aria-hidden="true">🎡</span>
-        <p class="vch-stat-num" data-stat="on_wheel">{{ number_format($voucherStats['on_wheel']) }}</p><p class="vch-stat-label">On spin wheel</p>
+        <p class="vch-stat-num stat-fig" data-stat="on_wheel">{{ number_format($voucherStats['on_wheel']) }}</p><p class="vch-stat-label">Points rewards</p>
     </div>
-    <div class="vch-stat">
+    <div class="vch-stat stat-fit">
         <span class="vch-stat-icon" aria-hidden="true">⏰</span>
-        <p class="vch-stat-num" data-stat="expired">{{ number_format($voucherStats['expired']) }}</p><p class="vch-stat-label">Expired</p>
+        <p class="vch-stat-num stat-fig" data-stat="expired">{{ number_format($voucherStats['expired']) }}</p><p class="vch-stat-label">Expired</p>
     </div>
 </div>
 
@@ -395,11 +395,11 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
             </div>
             <div>
                 <label class="form-label-custom" for="vchValue">Discount Value *</label>
-                <input type="number" id="vchValue" name="discount_value" class="form-control-custom" min="1" step="0.01" required>
+                <input type="number" id="vchValue" name="discount_value" class="form-control-custom" min="1" max="{{ \App\Support\InputLimits::VOUCHER_FIXED_MAX }}" step="0.01" required>
             </div>
             <div>
                 <label class="form-label-custom" for="vchMax">Max Uses *</label>
-                <input type="number" id="vchMax" name="max_uses" class="form-control-custom" min="1" value="100" required>
+                <input type="number" id="vchMax" name="max_uses" class="form-control-custom" min="1" max="{{ \App\Support\InputLimits::VOUCHER_COUNT_MAX }}" value="100" required>
             </div>
             <div class="vch-wide">
                 <label class="form-label-custom" for="vchDesc">Description</label>
@@ -407,11 +407,11 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
             </div>
             <div>
                 <label class="form-label-custom" for="vchMin">Minimum Order (₱)</label>
-                <input type="number" id="vchMin" name="minimum_order" class="form-control-custom" min="0" step="0.01" value="0">
+                <input type="number" id="vchMin" name="minimum_order" class="form-control-custom" min="0" max="{{ \App\Support\InputLimits::VOUCHER_FIXED_MAX }}" step="0.01" value="0">
             </div>
             <div>
                 <label class="form-label-custom" for="vchPoints">Points Required</label>
-                <input type="number" id="vchPoints" name="points_required" class="form-control-custom" min="0" value="0">
+                <input type="number" id="vchPoints" name="points_required" class="form-control-custom" min="0" max="{{ \App\Support\InputLimits::VOUCHER_COUNT_MAX }}" value="0">
                 <small class="vch-hint">0 = direct voucher (no points needed)</small>
             </div>
             <div>
@@ -464,7 +464,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
     <div class="vch-card-head vch-list-head">
         <div>
             <p class="vch-card-title"><span aria-hidden="true">🎟️</span> Vouchers <span class="vch-count" id="vchCount" data-testid="voucher-count">{{ $vouchers->total() }}</span></p>
-            <p class="vch-card-sub">Usage, validity and spin wheel status</p>
+            <p class="vch-card-sub">Usage, validity and points reward status</p>
         </div>
     </div>
 
@@ -842,7 +842,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
             if (response.status === 404) { return 'This voucher is not in your branch, or it was deleted. Refresh the list.'; }
             if (response.status === 419) { return 'Your session expired. Reloading the page…'; }
             if (response.status === 429) { return 'Too many changes at once. Wait a moment and try again.'; }
-            return "Couldn't change the spin wheel setting (error " + response.status + '). Nothing was changed.';
+            return "Couldn't change the points reward setting (error " + response.status + '). Nothing was changed.';
         }
 
         document.addEventListener('change', function (e) {
@@ -882,7 +882,7 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                 })
                 .catch(function (err) {
                     hold(id, !want, false);
-                    toast(err && err.message && err.name !== 'TypeError' ? err.message : "Couldn't reach the server. The spin wheel setting was not changed.", true);
+                    toast(err && err.message && err.name !== 'TypeError' ? err.message : "Couldn't reach the server. The points reward setting was not changed.", true);
                 });
         });
     })();
@@ -920,15 +920,15 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                 </div>
                 <div>
                     <label class="form-label-custom">Discount Value *</label>
-                    <input type="number" name="discount_value" id="editVoucherDiscountValue" class="form-control-custom" min="1" required>
+                    <input type="number" name="discount_value" id="editVoucherDiscountValue" class="form-control-custom" min="1" max="{{ \App\Support\InputLimits::VOUCHER_FIXED_MAX }}" required>
                 </div>
                 <div>
                     <label class="form-label-custom">Max Uses *</label>
-                    <input type="number" name="max_uses" id="editVoucherMaxUses" class="form-control-custom" min="1" required>
+                    <input type="number" name="max_uses" id="editVoucherMaxUses" class="form-control-custom" min="1" max="{{ \App\Support\InputLimits::VOUCHER_COUNT_MAX }}" required>
                 </div>
                 <div>
                     <label class="form-label-custom">Minimum Order (₱)</label>
-                    <input type="number" name="minimum_order" id="editVoucherMinimumOrder" class="form-control-custom" min="0" step="0.01">
+                    <input type="number" name="minimum_order" id="editVoucherMinimumOrder" class="form-control-custom" min="0" max="{{ \App\Support\InputLimits::VOUCHER_FIXED_MAX }}" step="0.01">
                 </div>
                 <div>
                     <label class="form-label-custom">Valid From (Start Date)</label>
@@ -940,24 +940,24 @@ $gameEnabled = \App\Models\Setting::gameEnabled();
                 </div>
                 <div>
                     <label class="form-label-custom">Points Required</label>
-                    <input type="number" name="points_required" id="editVoucherPointsRequired" class="form-control-custom" min="0">
+                    <input type="number" name="points_required" id="editVoucherPointsRequired" class="form-control-custom" min="0" max="{{ \App\Support\InputLimits::VOUCHER_COUNT_MAX }}">
                     <small style="font-size:0.7rem;color:#aaa;">0 = direct voucher (no points needed)</small>
                 </div>
-                {{-- "Active on spin wheel" is the wheel flag (on_wheel), the
-                     same one the list's Wheel switch sets. It used to post
+                {{-- "Can be redeemed with points" is the wheel flag (on_wheel),
+                     the same one the list's Points Reward switch sets. It used to post
                      is_active, so unticking it switched the whole voucher off.
                      Activate / Deactivate now lives in the ⋮ menu, and the
                      hidden is_active below carries the voucher's current state
                      through unchanged (the script disables it for an inactive
                      voucher, because updateVoucher() reads "present" as on). --}}
                 <div>
-                    <label class="form-label-custom">Wheel</label>
+                    <label class="form-label-custom">Points Reward</label>
                     <div style="display:flex;align-items:center;gap:0.5rem;padding-top:0.4rem;">
                         <input type="hidden" name="on_wheel" value="0">
                         <input type="checkbox" name="on_wheel" id="editVoucherOnWheel" value="1" style="width:16px;height:16px;accent-color:#C0392B;">
-                        <label for="editVoucherOnWheel" style="font-size:0.82rem;color:#555;margin:0;">Active on spin wheel</label>
+                        <label for="editVoucherOnWheel" style="font-size:0.82rem;color:#555;margin:0;">Can be redeemed with points</label>
                     </div>
-                    <small style="font-size:0.7rem;color:#aaa;">Only vouchers with Points Required above 0 can be won.</small>
+                    <small style="font-size:0.7rem;color:#aaa;">Only vouchers with Points Required above 0 can be redeemed with points.</small>
                     <input type="hidden" name="is_active" value="1" id="editVoucherIsActive">
                 </div>
                 {{-- Owner only. A supervisor can only ever reach this modal for

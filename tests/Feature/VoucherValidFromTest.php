@@ -8,6 +8,7 @@ use App\Models\UserVoucher;
 use App\Models\Voucher;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use Tests\Feature\Concerns\RedeemsPoints;
 use App\Support\ShopDay;
 use Tests\TestCase;
 
@@ -31,6 +32,7 @@ class VoucherValidFromTest extends TestCase
 {
     use DatabaseTransactions;
     use ForcesSpinOutcome;
+    use RedeemsPoints;
 
     private function customer(int $skip = 0): User
     {
@@ -68,20 +70,24 @@ class VoucherValidFromTest extends TestCase
     }
 
     /**
-     * Win a voucher via a real spin attributed to a real order, then close
-     * that order out. Returns the (now cancelled) earning order so a caller
-     * can assert it never carries the voucher it won.
+     * Earn the points via a real spin attributed to a real order, redeem
+     * $voucher with them (Nov 2026: a spin only earns; Redeem issues the
+     * voucher), then close that order out. Returns the (now cancelled)
+     * earning order so a caller can assert it never carries the voucher.
      */
-    private function winVoucher(User $user, string $orderType = 'pick_up'): Order
+    private function winVoucher(User $user, string $orderType, Voucher $voucher): Order
     {
         UserVoucher::where('user_id', $user->id)->delete();
         $user->points = 0;
         $user->save();
         $spinOrder = $this->activeOrderFor($user, $orderType);
 
-        $this->forceSpinOutcome(5); // the server picks the prize since F3
+        $this->forceSpinOutcome(5); // the server picks the outcome since F3
         $this->actingAs($user, 'customer')
             ->postJson('/customer/add-points')
+            ->assertOk();
+        $this->actingAs($user->fresh(), 'customer')
+            ->redeemPoints($voucher)
             ->assertOk();
 
         // The spin needed a live order to attach to, but placeOrder() refuses a
@@ -103,12 +109,12 @@ class VoucherValidFromTest extends TestCase
         $b = $this->customer(1);
         $voucher = $this->wheelVoucher('VFSHARED1');
 
-        $this->winVoucher($a);
+        $this->winVoucher($a, 'pick_up', $voucher);
         $claimA = UserVoucher::where('user_id', $a->id)->where('voucher_id', $voucher->id)->first();
         $windowA = $claimA->valid_from->toDateString();
 
         $this->travel(3)->days();
-        $this->winVoucher($b);
+        $this->winVoucher($b, 'pick_up', $voucher);
         $this->travelBack();
 
         $claimB = UserVoucher::where('user_id', $b->id)->where('voucher_id', $voucher->id)->first();
@@ -130,10 +136,10 @@ class VoucherValidFromTest extends TestCase
 
         $this->assertNull($voucher->valid_from);
 
-        $this->winVoucher($a);
+        $this->winVoucher($a, 'pick_up', $voucher);
         $this->assertNull(Voucher::find($voucher->id)->valid_from, 'shared row must stay untouched after A wins');
 
-        $this->winVoucher($b);
+        $this->winVoucher($b, 'pick_up', $voucher);
         $this->assertNull(Voucher::find($voucher->id)->valid_from, 'shared row must stay untouched after B wins too');
     }
 
@@ -151,7 +157,7 @@ class VoucherValidFromTest extends TestCase
         $a = $this->customer(0);
         $voucher = $this->wheelVoucher('VFGATE1');
 
-        $this->winVoucher($a);
+        $this->winVoucher($a, 'pick_up', $voucher);
 
         $error = $voucher->fresh()->redemptionErrorFor($a, 100);
 
@@ -163,7 +169,7 @@ class VoucherValidFromTest extends TestCase
         $a = $this->customer(0);
         $voucher = $this->wheelVoucher('VFGATE2');
 
-        $this->winVoucher($a);
+        $this->winVoucher($a, 'pick_up', $voucher);
 
         $this->travel(2)->days();
         $error = $voucher->fresh()->redemptionErrorFor($a, 100);
@@ -180,11 +186,11 @@ class VoucherValidFromTest extends TestCase
         $voucher = $this->wheelVoucher('VFGATE3');
 
         // A wins today (window opens immediately, the day A won).
-        $this->winVoucher($a);
+        $this->winVoucher($a, 'pick_up', $voucher);
 
         // B wins 5 days later (B's own window opens that later day).
         $this->travel(5)->days();
-        $this->winVoucher($b);
+        $this->winVoucher($b, 'pick_up', $voucher);
         $this->travelBack();
 
         // Jump to the day after A won — long before B's own window opens.
@@ -204,7 +210,7 @@ class VoucherValidFromTest extends TestCase
         $customer = $this->customer(0);
         $voucher = $this->wheelVoucher('VFCHECKOUT1');
 
-        $this->winVoucher($customer);
+        $this->winVoucher($customer, 'pick_up', $voucher);
         $claim = UserVoucher::where('user_id', $customer->id)->where('voucher_id', $voucher->id)->first();
 
         // No time travel: this must already work the same day it is won.
@@ -255,7 +261,7 @@ class VoucherValidFromTest extends TestCase
         $customer = $this->customer(0);
         $voucher = $this->wheelVoucher('VFCHECKOUT2');
 
-        $this->winVoucher($customer);
+        $this->winVoucher($customer, 'pick_up', $voucher);
 
         $menuItem = \App\Models\MenuItem::where('is_available', true)->first();
 
@@ -351,7 +357,7 @@ class VoucherValidFromTest extends TestCase
         $customer = $this->customer(0);
         $voucher = $this->wheelVoucher('VFLONE1');
 
-        $this->winVoucher($customer);
+        $this->winVoucher($customer, 'pick_up', $voucher);
 
         $immediately = $voucher->fresh()->redemptionErrorFor($customer, 100);
         $this->assertNull($immediately, $immediately ?? '');
@@ -373,7 +379,7 @@ class VoucherValidFromTest extends TestCase
         $customer = $this->customer(0);
         $voucher = $this->wheelVoucher('VFPREVIEW1');
 
-        $this->winVoucher($customer);
+        $this->winVoucher($customer, 'pick_up', $voucher);
 
         $result = $this->actingAs($customer, 'customer')->postJson('/customer/apply-voucher', [
             'code'     => $voucher->code,
@@ -399,7 +405,7 @@ class VoucherValidFromTest extends TestCase
         $customer = $this->customer(0);
         $voucher  = $this->wheelVoucher('VFIMM' . strtoupper($orderType));
 
-        $earningOrder = $this->winVoucher($customer, $orderType);
+        $earningOrder = $this->winVoucher($customer, $orderType, $voucher);
 
         // Immediately usable — no time travel at all.
         $error = $voucher->fresh()->redemptionErrorFor($customer, 100);
@@ -463,7 +469,7 @@ class VoucherValidFromTest extends TestCase
     public function test_the_win_message_no_longer_claims_a_next_day_wait(string $orderType): void
     {
         $customer = $this->customer(0);
-        $this->wheelVoucher('VFMSG' . strtoupper($orderType));
+        $voucher = $this->wheelVoucher('VFMSG' . strtoupper($orderType));
 
         UserVoucher::where('user_id', $customer->id)->delete();
         $customer->points = 0;
@@ -471,8 +477,11 @@ class VoucherValidFromTest extends TestCase
         $this->activeOrderFor($customer, $orderType);
 
         $this->forceSpinOutcome(5);
-        $body = $this->actingAs($customer, 'customer')
+        $this->actingAs($customer, 'customer')
             ->postJson('/customer/add-points')
+            ->assertOk();
+        $body = $this->actingAs($customer->fresh(), 'customer')
+            ->redeemPoints($voucher)
             ->assertOk()
             ->json();
 

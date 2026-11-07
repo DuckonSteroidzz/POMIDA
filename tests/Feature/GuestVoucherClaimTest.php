@@ -13,6 +13,7 @@ use App\Support\GuestVoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\RateLimiter;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use Tests\Feature\Concerns\RedeemsPoints;
 use App\Support\ShopDay;
 use Tests\TestCase;
 
@@ -41,6 +42,7 @@ class GuestVoucherClaimTest extends TestCase
 {
     use DatabaseTransactions;
     use ForcesSpinOutcome;
+    use RedeemsPoints;
 
     protected function setUp(): void
     {
@@ -147,6 +149,18 @@ class GuestVoucherClaimTest extends TestCase
         return $this->postJson('/customer/add-points');
     }
 
+    /**
+     * Earn the points with one spin, then redeem $voucher with them (Nov 2026:
+     * a spin only earns; Redeem is what issues the voucher). Returns the
+     * redeem reply, which carries the voucher the spin used to.
+     */
+    private function win(Voucher $voucher, int $points = 8)
+    {
+        $this->spin($points)->assertOk();
+
+        return $this->redeemPoints($voucher);
+    }
+
     /** Apply a code on the cart, as the cart page's Apply button does. */
     private function apply(string $code, float $subtotal = 500.0): array
     {
@@ -163,7 +177,7 @@ class GuestVoucherClaimTest extends TestCase
         $voucher = $this->wheelVoucher(['points_required' => 5]);
         $this->guestOrder();
 
-        $response = $this->spin(8)->assertOk();
+        $response = $this->win($voucher)->assertOk();
         $body = $response->json();
 
         $this->assertTrue($body['success']);
@@ -203,7 +217,7 @@ class GuestVoucherClaimTest extends TestCase
         $voucher = $this->wheelVoucher(['points_required' => 5]);
         $this->guestOrder($orderType);
 
-        $body = $this->spin(8)->assertOk()->json();
+        $body = $this->win($voucher)->assertOk()->json();
 
         $this->assertNotNull($body['voucher'], "a guest win via a {$orderType} order minted no voucher");
         $this->assertSame(
@@ -233,15 +247,19 @@ class GuestVoucherClaimTest extends TestCase
         ];
     }
 
-    public function test_the_win_response_tells_the_guest_to_save_the_code(): void
+    public function test_the_redeem_tells_the_guest_to_save_the_code(): void
     {
-        $this->wheelVoucher(['points_required' => 5]);
+        $voucher = $this->wheelVoucher(['points_required' => 5]);
         $this->guestOrder();
 
-        $body = $this->spin(8)->assertOk()->json();
+        $body = $this->win($voucher)->assertOk()->json();
+        $this->assertNotNull($body['voucher']['claim_code']);
 
-        $this->assertNotNull($body['voucher']);
-        $this->assertStringContainsString('Save your claim code', $body['guest_notice']);
+        // The redeem dialog (customer.partials.points-redeem) says so to a guest.
+        $page = $this->get('/customer/game')->assertOk()->getContent();
+        $this->assertStringContainsString("'Save this code now'", $page);
+        $this->assertStringContainsString('You have no account, so this code is the only way to use this voucher.', $page);
+        $this->assertStringContainsString('var signedIn = false;', $page);
     }
 
     public function test_a_guest_who_wins_nothing_gets_no_claim(): void
@@ -252,26 +270,23 @@ class GuestVoucherClaimTest extends TestCase
         $before = UserVoucher::count();
         $body = $this->spin(3)->assertOk()->json();
 
-        $this->assertNull($body['voucher']);
-        $this->assertSame($before, UserVoucher::count(), 'a losing spin minted a claim');
+        $this->assertArrayNotHasKey('voucher', $body);
+        $this->redeemPoints($this->wheelVoucher(['points_required' => 500]))->assertStatus(422);
+        $this->assertSame($before, UserVoucher::count(), 'a losing spin or a refused redeem minted a claim');
     }
 
     public function test_claim_codes_are_unique_per_win(): void
     {
-        $this->wheelVoucher(['points_required' => 5]);
-        $this->wheelVoucher(['points_required' => 5]);
+        $vouchers = [$this->wheelVoucher(['points_required' => 5]), $this->wheelVoucher(['points_required' => 5])];
         $this->guestOrder();
 
         $codes = [];
 
-        for ($i = 0; $i < 2; $i++) {
-            $body = $this->spin(8)->assertOk()->json();
-
-            if ($body['voucher']) {
-                $codes[] = $body['voucher']['claim_code'];
-            }
+        foreach ($vouchers as $voucher) {
+            $codes[] = $this->win($voucher)->assertOk()->json('voucher.claim_code');
         }
 
+        $this->assertCount(2, $codes);
         $this->assertCount(count(array_unique($codes)), $codes, 'two wins shared a claim code');
     }
 
@@ -281,7 +296,7 @@ class GuestVoucherClaimTest extends TestCase
     {
         $voucher = $this->wheelVoucher();
         $this->guestOrder();
-        $this->spin(8);
+        $this->win($voucher)->assertOk();
 
         // Even holding a genuine claim, the SHARED code is not the proof.
         // This is exactly the bypass item 30 closed.
@@ -567,7 +582,7 @@ class GuestVoucherClaimTest extends TestCase
         $voucher = $this->wheelVoucher(['points_required' => 5, 'discount_value' => 25]);
         $earningOrder = $this->guestOrder($orderType);
 
-        $body = $this->spin(8)->assertOk()->json();
+        $body = $this->win($voucher)->assertOk()->json();
         $this->assertNotNull($body['voucher'], "a guest win via a {$orderType} order minted no voucher");
         $code = $body['voucher']['claim_code'];
 
@@ -663,7 +678,7 @@ class GuestVoucherClaimTest extends TestCase
     {
         $voucher = $this->wheelVoucher();
         $this->guestOrder();
-        $this->spin(8);
+        $this->win($voucher)->assertOk();
 
         $claim = UserVoucher::where('voucher_id', $voucher->id)->whereNull('user_id')->firstOrFail();
 
@@ -778,10 +793,10 @@ class GuestVoucherClaimTest extends TestCase
             'total'          => 500,
         ]);
 
-        $body = $this->actingAs($customer, 'customer')
+        $this->actingAs($customer, 'customer')
             ->postJson('/customer/add-points')
-            ->assertOk()
-            ->json();
+            ->assertOk();
+        $body = $this->actingAs($customer->fresh(), 'customer')->redeemPoints($voucher)->assertOk()->json();
 
         $this->assertNotNull($body['voucher'], 'a signed-in customer stopped winning');
         $this->assertNotNull(
@@ -832,18 +847,19 @@ class GuestVoucherClaimTest extends TestCase
             'total'          => 500,
         ]);
 
-        // First qualifying spin wins it.
-        $first = $this->actingAs($customer, 'customer')
-            ->postJson('/customer/add-points')->assertOk()->json();
-        $this->assertNotNull($first['voucher'], 'CONTROL: the first spin should have won the voucher');
+        // The first redeem gets it.
+        $this->actingAs($customer, 'customer')->postJson('/customer/add-points')->assertOk();
+        $first = $this->actingAs($customer->fresh(), 'customer')->redeemPoints($voucher)->json();
+        $this->assertNotNull($first['voucher'] ?? null, 'CONTROL: the first redeem should have issued the voucher');
 
-        // Spin back up past the threshold — the only wheel voucher is one they
-        // now hold, so nothing new can be awarded.
+        // Spin back up past the cost — the voucher is one they now hold, so
+        // neither a spin nor another redeem can issue it again.
         $wonAgain = false;
         for ($i = 0; $i < 6; $i++) {
-            $body = $this->actingAs($customer, 'customer')
+            $body = $this->actingAs($customer->fresh(), 'customer')
                 ->postJson('/customer/add-points')->assertOk()->json();
-            if (!empty($body['voucher'])) {
+            $again = $this->actingAs($customer->fresh(), 'customer')->redeemPoints($voucher);
+            if (!empty($body['voucher']) || $again->status() !== 422) {
                 $wonAgain = true;
             }
         }
@@ -903,9 +919,10 @@ class GuestVoucherClaimTest extends TestCase
 
     public function test_a_guest_cannot_hoard_more_prizes_than_an_account_can(): void
     {
-        // Three winnable vouchers, but the ceiling is two unused at a time.
+        // Three redeemable vouchers, but the ceiling is two unused at a time.
+        $vouchers = [];
         for ($i = 0; $i < 3; $i++) {
-            $this->wheelVoucher(['points_required' => 1]);
+            $vouchers[] = $this->wheelVoucher(['points_required' => 1]);
         }
 
         $this->guestOrder();
@@ -913,6 +930,10 @@ class GuestVoucherClaimTest extends TestCase
         for ($i = 0; $i < 5; $i++) {
             $this->spin(8);
         }
+
+        $this->redeemPoints($vouchers[0])->assertOk();
+        $this->redeemPoints($vouchers[1])->assertOk();
+        $this->redeemPoints($vouchers[2])->assertStatus(422)->assertJsonPath('status', \App\Support\WheelPrizes::HOLDING_MAX);
 
         $this->assertLessThanOrEqual(
             GuestVoucherClaims::MAX_UNUSED,

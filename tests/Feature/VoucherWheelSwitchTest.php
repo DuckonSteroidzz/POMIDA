@@ -2,14 +2,13 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\Customer\AuthController;
 use App\Models\User;
 use App\Models\Voucher;
 use App\Support\ShopDay;
+use App\Support\WheelPrizes;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Str;
-use ReflectionMethod;
 use Tests\TestCase;
 
 /**
@@ -97,24 +96,18 @@ class VoucherWheelSwitchTest extends TestCase
         return $this->actingAs($user, 'admin')->putJson(route('admin.vouchers.wheel', $voucher->id), ['on_wheel' => $on]);
     }
 
-    /** Every voucher the real Spin & Win picker can award (globals, plenty of points). */
+    /**
+     * Every voucher a customer could redeem with points (globals, plenty of
+     * points, nothing held): WheelPrizes, the rule the Redeem button is
+     * checked against since a spin stopped awarding vouchers (Nov 2026).
+     */
     private function pickable(): array
     {
-        $picker = new ReflectionMethod(AuthController::class, 'winnableVoucherFor');
-        $picker->setAccessible(true);
-        $controller = app(AuthController::class);
-        $this->withSession([]);
-
-        $picked = [];
-        for ($i = 0; $i < 300; $i++) {
-            $won = $picker->invoke($controller, 1_000_000, $picked);
-            if ($won === null) {
-                break;
-            }
-            $picked[] = $won->id;
-        }
-
-        return $picked;
+        return collect(WheelPrizes::evaluate(1_000_000, [], 0, null))
+            ->where('status', WheelPrizes::REDEEMABLE)
+            ->map(fn ($p) => (int) $p['voucher']->id)
+            ->values()
+            ->all();
     }
 
     // ══════════ the switch is real ══════════
@@ -383,6 +376,40 @@ class VoucherWheelSwitchTest extends TestCase
             $this->assertStringContainsString('class="promo-tabs"', $html, "$role lost the tab bar");
             $this->assertSame(3, preg_match_all('/class="promo-tab[ "]/', $html));
         }
+    }
+
+    // ══════════ Nov 2026: the switch means "can be redeemed with points" ══════════
+
+    public function test_the_column_is_points_reward_and_says_what_it_does(): void
+    {
+        $admin = $this->portal('admin');
+        $v = $this->voucher();
+        $direct = $this->voucher(['points_required' => 0]);
+
+        $html = $this->page($admin);
+
+        $this->assertStringContainsString('>Points Reward</th>', $html);
+        $this->assertStringNotContainsString('<th>Wheel</th>', $html);
+        $this->assertStringContainsString('<dt>Points Reward</dt>', $html);
+        $this->assertStringContainsString(
+            'title="' . e('On: customers can redeem their points for this voucher · Off: not a points reward') . '"',
+            $this->wheelLabel($html, $v)
+        );
+        $this->assertStringContainsString('aria-label="Points reward for ' . $v->code . '"', $this->wheelInput($html, $v));
+        $this->assertStringContainsString('>Can be redeemed with points</label>', $html);
+        $this->assertStringContainsString('>Points rewards</p>', $html);
+
+        // Same data field, same values: off and on again.
+        $this->wheel($admin, $v, false)->assertOk()
+            ->assertJsonPath('message', 'Voucher "' . $v->code . '" can no longer be redeemed with points.');
+        $this->assertFalse((bool) $v->fresh()->on_wheel);
+        $this->wheel($admin, $v, true)->assertOk()
+            ->assertJsonPath('message', 'Voucher "' . $v->code . '" can now be redeemed with points.');
+        $this->assertTrue((bool) $v->fresh()->on_wheel);
+
+        // A 0-point voucher still cannot be a points reward.
+        $this->wheel($admin, $direct, true)->assertStatus(422)
+            ->assertJsonPath('message', 'Direct code (0 points): set Points Required above 0 to make it a points reward.');
     }
 
     private function between(string $haystack, string $from, string $to): string

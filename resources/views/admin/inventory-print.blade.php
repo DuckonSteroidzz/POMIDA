@@ -33,10 +33,10 @@
         .print-header p { margin: 0; font-size: 0.85rem; }
         .print-header hr { margin: 0.6rem 0 1rem; border: none; border-top: 1px solid #F0E2D5; }
 
-        .iv-kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0.75rem; margin-bottom: 1.25rem; }
-        .iv-kpi-card { border: 1px solid #F0E2D5; border-radius: 8px; padding: 0.75rem 0.9rem; }
+        .iv-kpi-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0.75rem; margin-bottom: 1.25rem; }
+        .iv-kpi-card { min-width: 0; border: 1px solid #F0E2D5; border-radius: 8px; padding: 0.75rem 0.9rem; }
         .iv-kpi-label { font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em; color: #8B7A72; margin-bottom: 0.3rem; }
-        .iv-kpi-value { font-size: 1.15rem; font-weight: 800; color: #3B2A24; }
+        .iv-kpi-value { font-size: 1.15rem; font-weight: 800; color: #3B2A24; overflow-wrap: anywhere; }
 
         table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 0.78rem; margin-bottom: 1.25rem; }
         thead th {

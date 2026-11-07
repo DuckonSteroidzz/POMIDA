@@ -97,6 +97,11 @@ class AdminNavigationLoadingIndicatorTest extends TestCase
                 'email' => $user->email,
                 'password' => 'password123',
             ])->assertRedirect(route('admin.home'));
+
+            // One browser, one staff login (QA, 6 Nov 2026): the next role signs
+            // in only after this one logs out. A login over a signed-in account
+            // is refused, see StaffLoginSwitchNoticeTest.
+            $this->post('/admin/logout');
         }
     }
 }

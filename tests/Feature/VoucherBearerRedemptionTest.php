@@ -11,6 +11,7 @@ use App\Services\VoucherClaims;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Cache;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use Tests\Feature\Concerns\RedeemsPoints;
 use Tests\TestCase;
 
 /**
@@ -57,6 +58,7 @@ class VoucherBearerRedemptionTest extends TestCase
 {
     use DatabaseTransactions;
     use ForcesSpinOutcome;
+    use RedeemsPoints;
 
     protected function setUp(): void
     {
@@ -403,9 +405,13 @@ class VoucherBearerRedemptionTest extends TestCase
             'total'          => 500,
         ]);
 
-        $this->forceSpinOutcome(8); // the server picks the prize since F3
-        $body = $this->actingAs($customer, 'customer')
+        $this->forceSpinOutcome(8); // the server picks the outcome since F3
+        $this->actingAs($customer, 'customer')
             ->postJson('/customer/add-points')
+            ->assertOk();
+        // A spin only earns since Nov 2026; Redeem issues the voucher.
+        $body = $this->actingAs($customer->fresh(), 'customer')
+            ->redeemPoints($voucher)
             ->assertOk()
             ->json();
 

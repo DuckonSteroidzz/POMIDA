@@ -151,15 +151,25 @@
                 </span>
                 <div class="min-w-0 flex-1">
                     <p class="font-display text-lg font-black tracking-tight text-peach-deep sm:text-xl">
-                        You have <span class="text-peach-red">{{ Auth::guard('customer')->user()?->wheelPoints() ?? 0 }}</span> pts
+                        You have <span class="text-peach-red" data-points-balance>{{ $pointsBalance ?? 0 }}</span> pts
                     </p>
-                    <p class="text-xs font-medium text-peach-deep/60">Spin the wheel to earn more vouchers — luck loves a sweet tooth.</p>
+                    <p class="text-xs font-medium text-peach-deep/60">Spin the wheel to earn more points — luck loves a sweet tooth.</p>
                 </div>
                 <a href="{{ route('customer.game') }}" class="inline-flex min-h-11 items-center gap-2 rounded-full bg-peach-red px-4 py-2.5 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                     <i class="bi bi-dice-5"></i> Spin
                 </a>
             </div>
         </div>
+
+        {{-- "Redeem your points" (Nov 2026): the same list and Redeem button as
+             Spin & Win. The page reloads after a redeem so the new voucher
+             shows under My vouchers. --}}
+        <section id="redeem" class="rise rise-2 mb-6 scroll-mt-24 overflow-hidden rounded-2xl border border-peach-soft bg-white p-4 shadow-[0_1px_2px_rgb(139_26_26_/_0.04),0_8px_24px_-18px_rgb(139_26_26_/_0.35)] sm:p-5" aria-labelledby="redeemTitle">
+            @include('customer.partials.points-redeem', [
+                'redeemPrizes' => $redeemPrizes ?? [],
+                'redeemReload' => true,
+            ])
+        </section>
 
         {{-- ================= REWARDS (Oct 2026) =================
              Every stamp card reward with its own code, FROM EVERY BRANCH
@@ -494,7 +504,7 @@
                 <i class="bi bi-ticket-perforated text-peach-red"></i>
             </span>
             <h2 class="mt-4 font-display text-2xl font-black tracking-tight text-peach-deep">No vouchers yet</h2>
-            <p class="mx-auto mt-2 max-w-sm text-sm font-medium text-peach-deep/55">Your wallet is empty for now. Give the wheel a spin — every turn is a chance to bake up a sweet deal.</p>
+            <p class="mx-auto mt-2 max-w-sm text-sm font-medium text-peach-deep/55">Your wallet is empty for now. Spin the wheel to earn points, then redeem them above for a sweet deal.</p>
             <a href="{{ route('customer.game') }}" class="mt-6 inline-flex items-center gap-2 rounded-full bg-peach-red px-6 py-3 text-sm font-bold text-white no-underline transition hover:bg-peach-deep">
                 <i class="bi bi-dice-5"></i> Go to Spin Wheel
             </a>

@@ -58,7 +58,7 @@ class Voucher extends Model
      * a prize, so the wheel never offers it whatever the switch says. Shown as
      * the disabled switch's tooltip and returned by the wheel route.
      */
-    public const WHEEL_NEEDS_POINTS = 'Direct code (0 points): set Points Required above 0 to put it on the wheel.';
+    public const WHEEL_NEEDS_POINTS = 'Direct code (0 points): set Points Required above 0 to make it a points reward.';
 
     /** The branch this voucher is scoped to, or null when it is global. */
     public function branch()

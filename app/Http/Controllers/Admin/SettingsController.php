@@ -36,7 +36,7 @@ class SettingsController extends Controller
         $request->validate([
             'branch_id' => ['required', 'integer', 'exists:branches,id'],
             'gcash_qr' => BranchGcash::qrRules(),
-            'gcash_phone' => ['nullable', 'string', 'max:20'],
+            'gcash_phone' => ['nullable', 'string', 'max:' . \App\Support\InputLimits::PHONE_MAX],
         ], array_merge(BranchGcash::qrMessages('gcash_qr'), [
             'branch_id.required' => 'Select a branch in the Viewing bar to manage its GCash.',
             'branch_id.exists' => 'Select a branch in the Viewing bar to manage its GCash.',

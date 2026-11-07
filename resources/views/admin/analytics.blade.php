@@ -79,31 +79,31 @@
 {{-- ══════════ KPI ROW ══════════ --}}
 <div class="an-kpi-grid" style="margin-bottom:1rem;">
 
-    <div class="content-card">
+    <div class="content-card stat-fit">
         <p style="font-size:0.7rem; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:0.3rem;">Total Sales</p>
-        <p style="font-size:1.3rem; font-weight:700; color:#333;">₱{{ number_format($totalSales, 2) }}</p>
+        <p class="an-kpi-num stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($totalSales, 2)) !!}>₱{{ number_format($totalSales, 2) }}</p>
     </div>
 
-    <div class="content-card">
+    <div class="content-card stat-fit">
         <p style="font-size:0.7rem; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:0.3rem;">Total Orders</p>
-        <p style="font-size:1.3rem; font-weight:700; color:#333;">{{ number_format($totalOrders) }}</p>
+        <p class="an-kpi-num stat-fig">{{ number_format($totalOrders) }}</p>
     </div>
 
-    <div class="content-card">
+    <div class="content-card stat-fit">
         <p style="font-size:0.7rem; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:0.3rem;">Average Order Value</p>
-        <p style="font-size:1.3rem; font-weight:700; color:#333;">
+        <p class="an-kpi-num stat-fig" {!! \App\Support\StatFigure::attrs(is_null($averageOrderValue) ? '—' : '₱' . number_format($averageOrderValue, 2)) !!}>
             {{ is_null($averageOrderValue) ? '&mdash;' : '₱' . number_format($averageOrderValue, 2) }}
         </p>
     </div>
 
-    <div class="content-card">
+    <div class="content-card stat-fit">
         <p style="font-size:0.7rem; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:0.3rem;">Average Rating</p>
         @if($averageRating !== null)
-            <p style="font-size:1.3rem; font-weight:700; color:#333;">
+            <p class="an-kpi-num stat-fig">
                 <i class="bi bi-star-fill" style="color:#F4845F;"></i> {{ number_format($averageRating, 2) }} / 5
             </p>
         @else
-            <p style="font-size:1.3rem; font-weight:700; color:#ccc;">&mdash;</p>
+            <p class="stat-fig" style="font-weight:700; color:#ccc;">&mdash;</p>
         @endif
     </div>
 
@@ -111,9 +111,9 @@
          one source of money in this project — so this tile and the Summary
          screen's own Gross Profit are the same calculation, net of discounts,
          and cannot drift apart. --}}
-    <div class="content-card">
+    <div class="content-card stat-fit">
         <p style="font-size:0.7rem; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:0.3rem;">Gross Profit</p>
-        <p style="font-size:1.3rem; font-weight:700; color:#333;">₱{{ number_format($intel['financials']['gross_profit'], 2) }}</p>
+        <p class="an-kpi-num stat-fig" {!! \App\Support\StatFigure::attrs('₱' . number_format($intel['financials']['gross_profit'], 2)) !!}>₱{{ number_format($intel['financials']['gross_profit'], 2) }}</p>
         <p style="font-size:0.68rem; color:#999; margin:0.15rem 0 0;">
             @if($intel['financials']['margin_percent'] === null)
                 No net revenue in this period
@@ -129,9 +129,9 @@
          is known about is not evidence of a risk, and counting it as one would
          inflate this number every quiet week. A live snapshot like the
          capacity table below it, not a figure for the selected period. --}}
-    <div class="content-card">
+    <div class="content-card stat-fit">
         <p style="font-size:0.7rem; font-weight:600; color:#888; text-transform:uppercase; margin-bottom:0.3rem;">Inventory Risk</p>
-        <p style="font-size:1.3rem; font-weight:700; color:{{ $intel['summary']['items_requiring_attention'] > 0 ? '#b3261e' : '#2e7d4f' }};">
+        <p class="stat-fig" style="font-weight:700; color:{{ $intel['summary']['items_requiring_attention'] > 0 ? '#b3261e' : '#2e7d4f' }};">
             {{ number_format($intel['summary']['items_requiring_attention']) }}
         </p>
         <p style="font-size:0.68rem; color:#999; margin:0.15rem 0 0;">
@@ -843,14 +843,16 @@
        all things that happened, and dropping an estimate among them is how a
        projection quietly gets read as a fact. It keeps its own dashed tile on
        the chart card below. */
+    .an-kpi-num { font-weight: 700; color: #333; }
+
     .an-kpi-grid {
         display: grid;
-        grid-template-columns: repeat(2, 1fr);
+        grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 0.75rem;
     }
 
     @media (min-width: 768px) {
-        .an-kpi-grid { grid-template-columns: repeat(3, 1fr); }
+        .an-kpi-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
     }
 
     /* ── Sales Trend & Forecast ──────────────────────────────────────────
@@ -864,6 +866,7 @@
         flex-wrap: wrap;
         align-items: center;
         justify-content: space-between;
+        flex-wrap: wrap;
         gap: 0.75rem;
         margin-bottom: 0.75rem;
     }
@@ -874,6 +877,7 @@
         padding: 0.5rem 0.85rem;
         background: #FFF8F5;
         min-width: 190px;
+        max-width: 100%;
     }
 
     .fc-kpi-label {
@@ -884,7 +888,7 @@
         margin: 0 0 0.15rem;
     }
 
-    .fc-kpi-value { font-size: 1.3rem; font-weight: 700; color: #333; margin: 0; }
+    .fc-kpi-value { font-size: 1.3rem; font-weight: 700; color: #333; margin: 0; overflow-wrap: anywhere; }
 
     /* Insufficient data is smaller and grey, not a big confident figure —
        it must not read like an amount. */

@@ -64,6 +64,10 @@ class AdminRouteGateCoverageTest extends TestCase
         'admin.login.post',
         'admin.logout',
         'admin.session-token',
+        // Read-only "who is signed in on this browser", so a signed-out tab can
+        // be told nobody is (QA, 6 Nov 2026). Answers only about the caller's
+        // own session; see AdminAuthController::accountStatus().
+        'admin.account-status',
         'admin.bootstrap',
         'admin.bootstrap.store',
         'admin.forgot-password',

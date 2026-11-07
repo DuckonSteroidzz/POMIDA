@@ -15,6 +15,7 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\URL;
 use Illuminate\Support\Str;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use Tests\Feature\Concerns\RedeemsPoints;
 use Tests\TestCase;
 
 /**
@@ -30,6 +31,7 @@ class LoyaltyAwardsTest extends TestCase
 {
     use DatabaseTransactions;
     use ForcesSpinOutcome;
+    use RedeemsPoints;
 
     // 12:00 Manila on 15 Oct 2026.
     private const NOW_UTC = '2026-10-15 04:00:00';
@@ -539,6 +541,12 @@ class LoyaltyAwardsTest extends TestCase
         $this->actingAs($user, 'customer')
             ->postJson('/customer/add-points')
             ->assertOk()
+            ->assertJsonMissingPath('voucher')
+            ->assertJsonPath('total_points', 33);
+
+        // Redeemed with Redeem (a spin only earns since Nov 2026).
+        $this->actingAs($user->fresh(), 'customer')->redeemPoints($voucher)
+            ->assertOk()
             ->assertJsonPath('voucher.code', $voucher->code)
             // 3 spun + 30 bonus - 20 cost
             ->assertJsonPath('total_points', 13);
@@ -560,7 +568,7 @@ class LoyaltyAwardsTest extends TestCase
         $this->actingAs($user, 'customer')
             ->postJson('/customer/add-points')
             ->assertOk()
-            ->assertJsonPath('voucher', null)
+            ->assertJsonMissingPath('voucher')
             ->assertJsonPath('total_points', 9);
 
         $this->assertSame(5, (int) $user->fresh()->points);

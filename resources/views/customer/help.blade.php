@@ -241,8 +241,9 @@
                 </summary>
                 <ol class="help-steps grid gap-3 px-5 pb-5 text-sm leading-relaxed text-peach-deep/70 sm:px-6">
                     <li>Place an order first. Spinning is for while you wait, and each order gives you up to 7 spins.</li>
-                    <li>Open the <strong>Spin &amp; Win</strong> tab and tap Spin to win points or vouchers.</li>
-                    <li>Points and vouchers are saved to your account. Without an account, your prizes are not kept, so create one to keep what you win.</li>
+                    <li>Open the <strong>Spin &amp; Win</strong> tab and tap Spin to earn points.</li>
+                    <li>Under <strong>Redeem your points</strong>, tap Redeem to trade your points for a voucher. You can redeem anytime, with no need to spin again.</li>
+                    <li>Points and vouchers are saved to your account. Without an account, your points last only for this visit, so save the code of any voucher you redeem.</li>
                 </ol>
             </details>
 

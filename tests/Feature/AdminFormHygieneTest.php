@@ -76,7 +76,9 @@ class AdminFormHygieneTest extends TestCase
 
     public function test_the_admin_login_form_allows_browser_autofill(): void
     {
-        $html = $this->html('/admin/login'); // public, but acting-as is harmless
+        // Signed OUT: with a staff account signed in, /admin/login now shows the
+        // "you're already signed in" choice instead of the form (QA, 6 Nov 2026).
+        $html = $this->get('/admin/login')->assertOk()->getContent();
 
         // Standard autocomplete tokens so Chrome saves and offers the password.
         $this->assertMatchesRegularExpression('/name="email"[^>]*autocomplete="username"/s', $html);

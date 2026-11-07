@@ -687,7 +687,7 @@ class MenuItemAddWithIngredientsTest extends TestCase
         // The shared fields default to blank in the static HTML — they are only
         // ever filled at runtime, per click, by openEditModal()'s JS.
         $this->assertStringContainsString('id="itemName" class="form-control-custom" value=""', $html);
-        $this->assertStringContainsString('id="itemPrice" class="form-control-custom" step="0.01" min="0" value=""', $html);
+        $this->assertStringContainsString('id="itemPrice" class="form-control-custom" step="0.01" min="0" max="' . \App\Support\InputLimits::PRICE_MAX . '" value=""', $html);
 
         // The add-mode row list starts with zero rows on a fresh load. Isolated
         // to the <tbody> itself, NOT the whole section — the entry row below it

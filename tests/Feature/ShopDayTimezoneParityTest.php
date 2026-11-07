@@ -458,6 +458,8 @@ class ShopDayTimezoneParityTest extends TestCase
 
                 $spin = $this->postJson('/customer/add-points')->assertOk();
                 $this->assertTrue($spin->json('success'), json_encode($spin->json()));
+                // Redeemed with the points just earned (a spin awards nothing since Nov 2026).
+                $this->postJson('/customer/points/redeem', ['voucher_id' => $prize->id])->assertOk();
 
                 $claim = UserVoucher::where('voucher_id', $prize->id)->latest('id')->firstOrFail();
 

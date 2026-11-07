@@ -146,6 +146,10 @@ class Order extends Model
         'serving_at' => 'datetime',
         'completed_at' => 'datetime',
         'cancelled_at' => 'datetime',
+
+        // Set only by AdminController::markOrderRefunded() — deliberately not
+        // in $fillable, like refunded_by.
+        'refunded_at' => 'datetime',
     ];
 
     /**
@@ -213,6 +217,13 @@ class Order extends Model
     public function processor(): BelongsTo
     {
         return $this->belongsTo(User::class, 'processed_by');
+    }
+
+    // The staff member who pressed Mark Refunded (NULL for refunds settled
+    // before 5 Nov 2026, or once that account is deleted).
+    public function refundedBy(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'refunded_by');
     }
 
     // Order has many items
@@ -329,6 +340,103 @@ class Order extends Model
     public function paymentStatusLabel(): string
     {
         return self::paymentStatusText($this->payment_status, $this->status);
+    }
+
+    /**
+     * REFUNDS (QA, 5 Nov 2026).
+     *
+     * A refund is not a table of its own: it is an order whose payment_status
+     * is 'refund_pending' (owed) or 'refunded' (settled). Who owes one is
+     * decided ONLY by the two cancel paths (OrderController::
+     * cancelCustomerOrder() and AdminController::cancelOrder()); everything
+     * below just reads that state for the Refunds page, the board and the
+     * customer's screens, so they can never disagree about what a refund is.
+     */
+    public const REFUND_STATUSES = ['refund_pending', 'refunded'];
+
+    public function scopeRefunds(\Illuminate\Database\Eloquent\Builder $query): \Illuminate\Database\Eloquent\Builder
+    {
+        return $query->whereIn('payment_status', self::REFUND_STATUSES);
+    }
+
+    /**
+     * Payment states in which GCash money has (or may have) reached the cafe:
+     * the customer tapped "I Have Paid" (awaiting_verification), or staff
+     * approved it / took it at the counter (paid).
+     */
+    public const GCASH_MONEY_RECEIVED = ['awaiting_verification', 'paid'];
+
+    /**
+     * Does cancelling this order, right now, owe the customer a refund?
+     *
+     * THE rule, used by both cancel paths (OrderController::
+     * cancelCustomerOrder, AdminController::cancelOrder) and the customer's
+     * cancel prompt. QA, 5 Nov 2026: it used to be awaiting_verification only,
+     * so a GCash order cancelled AFTER staff approved it (still 'pending',
+     * payment 'paid') — or a GCash counter order (written 'paid') — settled
+     * as a plain cancellation and the money was never owed back.
+     *
+     * Cash never owes a refund here: cash changes hands at the counter. A
+     * rejected GCash payment is not cancelled through this rule at all
+     * (rejectGcashPayment: staff judged the money never arrived).
+     */
+    public function cancellationOwesRefund(): bool
+    {
+        return $this->payment_method === 'gcash'
+            && in_array($this->payment_status, self::GCASH_MONEY_RECEIVED, true);
+    }
+
+    public function isRefund(): bool
+    {
+        return in_array($this->payment_status, self::REFUND_STATUSES, true);
+    }
+
+    public function refundIsOwed(): bool
+    {
+        return $this->payment_status === 'refund_pending';
+    }
+
+    /**
+     * Who cancelled a refund order: 'Customer' or 'Staff'.
+     *
+     * Read from the cancellation_reason the two cancel paths have always
+     * written ("Cancelled by the customer …" / "Cancelled by staff …"), so
+     * every existing refund answers too without a new column.
+     */
+    public function cancelledByLabel(): string
+    {
+        $reason = strtolower(trim((string) $this->cancellation_reason));
+
+        if (str_starts_with($reason, 'cancelled by staff')) {
+            return 'Staff';
+        }
+
+        if (str_starts_with($reason, 'cancelled by the customer')) {
+            return 'Customer';
+        }
+
+        return 'Not recorded';
+    }
+
+    /**
+     * The one sentence a customer sees about their refund, on Order History
+     * and the receipt. Null for an order that owes no refund.
+     */
+    public function customerRefundMessage(): ?string
+    {
+        $amount = '₱' . number_format((float) $this->total, 2);
+
+        if ($this->payment_status === 'refund_pending') {
+            return 'Refund owed: the cafe will send ' . $amount . ' back to your GCash.';
+        }
+
+        if ($this->payment_status === 'refunded') {
+            return $this->refunded_at
+                ? 'Refunded on ' . \App\Support\ShopDay::format($this->refunded_at, 'M j, Y') . ': ' . $amount . ' was sent back to your GCash.'
+                : 'Refunded: ' . $amount . ' was sent back to your GCash.';
+        }
+
+        return null;
     }
 
     /** Has the customer attached a GCash payment screenshot? See App\Services\GcashProof. */

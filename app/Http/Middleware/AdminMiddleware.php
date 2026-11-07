@@ -48,6 +48,22 @@ class AdminMiddleware
                 ]);
         }
 
+        // QA, 6 Nov 2026: one browser has one staff login, so a window drawn
+        // for Admin can still be open after another window signed in as the
+        // Supervisor. Its next form or fetch carries the account it was drawn
+        // for (App\Support\StaffAccount). If that is not who is signed in now,
+        // the request is refused with a plain explanation and nothing runs.
+        // Only a state-changing request is checked: reading a page as the
+        // current account was always safe, and the page redraws for them.
+        // A request that sends no stamp is judged exactly as it always was.
+        if (! $request->isMethodSafe() && \App\Support\StaffAccount::isStale($request, $user)) {
+            return \App\Support\StaffAccount::refusal(
+                $request,
+                $user,
+                \App\Support\StaffAccount::isBackground($request)
+            );
+        }
+
         return $next($request);
     }
 

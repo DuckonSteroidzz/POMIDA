@@ -9,6 +9,7 @@ use App\Http\Controllers\Customer\TableChangeController;
 use App\Http\Controllers\Customer\FreeDessertPromptController;
 use App\Http\Controllers\Admin\SettingsController;
 use App\Http\Controllers\Admin\StreakRewardController;
+use App\Http\Controllers\Admin\RefundController;
 use App\Http\Controllers\Customer\NotificationController as CustomerNotificationController;
 use App\Http\Controllers\Admin\NotificationController as AdminNotificationController;
 
@@ -534,11 +535,23 @@ Route::prefix('customer')->name('customer.')->middleware(\App\Http\Middleware\Fo
     Route::get('/game', [AuthController::class, 'showGame'])
         ->name('game');
 
-    // Points convert into vouchers. The value is allowlisted server-side in
-    // AuthController::addPoints(); this caps how fast spins can be replayed.
+    // A spin earns points; the server picks the outcome in
+    // AuthController::addPoints(). The throttle caps how fast spins can be
+    // replayed. block(): see points/redeem below.
     Route::post('/add-points', [AuthController::class, 'addPoints'])
         ->middleware('throttle:customer-add-points')
+        ->block(10, 10)
         ->name('add-points');
+
+    // Redeem points for a voucher (Nov 2026), from Spin & Win and Vouchers &
+    // Rewards. Every rule is re-checked in App\Services\PointsRedeem.
+    // block() = Laravel session blocking: a guest's points live in the
+    // session, so two tabs (or a double click) must not read and write it at
+    // the same time. The spin route holds the same lock for the same reason.
+    Route::post('/points/redeem', [AuthController::class, 'redeemPoints'])
+        ->middleware('throttle:customer-points-redeem')
+        ->block(10, 10)
+        ->name('points.redeem');
 
     // More → Vouchers & Rewards: wheel vouchers, the stamp card and every
     // loyalty reward with its code.
@@ -618,6 +631,14 @@ Route::prefix('admin')->name('admin.')->group(function () {
     // reasoning as that route: it only reads csrf_token(), nothing to guard.
     Route::get('/session-token', [AdminAuthController::class, 'sessionToken'])
         ->name('session-token');
+
+    // Who this browser is signed in as (QA, 6 Nov 2026), so every other open
+    // staff tab can notice when the account changes or logs out. Read-only,
+    // outside the `admin` door ON PURPOSE: a signed-out browser must be able to
+    // answer "nobody", not be redirected to a login page the poll cannot read.
+    // Unthrottled like session-token above: it only reads the session.
+    Route::get('/account-status', [AdminAuthController::class, 'accountStatus'])
+        ->name('account-status');
 
     // ══════════ FIRST-RUN BOOTSTRAP ══════════
     //
@@ -850,6 +871,21 @@ Route::prefix('admin')
             // only the branch scope they already see (completedOrdersQuery()).
             Route::get('/completed-orders/export', [AdminController::class, 'exportCompletedOrders'])
                 ->name('completed-orders.export');
+
+
+            // ══════════ REFUNDS (QA, 5 Nov 2026) ══════════
+            //
+            // Every refund, owed and refunded, with a detail page that stays
+            // reachable after Mark Refunded. Same group as that action
+            // (admin.orders.payment.refunded): every portal role, each within
+            // their own branch scope — see RefundController.
+
+            Route::get('/refunds', [RefundController::class, 'index'])
+                ->name('refunds');
+
+            Route::get('/refunds/{id}', [RefundController::class, 'show'])
+                ->whereNumber('id')
+                ->name('refunds.show');
 
 
             // ══════════ SUMMARY — the matrix's one LIMITED report ══════════

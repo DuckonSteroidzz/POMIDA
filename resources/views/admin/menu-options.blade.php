@@ -543,7 +543,7 @@
                            placeholder="0.00"
                            step="0.01"
                            min="0.01"
-                           max="99999999.99"
+                           max="{{ \App\Support\InputLimits::PRICE_MAX }}"
                            required>
                 </div>
 
@@ -1810,7 +1810,7 @@
                                        placeholder="0.00"
                                        step="0.01"
                                        min="0.01"
-                                       max="99999999.99"
+                                       max="{{ \App\Support\InputLimits::PRICE_MAX }}"
                                        required>
                             </div>
 
@@ -1933,6 +1933,7 @@
                                    title="Quantity used per order"
                                    step="0.001"
                                    min="0.001"
+                                   max="{{ \App\Support\InputLimits::RECIPE_QTY_MAX }}"
                                    required>
 
                             <button type="submit" class="pchy-btn pchy-ing-add">

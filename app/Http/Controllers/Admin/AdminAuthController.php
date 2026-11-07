@@ -94,6 +94,12 @@ class AdminAuthController extends Controller
             // installation that already has an admin, which is all of them
             // after the first few minutes of their life.
             'canBootstrapAdmin' => \App\Services\AdminBootstrap::isAvailable(),
+
+            // QA, 6 Nov 2026: one browser has one staff login. When somebody is
+            // already signed in, the page says so and offers Continue or Log
+            // out and switch, instead of a form that would sign a different
+            // account over them without a word. See App\Support\StaffAccount.
+            'signedInAs' => \App\Support\StaffAccount::describe(\App\Support\StaffAccount::current()),
         ]);
 
         // "Your account was signed in on another device." Shown in the same
@@ -108,9 +114,44 @@ class AdminAuthController extends Controller
     // can refresh its own token before it's submitted and never dead-end on
     // the branded 419 page. Mirrors Customer\AuthController::sessionToken() —
     // READ-ONLY, only reads csrf_token(), touches no session key.
-    public function sessionToken()
+    //
+    // QA, 6 Nov 2026: a page drawn for a staff account says which one (?acct=).
+    // If the browser has since been signed in as someone else, or signed out,
+    // that page is NOT handed the new account's token: it would let a stale
+    // Admin window keep acting through the Supervisor's session. It is told the
+    // account changed instead, and its script shows the notice and reloads.
+    public function sessionToken(Request $request)
     {
+        $acct = $request->query('acct');
+
+        if (is_scalar($acct) && trim((string) $acct) !== '') {
+            $current = \App\Support\StaffAccount::current();
+
+            if (! $current || (string) $current->id !== trim((string) $acct)) {
+                return response()->json([
+                    'account_changed' => true,
+                    'account'         => \App\Support\StaffAccount::describe($current),
+                ])->header('Cache-Control', 'no-store');
+            }
+        }
+
         return response()->json(['token' => csrf_token()]);
+    }
+
+    // Who this browser is signed in as, for the other open staff tabs to compare
+    // with the account they were drawn for. READ-ONLY and open to a signed-out
+    // browser (answering signed_in: false), which is what lets a tab learn that
+    // another tab logged out. It reveals nothing but the session's own account.
+    public function accountStatus()
+    {
+        $current = \App\Support\StaffAccount::current();
+
+        return response()
+            ->json([
+                'signed_in' => $current !== null,
+                'account'   => \App\Support\StaffAccount::describe($current),
+            ])
+            ->header('Cache-Control', 'no-store');
     }
 
     /*
@@ -210,6 +251,19 @@ class AdminAuthController extends Controller
      */
     public function login(Request $request)
     {
+        // 0. Never switch accounts silently (QA, 6 Nov 2026). This browser's one
+        // staff login is already taken, so a second one is refused before any
+        // password is even checked. The person is sent back to the login page,
+        // which now offers Continue, or Log out and switch. Only the logout
+        // form changes who is signed in. Session regeneration on a real login
+        // below is untouched.
+        if ($signedIn = \App\Support\StaffAccount::current()) {
+            return redirect()->route('admin.login')->withErrors([
+                'session' => "You're already signed in as " . \App\Support\StaffAccount::nameAndRole($signedIn)
+                    . '. Log out first to sign in with a different account.',
+            ]);
+        }
+
         // 1. Validate
         $credentials = $request->validate([
             'email' => 'required|email',

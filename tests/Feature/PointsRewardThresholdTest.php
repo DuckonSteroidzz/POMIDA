@@ -11,6 +11,7 @@ use App\Services\PointsRewards;
 use Illuminate\Foundation\Testing\DatabaseTransactions;
 use Illuminate\Support\Facades\Hash;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use Tests\Feature\Concerns\RedeemsPoints;
 use Tests\TestCase;
 
 /**
@@ -40,6 +41,7 @@ class PointsRewardThresholdTest extends TestCase
 {
     use DatabaseTransactions;
     use ForcesSpinOutcome;
+    use RedeemsPoints;
 
     /**
      * Highest notification id that existed BEFORE this test started.
@@ -257,7 +259,7 @@ class PointsRewardThresholdTest extends TestCase
         $this->assertSame(0, $this->notificationsFor($user));
     }
 
-    public function test_a_wheel_voucher_is_still_won_when_a_threshold_is_crossed(): void
+    public function test_a_wheel_voucher_is_still_redeemed_when_a_threshold_is_crossed(): void
     {
         Voucher::where('points_required', '>', 0)->update(['is_active' => false]);
 
@@ -278,14 +280,15 @@ class PointsRewardThresholdTest extends TestCase
         $this->order($user);
         $this->actingAs($user, 'customer');
 
-        // 32 lifetime points; the 30-point wheel voucher is won on the spin that
-        // takes the spendable balance to 32 (and costs 30 of it).
-        $last = null;
+        // 32 lifetime points. A spin only earns (Nov 2026): the 30-point
+        // voucher is redeemed afterwards and costs 30 of the 32.
         for ($i = 0; $i < 4; $i++) {
-            $last = $this->spin(8)->assertOk();
+            $this->spin(8)->assertOk();
         }
 
-        $last->assertJsonPath('voucher.code', $voucher->code);
+        $this->actingAs($user->fresh(), 'customer')->redeemPoints($voucher)
+            ->assertOk()
+            ->assertJsonPath('voucher.code', $voucher->code);
         $this->assertSame(
             1,
             \App\Models\UserVoucher::where('user_id', $user->id)->where('voucher_id', $voucher->id)->count()

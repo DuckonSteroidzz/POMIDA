@@ -9,6 +9,10 @@
 
     @include('partials.session-guard')
 
+    {{-- A login page open when another tab signs in becomes the "already signed
+         in" page (QA, 6 Nov 2026); see the partial. --}}
+    @include('admin.partials.account-watch')
+
     <link href="/vendor/gfonts.css" rel="stylesheet">
     @include('partials.typography-stability')
 
@@ -457,6 +461,50 @@
         }
 
         /* =====================================================
+           ALREADY SIGNED IN (QA, 6 Nov 2026)
+        ===================================================== */
+
+        .signed-in-choice {
+            display: grid;
+            gap: 0.85rem;
+            text-align: center;
+        }
+
+        .signed-in-text {
+            margin: 0 0 0.25rem;
+            font-size: 0.95rem;
+            line-height: 1.55;
+            color: var(--deep-red);
+        }
+
+        .btn-continue {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-decoration: none;
+        }
+
+        .btn-switch {
+            width: 100%;
+            min-height: 52px;
+            border: 1.5px solid var(--deep-red);
+            border-radius: 999px;
+            background: transparent;
+            color: var(--deep-red);
+            font-family: "Karla", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 0.95rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            cursor: pointer;
+            transition: background 0.2s ease, color 0.2s ease;
+        }
+
+        .btn-switch:hover {
+            background: var(--deep-red);
+            color: #fff;
+        }
+
+        /* =====================================================
            ADMIN REGISTER LINK
         ===================================================== */
 
@@ -681,6 +729,42 @@
 
             @endif
 
+            @if(!empty($signedInAs))
+
+            {{-- QA, 6 Nov 2026: this browser already has a staff login. One
+                 browser, one staff login, so no form that would sign another
+                 account over it: Continue, or log out first. $signedInAs comes
+                 from App\Support\StaffAccount::describe(). --}}
+            <div class="signed-in-choice" data-testid="signed-in-choice">
+
+                <p class="signed-in-text">
+                    You're signed in as <strong>{{ $signedInAs['name'] }}</strong> ({{ $signedInAs['label'] }}).
+                    Continue as {{ $signedInAs['name'] }}, or log out to sign in with a different account.
+                </p>
+
+                <a
+                    href="{{ route('admin.home') }}"
+                    class="btn-login btn-continue"
+                    data-testid="signed-in-continue"
+                >
+                    Continue
+                </a>
+
+                <form action="{{ route('admin.logout') }}" method="POST">
+                    @csrf
+                    <button
+                        type="submit"
+                        class="btn-switch"
+                        data-testid="signed-in-logout"
+                    >
+                        Log out and switch
+                    </button>
+                </form>
+
+            </div>
+
+            @else
+
             {{-- IMPORTANT:
                  This keeps the existing admin login route. --}}
             <form
@@ -822,6 +906,8 @@
                 <p class="register-link">
                     Need on the crew? Ask an administrator to create your account.
                 </p>
+            @endif
+
             @endif
 
         </section>

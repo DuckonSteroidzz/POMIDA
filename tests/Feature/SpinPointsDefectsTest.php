@@ -22,6 +22,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
+use Tests\Feature\Concerns\RedeemsPoints;
 use Tests\TestCase;
 
 /**
@@ -51,6 +52,7 @@ class SpinPointsDefectsTest extends TestCase
 {
     use DatabaseTransactions;
     use ForcesSpinOutcome;
+    use RedeemsPoints;
 
     // 12:00 Manila on 15 Oct 2026, the same anchor LoyaltyAwardsTest uses.
     private const NOW_UTC = '2026-10-15 04:00:00';
@@ -275,8 +277,8 @@ class SpinPointsDefectsTest extends TestCase
     {
         $html = $this->actingAs($user->fresh(), 'customer')->get(route('customer.vouchers'))->assertOk()->getContent();
 
-        $this->assertMatchesRegularExpression('#You have <span class="text-peach-red">(\d+)</span> pts#', $html);
-        preg_match('#You have <span class="text-peach-red">(\d+)</span> pts#', $html, $m);
+        $this->assertMatchesRegularExpression('#You have <span class="text-peach-red" data-points-balance>(\d+)</span> pts#', $html);
+        preg_match('#You have <span class="text-peach-red" data-points-balance>(\d+)</span> pts#', $html, $m);
 
         return (int) $m[1];
     }
@@ -488,12 +490,14 @@ class SpinPointsDefectsTest extends TestCase
 
         $order = $this->placePickUp($user);
         $this->spin($user, 1, 8);              // 8 spin + 3 bonus = 11
-        $this->spin($user, 1, 8);              // 16 + 3 = 19 -> voucher, 15 from the spin balance
+        $this->spin($user, 1, 8);              // 16 + 3 = 19
+        // Redeemed (Nov 2026: a spin no longer awards it), 15 from the spin balance.
+        $this->actingAs($user->fresh(), 'customer')->redeemPoints($voucher)->assertOk();
 
         $claim = UserVoucher::where('user_id', $user->id)->where('voucher_id', $voucher->id)->first();
-        $this->assertNotNull($claim, 'the wheel voucher was not won');
+        $this->assertNotNull($claim, 'the wheel voucher was not redeemed');
         $this->assertSame(1, (int) $user->fresh()->points);
-        $this->assertShown(4, $user, 'after winning the voucher');
+        $this->assertShown(4, $user, 'after redeeming the voucher');
 
         $this->actingAs($user->fresh(), 'customer')->post(route('customer.orders.cancel', $order->id))->assertRedirect();
 
@@ -526,7 +530,9 @@ class SpinPointsDefectsTest extends TestCase
         $today = $this->placePickUp($user);
         $this->assertShown(24, $user, 'after placing today\'s order');
 
-        $this->spin($user, 1, 8);              // 32 >= 30 -> won, 32 - 30 = 2
+        $this->spin($user, 1, 8);              // 32 >= 30
+        $this->assertShown(32, $user, 'a spin never takes points for a voucher');
+        $this->actingAs($user->fresh(), 'customer')->redeemPoints($voucher)->assertOk(); // 32 - 30 = 2
         $claim = UserVoucher::where('user_id', $user->id)->where('voucher_id', $voucher->id)->first();
         $this->assertNotNull($claim, 'stacked points did not reach the wheel voucher');
         $this->assertShown(2, $user, 'after the voucher took its 30 points');

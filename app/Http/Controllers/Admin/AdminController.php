@@ -1245,11 +1245,11 @@ class AdminController extends Controller
             'category_id' => 'required|exists:categories,id',
             'subcategory_id' => 'nullable|exists:subcategories,id',
             'inventory_item_id' => 'nullable|exists:inventory,id',
-            'inventory_amount_used' => 'nullable|numeric|min:0',
+            'inventory_amount_used' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::RECIPE_QTY_MAX,
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'cost' => 'nullable|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:' . \App\Support\InputLimits::PRICE_MAX,
+            'cost' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::PRICE_MAX,
             'branch_id' => 'nullable|exists:branches,id',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
             // (The "Free dessert reward" checkbox, free_dessert_eligible, was
@@ -1259,7 +1259,7 @@ class AdminController extends Controller
             // Recipe rows typed on the Add form, saved with the item in one go.
             'ingredients' => 'nullable|array',
             'ingredients.*.inventory_id' => 'required|integer|exists:inventory,id',
-            'ingredients.*.quantity_used' => 'required|numeric|gt:0',
+            'ingredients.*.quantity_used' => 'required|numeric|gt:0|max:' . \App\Support\InputLimits::RECIPE_QTY_MAX,
             // High unless the draft row's pill was switched (Defect Report 6).
             'ingredients.*.priority' => 'nullable|in:high,low',
         ], [
@@ -1426,11 +1426,11 @@ class AdminController extends Controller
             'category_id' => 'required|exists:categories,id',
             'subcategory_id' => 'nullable|exists:subcategories,id',
             'inventory_item_id' => 'nullable|exists:inventory,id',
-            'inventory_amount_used' => 'nullable|numeric|min:0',
+            'inventory_amount_used' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::RECIPE_QTY_MAX,
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
-            'price' => 'required|numeric|min:0',
-            'cost' => 'nullable|numeric|min:0',
+            'price' => 'required|numeric|min:0|max:' . \App\Support\InputLimits::PRICE_MAX,
+            'cost' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::PRICE_MAX,
             'branch_id' => 'nullable|exists:branches,id',
             'image' => 'nullable|image|mimes:jpeg,png,jpg,webp|max:2048',
         ]);
@@ -1673,7 +1673,7 @@ class AdminController extends Controller
 
     $validated = $request->validate([
         'inventory_id' => 'required|exists:inventory,id',
-        'quantity_used' => 'required|numeric|min:0.001',
+        'quantity_used' => 'required|numeric|min:0.001|max:' . \App\Support\InputLimits::RECIPE_QTY_MAX,
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
@@ -1878,7 +1878,7 @@ private function savePriority(Request $request, $row, \App\Models\MenuItem $menu
 // reopen the item's editor ('menu_item_editing'), not as the default error
 // bag, which the page treats as a failed Add/Edit submission.
 
-private const SIZE_PRICE_RULE = ['required', 'numeric', 'gt:0', 'max:99999999.99'];
+private const SIZE_PRICE_RULE = ['required', 'numeric', 'gt:0', 'max:' . \App\Support\InputLimits::PRICE_MAX];
 
 private function sizeEditorRedirect(int $menuItemId): \Illuminate\Http\RedirectResponse
 {
@@ -2011,7 +2011,7 @@ public function addSizeIngredient(Request $request, int $menuItem, int $size)
         'inventory_id' => 'required|integer|exists:inventory,id',
         // max = the largest value menu_item_size_ingredients.quantity
         // (decimal(12,3)) holds, so an oversized figure is a 422, not a 500.
-        'quantity_used' => 'required|numeric|min:0.001|max:999999999.999',
+        'quantity_used' => 'required|numeric|min:0.001|max:' . \App\Support\InputLimits::RECIPE_QTY_MAX,
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
@@ -2131,7 +2131,7 @@ public function addOptionIngredient(Request $request, int $menuOption)
         // (decimal(10,3)) can hold. Without it an oversized figure passed
         // validation and died in the INSERT (SQLSTATE 22003) as a 500 with a
         // logged server error, instead of the 422 the form can show.
-        'quantity_used' => 'required|numeric|min:0.001|max:9999999.999',
+        'quantity_used' => 'required|numeric|min:0.001|max:' . \App\Support\InputLimits::RECIPE_QTY_MAX,
     ]);
 
     $inventory = \App\Models\Inventory::findOrFail($validated['inventory_id']);
@@ -2733,7 +2733,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
     {
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'price' => 'required|numeric|gt:0|max:99999999.99',
+            'price' => 'required|numeric|gt:0|max:' . \App\Support\InputLimits::PRICE_MAX,
             'description' => 'nullable|string|max:255',
         ]);
 
@@ -2795,7 +2795,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
 
         $validated = $request->validate([
             'name' => 'required|string|max:255',
-            'price' => 'required|numeric|gt:0|max:99999999.99',
+            'price' => 'required|numeric|gt:0|max:' . \App\Support\InputLimits::PRICE_MAX,
         ]);
 
         $option->update([
@@ -3385,7 +3385,7 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
         {
             $request->validate([
                 'code'     => 'required|string|max:64',
-                'subtotal' => 'required|numeric|min:0',
+                'subtotal' => 'required|numeric|min:0|max:' . \App\Support\InputLimits::AMOUNT_PAID_MAX,
                 // The branch the manual order is being written for. Sent by the
                 // modal so this preview judges the branch rule against the same
                 // branch storeManualOrder() will validate and save — without it
@@ -3515,10 +3515,10 @@ public function deleteOptionIngredient(Request $request, int $menuOption, int $i
                 // only caught by MySQL strict mode at INSERT time, which
                 // surfaced as the generic "could not be saved" catch plus a
                 // logged QueryException instead of a readable field error.
-                'amount_paid' => 'required|numeric|min:0|max:99999999.99',
+                'amount_paid' => 'required|numeric|min:0|max:' . \App\Support\InputLimits::AMOUNT_PAID_MAX,
                 'items' => 'required|array|min:1',
                 'items.*.menu_item_id' => 'required|exists:menu_items,id',
-                'items.*.quantity' => 'required|integer|min:1',
+                'items.*.quantity' => 'required|integer|min:1|max:' . \App\Support\InputLimits::ORDER_QTY_MAX,
                 'items.*.options' => 'nullable|array',
                 'items.*.options.*' => 'integer|exists:menu_options,id',
                 // Menu Item Sizes (Phase 2): required for a sized item, and
@@ -4794,30 +4794,49 @@ public function rejectGcashPayment(int $id)
  * appearing as outstanding work on the live board.
  *
  * Deliberately narrow. It only moves 'refund_pending' -> 'refunded' and
- * touches nothing else — not the order status, which is already (and stays)
- * 'cancelled'. Guarding on the current payment_status also makes it safe to
- * double-click: the second press is refused instead of re-recording a
- * refund that already happened.
+ * records who and when (refunded_by / refunded_at, QA 5 Nov 2026, so the
+ * Refunds page keeps the history) — not the order status, which is already
+ * (and stays) 'cancelled', and not any amount.
+ *
+ * The move is ONE conditional UPDATE, not read-then-save: two presses (a
+ * double-click, or two tills) can both read 'refund_pending', but only one
+ * UPDATE can still match it, so the second is refused instead of
+ * overwriting who refunded it and notifying the customer twice.
+ *
+ * From the Refunds page (from=refunds) staff land back where they pressed
+ * it, where the row now reads Refunded; from the board, back to the board.
  */
-public function markOrderRefunded(int $id)
+public function markOrderRefunded(Request $request, int $id)
 {
     $order = \App\Services\AdminOrderAccess::resolveInScope($id);
 
-    if ($order->payment_status !== 'refund_pending') {
-        return redirect()->route('admin.home')
-            ->withErrors([
-                'payment' => 'This order is not waiting on a refund.'
-            ]);
+    $done = $request->input('from') === 'refunds'
+        ? redirect()->back()
+        : redirect()->route('admin.home');
+
+    $marked = \App\Models\Order::whereKey($order->id)
+        ->where('payment_status', 'refund_pending')
+        ->update([
+            'payment_status' => 'refunded',
+            'refunded_at'    => now(),
+            'refunded_by'    => Auth::guard('admin')->id(),
+        ]);
+
+    if ($marked === 0) {
+        return $done->withErrors([
+            'payment' => 'Order #' . $order->order_number . ' is not waiting on a refund.'
+                . ($order->payment_status === 'refunded' ? ' It was already marked refunded.' : ''),
+        ]);
     }
 
-    $order->payment_status = 'refunded';
-    $order->save();
+    $order->refresh();
 
-    return redirect()->route('admin.home')
-        ->with(
-            'success',
-            'Order #' . $order->order_number . ' marked as refunded.'
-        );
+    \App\Models\Notification::refundSent($order);
+
+    return $done->with(
+        'success',
+        'Order #' . $order->order_number . ' marked as refunded.'
+    );
 }
     /**
      * 'completed' and 'cancelled' are terminal. Nothing may move an order back
@@ -4910,8 +4929,12 @@ public function markOrderRefunded(int $id)
         // may have real money in flight and there is no merchant API to
         // reverse it, so it lands in Refunds Owed instead of settling as a
         // plain cancellation that quietly never gets refunded.
-        $needsRefund = $order->payment_method === 'gcash'
-            && $order->payment_status === 'awaiting_verification';
+        //
+        // QA 5 Nov 2026: also once the GCash money is confirmed ('paid') —
+        // an approved online order, or a GCash counter order (always written
+        // 'paid'). One rule: Order::cancellationOwesRefund().
+        $needsRefund = $order->cancellationOwesRefund();
+        $wasAwaiting = $order->payment_status === 'awaiting_verification';
 
         $order->status = 'cancelled';
         // Matches OrderController::cancelCustomerOrder(), which has always
@@ -4920,7 +4943,9 @@ public function markOrderRefunded(int $id)
 
         if ($needsRefund) {
             $order->payment_status = 'refund_pending';
-            $order->cancellation_reason = 'Cancelled by staff after the customer marked it paid via GCash. '
+            $order->cancellation_reason = ($wasAwaiting
+                    ? 'Cancelled by staff after the customer marked it paid via GCash. '
+                    : 'Cancelled by staff after the GCash payment was received. ')
                 . 'Refund must be sent manually.';
         }
 
@@ -5221,10 +5246,10 @@ public function markOrderRefunded(int $id)
                     ->where('branch_id', $selectedBranch),
             ],
             'category' => 'nullable|string|max:100',
-            'quantity' => 'required|numeric|min:0',
+            'quantity' => 'required|numeric|min:0|max:' . \App\Support\InputLimits::STOCK_MAX,
             'unit' => 'required|string|max:20',
-            'low_stock_alert' => 'nullable|numeric|min:0',
-            'unit_cost' => 'nullable|numeric|min:0',
+            'low_stock_alert' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::STOCK_MAX,
+            'unit_cost' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::UNIT_COST_MAX,
             'supplier' => 'nullable|string|max:255',
         ], [
             'item_code.required' => 'Item code is required.',
@@ -5318,10 +5343,10 @@ public function markOrderRefunded(int $id)
                     ->ignore($item->id),
             ],
             'category' => 'nullable|string|max:100',
-            'quantity' => 'required|numeric|min:0',
+            'quantity' => 'required|numeric|min:0|max:' . \App\Support\InputLimits::STOCK_MAX,
             'unit' => 'required|string|max:20',
-            'low_stock_alert' => 'nullable|numeric|min:0',
-            'unit_cost' => 'nullable|numeric|min:0',
+            'low_stock_alert' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::STOCK_MAX,
+            'unit_cost' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::UNIT_COST_MAX,
             'supplier' => 'nullable|string|max:255',
         ], [
             'item_code.required' => 'Item code is required.',
@@ -5376,7 +5401,7 @@ public function markOrderRefunded(int $id)
         $item = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\Inventory::class, $id);
 
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.001',
+            'amount' => 'required|numeric|min:0.001|max:' . \App\Support\InputLimits::STOCK_MAX,
             'note' => 'nullable|string|max:255',
         ]);
 
@@ -5418,7 +5443,7 @@ public function markOrderRefunded(int $id)
         $item = \App\Services\AdminOrderAccess::resolveRecordInScope(\App\Models\Inventory::class, $id);
 
         $validated = $request->validate([
-            'amount' => 'required|numeric|min:0.001',
+            'amount' => 'required|numeric|min:0.001|max:' . \App\Support\InputLimits::STOCK_MAX,
             'note' => 'nullable|string|max:255',
         ]);
 
@@ -6670,12 +6695,12 @@ public function markOrderRefunded(int $id)
             'code' => 'required|string|max:50|unique:vouchers,code',
             'description' => 'nullable|string|max:255',
             'discount_type' => 'required|in:fixed,percent',
-            'discount_value' => 'required|numeric|min:1',
-            'max_uses' => 'required|integer|min:1',
-            'minimum_order' => 'nullable|numeric|min:0',
+            'discount_value' => ['required', 'numeric', 'min:1', 'max:' . \App\Support\InputLimits::voucherValueMax($request->input('discount_type'))],
+            'max_uses' => 'required|integer|min:1|max:' . \App\Support\InputLimits::VOUCHER_COUNT_MAX,
+            'minimum_order' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::VOUCHER_FIXED_MAX,
             'valid_from' => 'nullable|date',
             'expires_at' => 'nullable|date',
-            'points_required' => 'nullable|integer|min:0',
+            'points_required' => 'nullable|integer|min:0|max:' . \App\Support\InputLimits::VOUCHER_COUNT_MAX,
             // Owner-supplied scope. Ignored for a supervisor — see
             // promotionBranchIdFor() — but still validated so a bad id from the
             // owner's own picker is a 422 rather than a foreign-key crash.
@@ -6719,12 +6744,12 @@ public function markOrderRefunded(int $id)
             'code' => 'required|string|max:50|unique:vouchers,code,' . $voucher->id,
             'description' => 'nullable|string|max:255',
             'discount_type' => 'required|in:fixed,percent',
-            'discount_value' => 'required|numeric|min:1',
-            'max_uses' => 'required|integer|min:1',
-            'minimum_order' => 'nullable|numeric|min:0',
+            'discount_value' => ['required', 'numeric', 'min:1', 'max:' . \App\Support\InputLimits::voucherValueMax($request->input('discount_type'))],
+            'max_uses' => 'required|integer|min:1|max:' . \App\Support\InputLimits::VOUCHER_COUNT_MAX,
+            'minimum_order' => 'nullable|numeric|min:0|max:' . \App\Support\InputLimits::VOUCHER_FIXED_MAX,
             'valid_from' => 'nullable|date',
             'expires_at' => 'nullable|date',
-            'points_required' => 'nullable|integer|min:0',
+            'points_required' => 'nullable|integer|min:0|max:' . \App\Support\InputLimits::VOUCHER_COUNT_MAX,
             'is_active' => 'nullable|boolean',
             // The modal's "Active on spin wheel" box (a hidden 0 + the box's
             // 1). Absent from the request -> the flag is left as it is.
@@ -7013,7 +7038,7 @@ public function markOrderRefunded(int $id)
         $voucher->on_wheel = $on;
         $voucher->save();
 
-        $message = 'Voucher "' . $voucher->code . '" ' . ($on ? 'added to' : 'removed from') . ' the spin wheel.';
+        $message = 'Voucher "' . $voucher->code . '" ' . ($on ? 'can now' : 'can no longer') . ' be redeemed with points.';
 
         if (! $request->expectsJson()) {
             return redirect()->route('admin.vouchers')->with('success', $message);
@@ -7183,7 +7208,7 @@ public function markOrderRefunded(int $id)
             'name' => 'required|string|max:255',
             'code' => 'required|string|max:10|unique:branches,code',
             'address' => 'required|string|max:500',
-            'contact_number' => 'nullable|string|max:20',
+            'contact_number' => 'nullable|string|max:' . \App\Support\InputLimits::PHONE_MAX,
             'email' => 'nullable|email|max:255',
             'opening_time' => 'nullable',
             'closing_time' => 'nullable',
@@ -7229,7 +7254,7 @@ public function markOrderRefunded(int $id)
         $validated = $request->validate([
             'name' => 'required|string|max:255',
             'address' => 'required|string|max:500',
-            'contact_number' => 'nullable|string|max:20',
+            'contact_number' => 'nullable|string|max:' . \App\Support\InputLimits::PHONE_MAX,
             'email' => 'nullable|email|max:255',
             'opening_time' => 'nullable',
             'closing_time' => 'nullable',
@@ -7301,7 +7326,7 @@ public function markOrderRefunded(int $id)
         $request->validate([
             'gcash_enabled' => 'nullable|boolean',
             'gcash_qr' => \App\Support\BranchGcash::qrRules(),
-            'gcash_number' => 'nullable|string|max:20',
+            'gcash_number' => 'nullable|string|max:' . \App\Support\InputLimits::PHONE_MAX,
         ], \App\Support\BranchGcash::qrMessages('gcash_qr'));
 
         $number = null;
@@ -7834,7 +7859,7 @@ public function markOrderRefunded(int $id)
 
             foreach ($rows as $row) {
                 fputcsv($file, [
-                    $row['order_number'],
+                    \App\Support\Csv::cell($row['order_number']),
                     optional($row['completed_at'])->format('Y-m-d H:i') ?? '',
                     $row['type'],
                     // Menu item names ride along inside the Items cell, and a
@@ -8229,7 +8254,7 @@ public function markOrderRefunded(int $id)
                 'required', 'email', 'max:255',
                 \Illuminate\Validation\Rule::unique('users', 'email')->ignore($user->id),
             ],
-            'contact_number' => 'nullable|string|max:30',
+            'contact_number' => 'nullable|string|max:' . \App\Support\InputLimits::PHONE_MAX,
             'branch_id'      => 'required|exists:branches,id',
             'role'           => ['required', \Illuminate\Validation\Rule::in($this->assignableRoles())],
         ], [

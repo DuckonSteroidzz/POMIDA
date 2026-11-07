@@ -360,6 +360,13 @@ class RateLimitServiceProvider extends ServiceProvider
     public const CUSTOMER_ADD_POINTS_PER_IP = 30;
 
     /**
+     * Redeem points for a voucher (Nov 2026). A customer redeems a handful at
+     * most; this only stops a script hammering the endpoint. The rules
+     * themselves are in App\Services\PointsRedeem.
+     */
+    public const CUSTOMER_POINTS_REDEEM_PER_IP = 20;
+
+    /**
      * GET /discount-id/{order} — a guessable integer read straight into a
      * lookup that returns a person's identity document. Sits outside both guard
      * groups (staff and the uploading customer authenticate on different
@@ -492,6 +499,7 @@ class RateLimitServiceProvider extends ServiceProvider
         $this->perIp('customer-notifications', self::CUSTOMER_NOTIFICATIONS_PER_IP);
         $this->perIp('customer-table-clock', self::CUSTOMER_TABLE_CLOCK_PER_IP);
         $this->perIp('customer-add-points', self::CUSTOMER_ADD_POINTS_PER_IP);
+        $this->perIp('customer-points-redeem', self::CUSTOMER_POINTS_REDEEM_PER_IP);
         $this->perIp('customer-discount-lookup', self::CUSTOMER_DISCOUNT_LOOKUP_PER_IP);
         $this->perIp('customer-idle-logout', self::CUSTOMER_IDLE_LOGOUT_PER_IP);
         $this->perIp('customer-account-update', self::CUSTOMER_ACCOUNT_UPDATE_PER_IP);

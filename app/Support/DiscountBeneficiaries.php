@@ -71,7 +71,7 @@ final class DiscountBeneficiaries
     public static function rules(): array
     {
         $name = ['nullable', 'string', 'max:100', 'regex:' . self::NAME_REGEX];
-        $id = ['nullable', 'string', 'max:100', 'regex:' . self::ID_REGEX];
+        $id = ['nullable', 'string', 'max:' . \App\Support\InputLimits::ID_NUMBER_MAX, 'regex:' . self::ID_REGEX];
 
         return [
             'discount_beneficiary_name' => $name,
@@ -107,7 +107,7 @@ final class DiscountBeneficiaries
             'discount_beneficiaries.max' => self::ERROR_TOO_MANY,
             'discount_beneficiaries.*.array' => 'One of the listed IDs could not be read. Please remove that row and add it again.',
             'discount_beneficiaries.*.id_number.string' => 'An ID number must be text.',
-            'discount_beneficiaries.*.id_number.max' => 'An ID number can be at most 100 characters.',
+            'discount_beneficiaries.*.id_number.max' => 'An ID number can be at most ' . \App\Support\InputLimits::ID_NUMBER_MAX . ' characters.',
             'discount_beneficiaries.*.id_number.regex' => 'An ID number can only contain letters, numbers, spaces, dashes (-) and slashes (/).',
             'discount_beneficiaries.*.full_name.string' => 'A full name must be text.',
             'discount_beneficiaries.*.full_name.max' => 'A full name can be at most 100 characters.',

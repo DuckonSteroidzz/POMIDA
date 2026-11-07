@@ -165,11 +165,11 @@ class GameBranchScopingTest extends TestCase
         $html = $this->withSession(['branch_id' => null])->get('/customer/game')->assertOk()->getContent();
 
         $this->assertMatchesRegularExpression(
-            '/' . preg_quote($global->description, '/') . '.*?data-prize-status>Need 8 more points</s',
+            '/' . preg_quote($global->description, '/') . '.*?data-prize-status\s*>Need 8 more points</s',
             $html
         );
         $this->assertMatchesRegularExpression(
-            '/' . preg_quote($scoped->description, '/') . '.*?data-prize-status>Not available at this branch</s',
+            '/' . preg_quote($scoped->description, '/') . '.*?data-prize-status\s*>Not available at this branch</s',
             $html
         );
     }
@@ -225,26 +225,34 @@ class GameBranchScopingTest extends TestCase
         $this->assertFalse($data->pluck('id')->contains($scoped->id));
     }
 
-    // ══════════════════ winnableVoucherFor() — the actual spin picker ══════════════════
+    // ══════════════════ redeem — what a customer can actually get ══════════════════
+    // (Nov 2026: a spin only earns points; the Redeem button issues the voucher,
+    // checked by App\Services\PointsRedeem. These used to pin the spin picker.)
 
-    /** A spin's JSON 'voucher' field, or null, after a guest reaches exactly $points. */
-    private function spinFor(int $branchId, int $points): ?array
+    /**
+     * A guest at $branchId spins $points (from 0), then presses Redeem on
+     * $voucher. The redeem's 'voucher' field, or null when it was refused.
+     */
+    private function spinFor(int $branchId, int $points, ?Voucher $voucher = null): ?array
     {
         $this->guestOrder($branchId);
-        $this->forceSpinOutcome($points); // the server picks the prize since F3
+        $this->forceSpinOutcome($points); // the server picks the outcome since F3
 
-        $response = $this->withSession(['branch_id' => $branchId, 'guest_points' => 0])
+        $this->withSession(['branch_id' => $branchId, 'guest_points' => 0])
             ->postJson('/customer/add-points')
-            ->assertOk();
+            ->assertOk()
+            ->assertJsonMissingPath('voucher');
 
-        return $response->json('voucher');
+        $redeem = $this->postJson('/customer/points/redeem', ['voucher_id' => $voucher->id]);
+
+        return $redeem->status() === 200 ? $redeem->json('voucher') : null;
     }
 
     public function test_a_spin_can_win_a_same_branch_voucher(): void
     {
         $voucher = $this->voucher(self::HOME_BRANCH, 'WINSAME', pointsRequired: 8);
 
-        $won = $this->spinFor(self::HOME_BRANCH, 8);
+        $won = $this->spinFor(self::HOME_BRANCH, 8, $voucher);
 
         $this->assertNotNull($won, 'a same-branch voucher must be winnable at its own branch');
         $this->assertSame($voucher->code, $won['code']);
@@ -252,9 +260,9 @@ class GameBranchScopingTest extends TestCase
 
     public function test_a_spin_cannot_win_a_different_branchs_voucher(): void
     {
-        $this->voucher(self::FAR_BRANCH, 'NOWIN', pointsRequired: 8);
+        $far = $this->voucher(self::FAR_BRANCH, 'NOWIN', pointsRequired: 8);
 
-        $won = $this->spinFor(self::HOME_BRANCH, 8);
+        $won = $this->spinFor(self::HOME_BRANCH, 8, $far);
 
         $this->assertNull(
             $won,
@@ -275,13 +283,13 @@ class GameBranchScopingTest extends TestCase
     public function test_a_spin_can_win_a_global_voucher_at_any_branch(): void
     {
         $first = $this->voucher(null, 'WINGLOBAL1', pointsRequired: 8);
-        $wonFirst = $this->spinFor(self::HOME_BRANCH, 8);
+        $wonFirst = $this->spinFor(self::HOME_BRANCH, 8, $first);
 
         $this->assertNotNull($wonFirst, 'a global voucher must be winnable at branch ' . self::HOME_BRANCH);
         $this->assertSame($first->code, $wonFirst['code']);
 
         $second = $this->voucher(null, 'WINGLOBAL2', pointsRequired: 8);
-        $wonSecond = $this->spinFor(self::FAR_BRANCH, 8);
+        $wonSecond = $this->spinFor(self::FAR_BRANCH, 8, $second);
 
         $this->assertNotNull($wonSecond, 'a global voucher must be winnable at branch ' . self::FAR_BRANCH);
         $this->assertSame($second->code, $wonSecond['code']);
@@ -290,13 +298,21 @@ class GameBranchScopingTest extends TestCase
     public function test_a_branchless_guest_can_only_win_a_global_voucher(): void
     {
         $global = $this->voucher(null, 'NOBR-WINGLOBAL', pointsRequired: 8);
-        $this->voucher(self::HOME_BRANCH, 'NOBR-NOWIN', pointsRequired: 8);
+        $scoped = $this->voucher(self::HOME_BRANCH, 'NOBR-NOWIN', pointsRequired: 8);
 
         $this->guestOrder(self::HOME_BRANCH);
         $this->forceSpinOutcome(8);
 
-        $won = $this->withSession(['guest_points' => 0])
+        $this->withSession(['guest_points' => 0])
             ->postJson('/customer/add-points')
+            ->assertOk();
+
+        // No branch picked: the branch-scoped one is refused, the global one is not.
+        $this->postJson('/customer/points/redeem', ['voucher_id' => $scoped->id])
+            ->assertStatus(422)
+            ->assertJsonPath('status', \App\Support\WheelPrizes::OTHER_BRANCH);
+
+        $won = $this->postJson('/customer/points/redeem', ['voucher_id' => $global->id])
             ->assertOk()
             ->json('voucher');
 

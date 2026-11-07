@@ -2,7 +2,6 @@
 
 namespace Tests\Feature;
 
-use App\Http\Controllers\Customer\AuthController;
 use App\Models\Order;
 use App\Models\User;
 use App\Models\UserVoucher;
@@ -16,19 +15,22 @@ use Illuminate\Routing\Middleware\ThrottleRequests;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use ReflectionMethod;
 use Tests\Feature\Concerns\ForcesSpinOutcome;
 use Tests\TestCase;
 
 /**
- * Spin & Win: what each prize means for this customer, and that the list and the
- * picker are one rule (QA, Nov 2 2026).
+ * Spin & Win: what each points reward means for this customer, and that the
+ * list and the server are one rule (QA, Nov 2 2026).
  *
  * The bugs pinned here, each reproduced in a browser first: a voucher won on a
  * Try Again spin showed "Better luck next time" while the points were spent; the
  * list kept offering a prize already won and used; the "X more pts" hint named
  * one too; a prize was awarded before its start date; and two unused claims on
  * expired vouchers blocked every future prize for good.
+ *
+ * Nov 5 2026: a spin no longer awards anything. The tests that pinned the
+ * spin's award now pin the Redeem button (customer.points.redeem), which reads
+ * the same statuses. See also PointsRedeemTest.
  *
  * No amount, limit or voucher term is changed by any of this.
  */
@@ -128,6 +130,13 @@ class WheelPrizeStatusTest extends TestCase
             ->assertOk();
     }
 
+    private function redeem(User $user, Voucher $voucher, int $branchId = self::HOME): \Illuminate\Testing\TestResponse
+    {
+        return $this->actingAs($user->fresh(), 'customer')
+            ->withSession(['branch_id' => $branchId])
+            ->postJson('/customer/points/redeem', ['voucher_id' => $voucher->id]);
+    }
+
     private function balance(User $user): int
     {
         return $user->fresh()->wheelPoints();
@@ -135,12 +144,12 @@ class WheelPrizeStatusTest extends TestCase
 
     // ══════════ each status, for an account ══════════
 
-    public function test_you_can_win_this(): void
+    public function test_ready_to_redeem(): void
     {
         $v = $this->voucher(25);
 
         $this->assertSame(
-            ['status' => WheelPrizes::WINNABLE, 'label' => 'You can win this'],
+            ['status' => WheelPrizes::REDEEMABLE, 'label' => 'Ready to redeem'],
             $this->listed($this->customer(25))[$v->code]
         );
     }
@@ -149,7 +158,7 @@ class WheelPrizeStatusTest extends TestCase
     {
         $v = $this->voucher(25);
 
-        $this->assertSame(WheelPrizes::WINNABLE, $this->listed($this->customer(10, 15))[$v->code]['status']);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $this->listed($this->customer(10, 15))[$v->code]['status']);
     }
 
     public function test_need_more_points_says_how_many_and_reads_right_for_one(): void
@@ -186,8 +195,8 @@ class WheelPrizeStatusTest extends TestCase
         $html = $this->actingAs($user->fresh(), 'customer')->withSession(['branch_id' => self::HOME])
             ->get('/customer/game')->assertOk()->getContent();
 
-        $this->assertMatchesRegularExpression('/QA1231.*?data-prize-status>Already won</s', $html);
-        $this->assertStringNotContainsString('You can win this', $html);
+        $this->assertMatchesRegularExpression('/QA1231.*?data-prize-status\s*>Already won</s', $html);
+        $this->assertDoesNotMatchRegularExpression('/data-redeem-id="' . $prize->id . '"\s*>/', $html, 'no Redeem button');
     }
 
     public function test_not_available_at_this_branch(): void
@@ -197,10 +206,10 @@ class WheelPrizeStatusTest extends TestCase
         $listed = $this->listed($this->customer(100));
 
         $this->assertSame(['status' => WheelPrizes::OTHER_BRANCH, 'label' => 'Not available at this branch'], $listed[$far->code]);
-        $this->assertSame(WheelPrizes::WINNABLE, $listed[$home->code]['status']);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $listed[$home->code]['status']);
     }
 
-    public function test_a_visitor_with_no_branch_can_win_only_global_prizes(): void
+    public function test_a_visitor_with_no_branch_can_redeem_only_global_rewards(): void
     {
         $scoped = $this->voucher(10, ['branch_id' => self::HOME]);
         $global = $this->voucher(10);
@@ -209,7 +218,7 @@ class WheelPrizeStatusTest extends TestCase
         $byCode = collect($prizes)->mapWithKeys(fn ($p) => [$p['voucher']->code => $p['status']]);
 
         $this->assertSame(WheelPrizes::OTHER_BRANCH, $byCode[$scoped->code]);
-        $this->assertSame(WheelPrizes::WINNABLE, $byCode[$global->code]);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $byCode[$global->code]);
     }
 
     public function test_starts_on_date(): void
@@ -228,8 +237,8 @@ class WheelPrizeStatusTest extends TestCase
         $past = $this->voucher(10, ['valid_from' => '2020-01-01']);
         $listed = $this->listed($this->customer(100));
 
-        $this->assertSame(WheelPrizes::WINNABLE, $listed[$today->code]['status']);
-        $this->assertSame(WheelPrizes::WINNABLE, $listed[$past->code]['status']);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $listed[$today->code]['status']);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $listed[$past->code]['status']);
     }
 
     public function test_sold_out(): void
@@ -242,12 +251,14 @@ class WheelPrizeStatusTest extends TestCase
         );
     }
 
-    public function test_max_uses_zero_means_unlimited_on_the_list_as_it_does_in_the_picker(): void
+    public function test_max_uses_zero_means_unlimited_on_the_list_as_it_does_on_redeem(): void
     {
         // The old list query (`used_count < max_uses`) hid these while the picker awarded them.
         $v = $this->voucher(10, ['max_uses' => 0, 'used_count' => 5]);
+        $user = $this->customer(100);
 
-        $this->assertSame(WheelPrizes::WINNABLE, $this->listed($this->customer(100))[$v->code]['status']);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $this->listed($user)[$v->code]['status']);
+        $this->redeem($user, $v)->assertOk();
     }
 
     public function test_holding_two_spendable_vouchers_says_use_one_first(): void
@@ -320,13 +331,17 @@ class WheelPrizeStatusTest extends TestCase
         $this->assertSame('Need 10 more points', $byCode[$need->code]);
     }
 
-    public function test_a_guest_spin_reports_the_win_and_what_it_cost(): void
+    public function test_a_guest_redeem_reports_what_it_cost_and_the_new_status(): void
     {
         $prize = $this->voucher(3);
         GuestOrders::remember($this->order(null)->id);
         $this->forceSpinOutcome(5);
 
-        $json = $this->withSession(['branch_id' => self::HOME])->postJson('/customer/add-points')->assertOk()->json();
+        $spin = $this->withSession(['branch_id' => self::HOME])->postJson('/customer/add-points')->assertOk()->json();
+        $this->assertSame(5, $spin['total_points'], 'the spin took nothing');
+        $this->assertSame(WheelPrizes::REDEEMABLE, collect($spin['prizes'])->firstWhere('id', $prize->id)['status']);
+
+        $json = $this->postJson('/customer/points/redeem', ['voucher_id' => $prize->id])->assertOk()->json();
 
         $this->assertSame(3, $json['voucher']['points_spent']);
         $this->assertSame(2, $json['total_points']);
@@ -335,7 +350,7 @@ class WheelPrizeStatusTest extends TestCase
 
     // ══════════ Try Again: QA's "points deducted" ══════════
 
-    public function test_a_try_again_spin_with_enough_points_wins_and_the_reply_says_so(): void
+    public function test_a_try_again_spin_with_enough_points_takes_nothing_and_awards_nothing(): void
     {
         $prize = $this->voucher(25);
         $user = $this->customer(50);
@@ -344,21 +359,22 @@ class WheelPrizeStatusTest extends TestCase
         $json = $this->spin($user, 0)->json();
 
         $this->assertSame('lose', $json['outcome']['type']);
-        $this->assertSame($prize->code, $json['voucher']['code']);
-        $this->assertSame(25, $json['voucher']['points_spent']);
-        $this->assertSame(25, $json['total_points']);
-        $this->assertSame(25, $this->balance($user));
-        $this->assertSame(1, UserVoucher::where('user_id', $user->id)->where('voucher_id', $prize->id)->count());
+        $this->assertArrayNotHasKey('voucher', $json);
+        $this->assertSame(50, $json['total_points']);
+        $this->assertSame(50, $this->balance($user));
+        $this->assertSame(0, UserVoucher::where('user_id', $user->id)->count());
+        $this->assertSame(WheelPrizes::rewardName($prize), $json['can_redeem']);
     }
 
-    public function test_the_page_shows_any_voucher_the_server_awarded_whatever_the_wheel_landed_on(): void
+    public function test_the_spin_result_shows_only_points_and_the_balance(): void
     {
         $source = file_get_contents(resource_path('views/customer/game.blade.php'));
 
         // This exact condition is what showed "Better luck next time" on a win.
         $this->assertStringNotContainsString("won.type === 'points' && data.voucher", $source);
-        $this->assertStringContainsString('if (data.voucher) {', $source);
-        $this->assertStringContainsString('voucherWinPoints', $source);
+        $this->assertStringNotContainsString('if (data.voucher) {', $source);
+        $this->assertStringNotContainsString('voucherWinPoints', $source);
+        $this->assertStringContainsString("var line = 'You now have ' + data.total_points + ' points.';", $source);
     }
 
     public function test_a_try_again_spin_without_enough_points_costs_nothing(): void
@@ -369,7 +385,8 @@ class WheelPrizeStatusTest extends TestCase
 
         $json = $this->spin($user, 0)->json();
 
-        $this->assertNull($json['voucher']);
+        $this->assertArrayNotHasKey('voucher', $json);
+        $this->assertNull($json['can_redeem']);
         $this->assertSame(24, $json['total_points']);
         $this->assertSame(24, $this->balance($user));
     }
@@ -381,83 +398,89 @@ class WheelPrizeStatusTest extends TestCase
         $this->order($user->id);
 
         $this->spin($user, 3);
-        $this->assertSame(28, $this->balance($user), '50 + 3 - 25');
+        $this->assertSame(53, $this->balance($user), 'a spin only adds');
+
+        $this->redeem($user, $prize)->assertOk();
+        $this->assertSame(28, $this->balance($user), '53 - 25');
         $this->assertSame(1, UserVoucher::where('user_id', $user->id)->count());
 
-        // Won once: the same prize cannot take more points.
+        // Redeemed once: the same voucher cannot take more points.
+        $this->redeem($user, $prize)->assertStatus(422);
         $this->spin($user, 0);
         $this->assertSame(28, $this->balance($user));
         $this->assertSame(1, UserVoucher::where('user_id', $user->id)->count());
         $this->assertSame(1, UserVoucher::where('voucher_id', $prize->id)->count());
     }
 
-    public function test_a_new_promo_is_won_on_the_next_spin_after_the_first_was_won_and_used(): void
+    public function test_a_new_promo_is_redeemed_with_points_already_held_without_spinning_again(): void
     {
-        // QA: "Even when I add another promo, I can't use it."
+        // QA Nov 2: "Even when I add another promo, I can't use it." QA Nov 5:
+        // "customers who already have a lot of points shouldn't need to play again".
         $user = $this->customer(50);
         $first = $this->voucher(25);
-        $this->order($user->id);
-        $this->spin($user, 0);
+        $this->redeem($user, $first)->assertOk();
         UserVoucher::where('user_id', $user->id)->update(['is_used' => true, 'used_at' => now()]);
 
         $promo = $this->voucher(25);
 
-        $this->assertSame(WheelPrizes::WINNABLE, $this->listed($user)[$promo->code]['status']);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $this->listed($user)[$promo->code]['status']);
         $this->assertSame(WheelPrizes::ALREADY_WON, $this->listed($user)[$first->code]['status']);
 
-        $json = $this->spin($user, 0)->json();
-
-        $this->assertSame($promo->code, $json['voucher']['code']);
+        $this->redeem($user, $promo)->assertOk()->assertJsonPath('voucher.code', $promo->code);
         $this->assertSame(0, $this->balance($user));
+        $this->assertSame(0, \App\Models\GamePlayed::where('user_id', $user->id)->count(), 'no spin was needed');
     }
 
-    public function test_the_reply_carries_the_new_status_of_every_listed_prize(): void
+    public function test_the_spin_reply_carries_the_new_status_of_every_listed_reward(): void
     {
-        $won = $this->voucher(10);
+        $ready = $this->voucher(10);
         $next = $this->voucher(60);
         $user = $this->customer(10);
         $this->order($user->id);
 
         $prizes = collect($this->spin($user, 0)->json('prizes'))->keyBy('id');
 
-        $this->assertSame('Already won', $prizes[$won->id]['label']);
-        $this->assertSame('Need 60 more points', $prizes[$next->id]['label']);
+        $this->assertSame('Ready to redeem', $prizes[$ready->id]['label']);
+        $this->assertSame('Need 50 more points', $prizes[$next->id]['label']);
     }
 
-    // ══════════ the picker and the list are one rule ══════════
+    // ══════════ the list and the server are one rule ══════════
 
-    public function test_the_wheel_refuses_a_prize_before_its_start_date(): void
+    public function test_redeem_refuses_a_reward_before_its_start_date(): void
     {
-        $this->voucher(10, ['valid_from' => '2099-01-01']);
+        $prize = $this->voucher(10, ['valid_from' => '2099-01-01']);
         $user = $this->customer(100);
-        $this->order($user->id);
 
-        $json = $this->spin($user, 3)->json();
+        $this->redeem($user, $prize)->assertStatus(422)->assertJsonPath('status', WheelPrizes::NOT_STARTED);
 
-        $this->assertNull($json['voucher']);
-        $this->assertSame(103, $this->balance($user));
+        $this->assertSame(100, $this->balance($user));
         $this->assertSame(0, UserVoucher::where('user_id', $user->id)->count());
     }
 
-    public function test_the_picker_awards_only_what_the_list_calls_winnable(): void
+    public function test_redeem_accepts_only_what_the_list_calls_ready(): void
     {
-        $winnable = $this->voucher(10);
-        $this->voucher(10, ['branch_id' => self::FAR]);
-        $this->voucher(10, ['valid_from' => '2099-01-01']);
-        $this->voucher(10, ['max_uses' => 1, 'used_count' => 1]);
-        $this->voucher(10, ['on_wheel' => false]);
-        $this->voucher(500);
-        $excluded = $this->voucher(10);
+        $ready = $this->voucher(10);
+        $refused = [
+            $this->voucher(10, ['branch_id' => self::FAR]),
+            $this->voucher(10, ['valid_from' => '2099-01-01']),
+            $this->voucher(10, ['max_uses' => 1, 'used_count' => 1]),
+            $this->voucher(10, ['on_wheel' => false]),
+            $this->voucher(500),
+        ];
+        $held = $this->voucher(10);
+        $user = $this->customer(100);
+        $this->claim($user, $held, true);
 
-        $picker = new ReflectionMethod(AuthController::class, 'winnableVoucherFor');
-        session()->put('branch_id', self::HOME);
+        $listed = $this->listed($user);
+        $this->assertSame(WheelPrizes::REDEEMABLE, $listed[$ready->code]['status']);
 
-        for ($i = 0; $i < 25; $i++) {
-            $this->assertSame(
-                $winnable->id,
-                $picker->invoke(app(AuthController::class), 100, [$excluded->id])?->id
-            );
+        foreach (array_merge($refused, [$held]) as $voucher) {
+            $this->assertNotSame(WheelPrizes::REDEEMABLE, $listed[$voucher->code]['status'] ?? null);
+            $this->redeem($user, $voucher)->assertStatus(422);
         }
+
+        $this->redeem($user, $ready)->assertOk();
+        $this->assertSame(90, $this->balance($user));
     }
 
     public function test_expired_claims_do_not_use_up_the_two_voucher_limit(): void
@@ -466,10 +489,9 @@ class WheelPrizeStatusTest extends TestCase
         $this->claim($user, $this->voucher(10, ['expires_at' => now()->subDays(3)]));
         $this->claim($user, $this->voucher(10, ['expires_at' => now()->subDays(3)]));
         $prize = $this->voucher(25);
-        $this->order($user->id);
 
-        $this->assertSame(WheelPrizes::WINNABLE, $this->listed($user)[$prize->code]['status']);
-        $this->assertSame($prize->code, $this->spin($user, 3)->json('voucher.code'));
+        $this->assertSame(WheelPrizes::REDEEMABLE, $this->listed($user)[$prize->code]['status']);
+        $this->assertSame($prize->code, $this->redeem($user, $prize)->assertOk()->json('voucher.code'));
     }
 
     public function test_switched_off_and_used_up_claims_do_not_use_up_the_limit_either(): void
@@ -478,9 +500,8 @@ class WheelPrizeStatusTest extends TestCase
         $this->claim($user, $this->voucher(10, ['is_active' => false]));
         $this->claim($user, $this->voucher(10, ['max_uses' => 1, 'used_count' => 1]));
         $prize = $this->voucher(25);
-        $this->order($user->id);
 
-        $this->assertSame($prize->code, $this->spin($user, 3)->json('voucher.code'));
+        $this->assertSame($prize->code, $this->redeem($user, $prize)->assertOk()->json('voucher.code'));
     }
 
     public function test_two_spendable_claims_still_block_a_third_and_take_no_points(): void
@@ -488,12 +509,13 @@ class WheelPrizeStatusTest extends TestCase
         $user = $this->customer(100);
         $this->claim($user, $this->voucher(10));
         $this->claim($user, $this->voucher(10));
-        $this->voucher(25);
+        $third = $this->voucher(25);
         $this->order($user->id);
 
-        $json = $this->spin($user, 3)->json();
+        $this->redeem($user, $third)->assertStatus(422)->assertJsonPath('status', WheelPrizes::HOLDING_MAX);
+        $this->assertSame(100, $this->balance($user));
 
-        $this->assertNull($json['voucher']);
+        $json = $this->spin($user, 3)->json();
         $this->assertSame(103, $this->balance($user));
         $this->assertSame(0, $json['voucher_slots']);
     }
@@ -548,21 +570,18 @@ class WheelPrizeStatusTest extends TestCase
         $html = $this->actingAs($user->fresh(), 'customer')->withSession(['branch_id' => self::HOME])
             ->get('/customer/game')->assertOk()->getContent();
 
-        $this->assertStringContainsString('You can win this', $html);
+        $this->assertStringContainsString('Redeem for 25 pts', $html);
         $this->assertStringContainsString('Need 10 more points', $html);
-        $this->assertStringContainsString(
-            'Points add up from every spin. When you have enough for a prize, your next spin wins it and takes those points. Each prize can be won once.',
-            $html
-        );
+        $this->assertStringContainsString('Spin to earn points. Redeem your points for a voucher anytime.', $html);
     }
 
-    public function test_a_signed_in_winner_is_not_told_they_have_no_account(): void
+    public function test_a_signed_in_customer_is_not_told_they_have_no_account(): void
     {
         $user = $this->customer();
         $page = $this->actingAs($user->fresh(), 'customer')->withSession(['branch_id' => self::HOME])
             ->get('/customer/game')->assertOk()->getContent();
 
-        $this->assertStringContainsString('var isSignedIn = true;', $page);
+        $this->assertStringContainsString('var signedIn = true;', $page);
     }
 
     // ══════════ the admin list agrees ══════════

@@ -574,7 +574,7 @@
                                 <div class="flex items-center rounded-full border border-peach-soft bg-white p-1">
                                     <button type="button" onclick="cartChangeQty('{{ $itemId }}', -1)"
                                         class="grid h-11 w-11 place-items-center rounded-full text-lg font-bold text-peach-red transition hover:bg-peach-soft" aria-label="Decrease quantity">−</button>
-                                    <input type="number" inputmode="numeric" min="1" max="999"
+                                    <input type="number" inputmode="numeric" min="1" max="{{ \App\Support\InputLimits::ORDER_QTY_MAX }}"
                                         value="{{ $item['quantity'] }}"
                                         data-cart-qty="{{ $itemId }}"
                                         aria-label="Quantity for {{ $item['name'] }}"
@@ -804,7 +804,7 @@
                                                     <input
                                                         type="text"
                                                         data-field="id_number"
-                                                        maxlength="100"
+                                                        maxlength="{{ \App\Support\InputLimits::ID_NUMBER_MAX }}"
                                                         autocomplete="off"
                                                         class="w-full min-w-0 rounded-xl border border-peach-soft bg-white py-2.5 pl-3 pr-8 text-sm outline-none focus:border-peach focus:ring-4 focus:ring-peach/20"
                                                     >
@@ -1258,7 +1258,7 @@
          * script.
          */
         var CART_SYNC_DEBOUNCE_MS = 400;   // within the required 300–500ms
-        var CART_MAX_QTY = 999;            // matches the historic max on this field
+        var CART_MAX_QTY = {{ \App\Support\InputLimits::ORDER_QTY_MAX }};            // the shared per-line cap (was 999)
 
         var cartLines = @json(collect($cart)->map(fn ($it) => [
             'unitPrice' => (float) $it['price'],

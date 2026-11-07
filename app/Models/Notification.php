@@ -272,6 +272,22 @@ class Notification extends Model
     }
 
     /**
+     * Staff marked a refund as sent (QA, 5 Nov 2026). The customer had no way
+     * to learn this before: the refund closed silently on the staff side.
+     * Wording comes from Order::customerRefundMessage(), the same sentence
+     * their Order History and receipt show.
+     */
+    public static function refundSent(Order $order): ?self
+    {
+        return self::forCustomer(
+            $order,
+            'refund_sent',
+            'Refund sent',
+            'Order #' . $order->order_number . ' — ' . $order->customerRefundMessage()
+        );
+    }
+
+    /**
      * A customer placed an order online. Staff need to see it at the counter.
      *
      * Manual (walk-in) orders deliberately do NOT call this: staff key those in
@@ -329,8 +345,8 @@ class Notification extends Model
                 ? 'Refund needed — staff cancelled a paid order'
                 : 'Refund needed — customer cancelled a paid order',
             ($byStaff
-                ? 'Staff cancelled order #' . $order->order_number . ' after the customer marked it paid via GCash (₱'
-                : 'A customer cancelled order #' . $order->order_number . ' after marking it paid via GCash (₱') .
+                ? 'Staff cancelled order #' . $order->order_number . ' after the customer paid via GCash (₱'
+                : 'A customer cancelled order #' . $order->order_number . ' after paying via GCash (₱') .
             number_format((float) $order->total, 2) . '). Send the refund manually, then mark it refunded.'
         );
     }
